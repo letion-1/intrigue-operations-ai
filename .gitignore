@@ -40,3 +40,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# INTRIGUE V12 deployment safety
+.env*
+!.env.example
+.vercel/
+.next/
+node_modules/
+*.backup*
+*.bak
+*.v*-backup*
+*.before-model-fix

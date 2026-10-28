@@ -1,0 +1,23 @@
+# INTRIGUE V12: staging demonstration worker only.
+# Deploy through Render Blueprint from your PRIVATE GitHub repository.
+# This is a PAID continuously running background-worker instance.
+services:
+  - type: worker
+    name: intrigue-staging-worker
+    runtime: node
+    region: frankfurt
+    plan: 0.5c-512mb
+    buildCommand: npm ci --omit=dev
+    startCommand: node workers/intrigue-worker.mjs
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: INTRIGUE_WORKER_MODE
+        value: demo
+      - key: WORKER_POLL_INTERVAL_MS
+        value: '3000'
+      - key: WORKER_HEARTBEAT_SECONDS
+        value: '30'

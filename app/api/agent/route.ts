@@ -100,9 +100,10 @@ export async function POST(request: Request) {
   const { data: workspace, error: workspaceError } = await supabase.from("workspaces")
     .select("id,name").eq("owner_id", user.id).maybeSingle();
   if (workspaceError || !workspace) return respond({ error: "Could not find your signed-in workspace." }, 409);
+  const workspaceId = workspace.id;
 
   const { data: customerRows, error: customersError } = await supabase.from("customers")
-    .select("id,full_name,vehicle").eq("workspace_id", workspace.id).limit(200);
+    .select("id,full_name,vehicle").eq("workspace_id", workspaceId).limit(200);
   if (customersError) return respond({ error: "Could not load workspace customers." }, 500);
   const customers = (customerRows || []) as Customer[];
   const matchingCustomer = (name: string) => customers.find(c => c.full_name.toLocaleLowerCase() === name.toLocaleLowerCase());
@@ -124,7 +125,7 @@ export async function POST(request: Request) {
       if (name === "list_quotations") {
         const status = safeText(params.status);
         const query = supabase.from("quotations").select("customer_id,description,amount,status,created_at")
-          .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(101);
+          .eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(101);
         const { data, error } = await (customer ? query.eq("customer_id", customer.id) : query);
         if (error) return { error: "Could not read quotations." };
         const rows = (data || []).filter(q => !status || status === "any" || q.status === status);
@@ -132,7 +133,7 @@ export async function POST(request: Request) {
       }
       const status = safeText(params.status) || "pending";
       const query = supabase.from("follow_ups").select("customer_id,title,due_at,status,priority")
-        .eq("workspace_id", workspace.id).order("due_at", { ascending: true }).limit(101);
+        .eq("workspace_id", workspaceId).order("due_at", { ascending: true }).limit(101);
       const { data, error } = await (customer ? query.eq("customer_id", customer.id) : query);
       if (error) return { error: "Could not read follow-ups." };
       const rows = (data || []).filter(t => status === "all" || t.status === status);
@@ -142,9 +143,9 @@ export async function POST(request: Request) {
       const q = safeText(params.query, 300);
       if (q.length < 3) return { error: "Provide a specific search query." };
       const [notes, documents, passages] = await Promise.all([
-        supabase.from("knowledge_entries").select("title,content").eq("workspace_id", workspace.id).limit(150),
-        supabase.from("knowledge_documents").select("id,filename").eq("workspace_id", workspace.id).limit(150),
-        supabase.from("knowledge_document_chunks").select("document_id,page_no,content").eq("workspace_id", workspace.id).limit(350),
+        supabase.from("knowledge_entries").select("title,content").eq("workspace_id", workspaceId).limit(150),
+        supabase.from("knowledge_documents").select("id,filename").eq("workspace_id", workspaceId).limit(150),
+        supabase.from("knowledge_document_chunks").select("document_id,page_no,content").eq("workspace_id", workspaceId).limit(350),
       ]);
       if (notes.error || documents.error || passages.error) return { error: "Knowledge tables unavailable; verify V5 and V6 migrations." };
       const names = new Map((documents.data || []).map(d => [d.id, d.filename]));
@@ -161,14 +162,14 @@ export async function POST(request: Request) {
       // Reuse the existing V7 semantic index if the user opted to build it.
       // A query embedding can cost a small amount of OpenRouter credit.
       const [indexedNotes, indexedChunks] = await Promise.all([
-        supabase.from("knowledge_entries").select("id", { head: true, count: "exact" }).eq("workspace_id", workspace.id).not("embedding", "is", null),
-        supabase.from("knowledge_document_chunks").select("id", { head: true, count: "exact" }).eq("workspace_id", workspace.id).not("embedding", "is", null),
+        supabase.from("knowledge_entries").select("id", { head: true, count: "exact" }).eq("workspace_id", workspaceId).not("embedding", "is", null),
+        supabase.from("knowledge_document_chunks").select("id", { head: true, count: "exact" }).eq("workspace_id", workspaceId).not("embedding", "is", null),
       ]);
       if (!indexedNotes.error && !indexedChunks.error && (indexedNotes.count || 0) + (indexedChunks.count || 0) > 0) {
         try {
           const [embedding] = await embedTexts([q]);
           const { data: matches, error } = await supabase.rpc("intrigue_semantic_search", {
-            p_workspace_id: workspace.id, p_query_embedding: embedding, p_match_count: 5,
+            p_workspace_id: workspaceId, p_query_embedding: embedding, p_match_count: 5,
           });
           if (!error && Array.isArray(matches)) {
             semanticMatches = matches.map((m: {source_type: string; source_title: string; page_no: number | null; content: string}) => ({

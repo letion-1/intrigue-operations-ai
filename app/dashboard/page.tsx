@@ -27,6 +27,7 @@ import {
   Plug,
   Send,
   Settings,
+  UserPlus,
   ShieldCheck,
   Sparkles,
   Users,
@@ -44,7 +45,8 @@ type Section =
   | "Follow-ups"
   | "Knowledge Base"
   | "Integrations"
-  | "Settings";
+  | "Settings"
+  | "Team";
 
 type Message = { role: "assistant" | "user"; text: string; proposalId?: string; toolsUsed?: string[] };
 
@@ -58,6 +60,7 @@ const NAV = [
   { label: "Follow-ups", icon: ListTodo },
   { label: "Knowledge Base", icon: BookOpen },
   { label: "Integrations", icon: Plug },
+  { label: "Team", icon: UserPlus },
   { label: "Settings", icon: Settings },
 ] as const;
 
@@ -67,7 +70,23 @@ const QUICK_PROMPTS = [
   "Summarize today's workload",
 ];
 
-type Workspace = { id: string; name: string };
+type Workspace = { id: string; name: string; owner_id: string };
+type MemberRole = "owner" | "admin" | "member";
+type CompanySettings = {
+  workspace_id: string; industry: string; description: string; contact_email: string;
+  phone: string; website: string; business_hours: string; timezone: string;
+  currency: string; ai_name: string; ai_tone: string; ai_role: string; ai_guidance: string;
+};
+const EMPTY_SETTINGS: Omit<CompanySettings, "workspace_id"> = {
+  industry: "Other", description: "", contact_email: "", phone: "", website: "",
+  business_hours: "", timezone: "Europe/Berlin", currency: "EUR",
+  ai_name: "INTRIGUE Assistant", ai_tone: "Professional",
+  ai_role: "Operations assistant", ai_guidance: "",
+};
+type TeamMember = { member_user_id: string; email: string; role: MemberRole; joined_at: string };
+type TeamInvite = { id: string; invited_email: string; role: string; status: string; expires_at: string; created_at: string };
+const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","Action Center","Automation Center","Integrations"];
+
 type Customer = { id: string; full_name: string; email: string | null; vehicle: string | null; created_at: string };
 type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string };
 type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string };
@@ -152,6 +171,22 @@ export default function DashboardPage() {
   // Authenticated Supabase browser client. Authorization is also enforced in Postgres RLS.
   const supabase = useMemo(() => createClient(), []);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [role, setRole] = useState<MemberRole>("owner");
+  const isOwner = role === "owner";
+  const [settings, setSettings] = useState<Omit<CompanySettings,"workspace_id">>(EMPTY_SETTINGS);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+  const [settingsMessage, setSettingsMessage] = useState("");
+  const [companyEditName, setCompanyEditName] = useState("");
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [teamInvites, setTeamInvites] = useState<TeamInvite[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteLink, setInviteLink] = useState("");
+  const [teamBusy, setTeamBusy] = useState(false);
+  const [teamError, setTeamError] = useState("");
+  const [teamMessage, setTeamMessage] = useState("");
+  const [joinToken, setJoinToken] = useState("");
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -193,6 +228,13 @@ export default function DashboardPage() {
   const [automationMessage, setAutomationMessage] = useState("");
 
 
+  useEffect(() => {
+    // The invitation code is never transmitted to the AI or analytics.
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("join");
+    if (token && /^[0-9a-f]{64}$/.test(token)) setJoinToken(token);
+  }, []);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setDbError("");
@@ -202,7 +244,7 @@ export default function DashboardPage() {
       setLoading(false);
       return;
     }
-    const result = await supabase.from("workspaces").select("id,name").order("created_at", { ascending: true }).limit(1);
+    const result = await supabase.from("workspaces").select("id,name,owner_id").order("created_at", { ascending: true }).limit(1);
     if (result.error) {
       setDbError(`Database connection failed: ${result.error.message}. Run the setup SQL in Supabase first.`);
       setLoading(false);
@@ -210,6 +252,16 @@ export default function DashboardPage() {
     }
     const found = (result.data?.[0] as Workspace | undefined) ?? null;
     setWorkspace(found);
+    if (found) {
+      const member = await supabase.from("workspace_memberships").select("role")
+        .eq("workspace_id",found.id).eq("user_id",authData.user.id).maybeSingle();
+      if (member.error || !member.data || !["owner","admin","member"].includes(member.data.role)) {
+        setDbError("This account has no verified membership for its workspace.");
+        setLoading(false); return;
+      }
+      setRole(member.data.role as MemberRole);
+      setCompanyEditName(found.name);
+    }
     if (!found) {
       setCustomers([]); setEnquiries([]); setQuotes([]); setTasks([]);
       setLoading(false);
@@ -233,6 +285,87 @@ export default function DashboardPage() {
   }, [supabase]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  const loadSettings = useCallback(async () => {
+    if (!workspace) return;
+    const {data,error} = await supabase.from("workspace_settings").select("*")
+      .eq("workspace_id",workspace.id).maybeSingle();
+    if (error) { setSettingsError(error.message); return; }
+    setSettings(data ? {
+      industry:data.industry,description:data.description,contact_email:data.contact_email,
+      phone:data.phone,website:data.website,business_hours:data.business_hours,
+      timezone:data.timezone,currency:data.currency,ai_name:data.ai_name,
+      ai_tone:data.ai_tone,ai_role:data.ai_role,ai_guidance:data.ai_guidance,
+    } : EMPTY_SETTINGS);
+  },[supabase,workspace]);
+  useEffect(()=>{if(workspace) void loadSettings();},[workspace,loadSettings]);
+
+  const loadTeam = useCallback(async () => {
+    if (!workspace || !isOwner) return;
+    const [members,invites] = await Promise.all([
+      supabase.rpc("list_intrigue_team",{p_workspace_id:workspace.id}),
+      supabase.from("workspace_invitations")
+        .select("id,invited_email,role,status,expires_at,created_at")
+        .eq("workspace_id",workspace.id).eq("status","pending")
+        .order("created_at",{ascending:false}),
+    ]);
+    if(members.error || invites.error) setTeamError(members.error?.message||invites.error?.message||"Team unavailable");
+    else {setTeamError("");setTeamMembers((members.data||[]) as TeamMember[]);setTeamInvites((invites.data||[]) as TeamInvite[]);}
+  },[supabase,workspace,isOwner]);
+  useEffect(()=>{if(section==="Team" || section==="Settings") void loadTeam();},[section,loadTeam]);
+
+  async function saveSettings(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if(!workspace||!isOwner||settingsBusy)return;
+    setSettingsBusy(true);setSettingsError("");setSettingsMessage("");
+    const name=companyEditName.trim();
+    if(name.length<2||name.length>100){setSettingsError("Company name must have 2–100 characters.");setSettingsBusy(false);return;}
+    const nameResult = await supabase.from("workspaces").update({name})
+      .eq("id",workspace.id).eq("owner_id",workspace.owner_id);
+    if(nameResult.error){setSettingsError(nameResult.error.message);setSettingsBusy(false);return;}
+    const saveResult=await supabase.from("workspace_settings").upsert({workspace_id:workspace.id,...settings},{onConflict:"workspace_id"});
+    if(saveResult.error)setSettingsError(saveResult.error.message);
+    else {setSettingsMessage("Company and AI settings saved.");await refresh();}
+    setSettingsBusy(false);
+  }
+
+  async function createInvite(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if(!workspace||!isOwner||teamBusy)return;
+    setTeamBusy(true);setTeamError("");setTeamMessage("");setInviteLink("");
+    const {data,error}=await supabase.rpc("create_intrigue_team_invite",{
+      p_workspace_id:workspace.id,p_email:inviteEmail.trim().toLowerCase(),
+    });
+    if(error)setTeamError(error.message);
+    else if(typeof data==="string"){
+      setInviteLink(`${window.location.origin}/dashboard?join=${data}`);
+      setInviteEmail("");setTeamMessage("Invitation created. Copy the link now and send it privately to the invited email owner. Expires in 7 days.");
+      await loadTeam();
+    }
+    setTeamBusy(false);
+  }
+  async function acceptInvite() {
+    if(!joinToken||teamBusy)return;
+    setTeamBusy(true);setTeamError("");
+    const {error}=await supabase.rpc("accept_intrigue_team_invite",{p_token:joinToken});
+    if(error){setTeamError(error.message);setTeamBusy(false);return;}
+    window.history.replaceState(null,"",window.location.pathname);
+    setJoinToken("");setTeamMessage("You joined your company workspace with read-only access.");
+    await refresh();setTeamBusy(false);
+  }
+  async function revokeInvite(id:string) {
+    if(!isOwner||teamBusy||!window.confirm("Revoke this invitation?"))return;
+    setTeamBusy(true);setTeamError("");
+    const {error}=await supabase.rpc("revoke_intrigue_team_invite",{p_invitation_id:id});
+    if(error)setTeamError(error.message);else await loadTeam();
+    setTeamBusy(false);
+  }
+  async function removeMember(id:string) {
+    if(!workspace||!isOwner||teamBusy||!window.confirm("Remove this staff member's workspace access?"))return;
+    setTeamBusy(true);setTeamError("");
+    const {error}=await supabase.rpc("remove_intrigue_team_member",{p_workspace_id:workspace.id,p_member_id:id});
+    if(error)setTeamError(error.message);else await loadTeam();
+    setTeamBusy(false);
+  }
+
   useEffect(() => {
     let alive = true;
     fetch("/api/assistant", {cache: "no-store"})
@@ -317,7 +450,7 @@ export default function DashboardPage() {
   }, [supabase, workspace]);
 
   useEffect(() => {
-    if (section === "Knowledge Base") void loadKnowledge();
+    if (section === "Knowledge Base" || section === "Settings") void loadKnowledge();
   }, [section, loadKnowledge]);
 
   const loadDocuments = useCallback(async () => {
@@ -331,7 +464,7 @@ export default function DashboardPage() {
   },[supabase,workspace]);
 
   useEffect(() => {
-    if (section==="Knowledge Base") void loadDocuments();
+    if (section==="Knowledge Base" || section === "Settings") void loadDocuments();
   },[section,loadDocuments]);
 
   async function buildSemanticIndex() {
@@ -519,6 +652,7 @@ export default function DashboardPage() {
   const newButtonClass = "rounded-xl bg-[#c9a552] px-4 py-2.5 text-xs font-semibold text-[#111b29] hover:bg-[#e4c47b] disabled:opacity-50";
 
   function navigate(next: Section) {
+    if (!isOwner && OWNER_ONLY_SECTIONS.includes(next)) return;
     setSection(next);
     setMobileOpen(false);
   }
@@ -531,7 +665,7 @@ export default function DashboardPage() {
 
   async function askQuestion(value = draft) {
     const question = value.trim();
-    if (!question || aiLoading) return;
+    if (!question || aiLoading || !isOwner) return;
     setDraft("");
     setSection("AI Assistant");
     setMessages(previous => [...previous, {role:"user",text:question}]);
@@ -599,7 +733,7 @@ export default function DashboardPage() {
       <div className="px-4">
         <div className="mb-3 px-3 text-[10px] font-bold tracking-[0.2em] text-[#c4a86e]">WORKSPACE</div>
         <nav className="space-y-1">
-          {NAV.map((item) => {
+          {NAV.filter(item => isOwner || !OWNER_ONLY_SECTIONS.includes(item.label)).map((item) => {
             const Icon = item.icon;
             const selected = section === item.label;
             return (
@@ -663,13 +797,19 @@ export default function DashboardPage() {
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => navigate("Quotations")} className="flex items-center gap-2 rounded-xl border border-[#415064] bg-[#142539] px-4 py-2.5 text-xs font-semibold text-[#f0e9dc] shadow-sm hover:bg-[#1b2e42]"><Plus size={16}/>View quotes</button>
-              <button type="button" onClick={() => navigate("AI Assistant")} className="flex items-center gap-2 rounded-xl bg-[#c9a552] px-4 py-2.5 text-xs font-semibold text-[#111b29] hover:bg-[#e4c47b]"><Sparkles size={16}/>Ask AI</button>
+              {isOwner && <button type="button" onClick={() => navigate("AI Assistant")} className="flex items-center gap-2 rounded-xl bg-[#c9a552] px-4 py-2.5 text-xs font-semibold text-[#111b29] hover:bg-[#e4c47b]"><Sparkles size={16}/>Ask AI</button>}
             </div>
           </div>
 
           {dbError && <div role="alert" className="mb-6 rounded-xl border border-red-400/40 bg-red-500/10 p-4 text-sm text-red-200">{dbError} <button type="button" onClick={()=>void refresh()} className="ml-3 underline">Retry</button></div>}
           {loading && <div className="rounded-2xl border border-[#304153] bg-[#142539] p-8 text-sm text-[#afbdcb]">Loading your Supabase workspace...</div>}
-          {!loading && !workspace && !dbError && (
+          {!loading && joinToken && <div className="mb-6 rounded-2xl border border-[#a18343]/60 bg-[#142539] p-6">
+            <h2 className="text-lg font-semibold text-[#f2d486]">Team invitation</h2>
+            <p className="mt-2 text-sm text-[#d5dfeb]">Join the invited workspace using the account whose verified email matches the invitation. Team access is read-only in V14.1.</p>
+            <button type="button" disabled={teamBusy} onClick={()=>void acceptInvite()} className="mt-4 rounded-xl bg-[#c9a552] px-4 py-2.5 text-sm font-semibold text-[#111b29] disabled:opacity-50">{teamBusy?"Joining...":"Accept invitation"}</button>
+            {teamError && <p role="alert" className="mt-3 text-sm text-[#ffb3a7]">{teamError}</p>}
+          </div>}
+          {!loading && !workspace && !dbError && !joinToken && (
             <div className="rounded-2xl border border-[#a18343]/40 bg-[#142539] p-8">
               <h2 className="brand-display text-4xl text-[#f5f0e8]">Create your company workspace.</h2>
               <p className="mt-3 max-w-xl text-sm leading-6 text-[#afbdcb]">V13 starts each newly registered company with an empty, owner-only workspace. Your other company records remain private. For testing, enter a fictional company name and do not upload real customer data.</p>
@@ -678,7 +818,7 @@ export default function DashboardPage() {
                 <input id="v13-company-name" type="text" required minLength={2} maxLength={100} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="e.g. Demo Garage Two" className="min-w-0 flex-1 rounded-xl border border-[#51627a] bg-[#101e31] px-4 py-3 text-sm text-[#f5f0e8] outline-none focus:border-[#c9a552]" />
                 <button type="submit" disabled={busy || companyName.trim().length < 2} className="rounded-xl bg-[#c9a552] px-5 py-3 text-sm font-bold text-[#111b29] disabled:opacity-50">{busy ? "Creating..." : "Create company"}</button>
               </form>
-              <p className="mt-4 text-xs text-[#d5b46a]">One company per account in V13. Team invitations and multiple companies per login are intentionally not enabled yet.</p>
+              <p className="mt-4 text-xs text-[#d5b46a]">One workspace per account in V14. Accept a verified-email invitation to join as staff instead of creating a company.</p>
             </div>
           )}
           {!loading && workspace && <>
@@ -692,7 +832,7 @@ export default function DashboardPage() {
                   <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-[#e5c47c]/10 px-3 py-1.5 text-[11px] font-semibold text-[#f2d486]"><Zap size={13}/>INTELLIGENCE, BY DESIGN</div>
                   <h2 className="brand-display text-[34px] font-medium leading-[1.05] tracking-[-0.02em] md:text-[51px]">One system. Infinite clarity.</h2>
                   <p className="mt-3 max-w-md text-[13px] leading-6 text-[#d3d8dd]/80">Your clients, knowledge and workflows in one intelligent workspace. Designed to help your business move with precision.</p>
-                  <button type="button" onClick={() => navigate("AI Assistant")} className="mt-6 flex items-center gap-2 rounded-xl bg-[#d1ad60] px-4 py-2.5 text-xs font-bold text-[#182234] hover:bg-[#f0d38c]">Meet your AI assistant <ArrowRight size={15}/></button>
+                  {isOwner && <button type="button" onClick={() => navigate("AI Assistant")} className="mt-6 flex items-center gap-2 rounded-xl bg-[#d1ad60] px-4 py-2.5 text-xs font-bold text-[#182234] hover:bg-[#f0d38c]">Meet your AI assistant <ArrowRight size={15}/></button>}
                 </div>
               </div>
 
@@ -721,7 +861,7 @@ export default function DashboardPage() {
                   <div className="mb-1 flex items-center gap-2"><Sparkles size={19} className="text-[#e0bb72]"/><h3 className="text-[15px] font-bold">Ask your business</h3></div>
                   <p className="mb-5 text-xs leading-5 text-[#9eacba]">Ask your AI about customers, quotations and follow-ups saved in Supabase.</p>
                   <div className="mb-4 rounded-xl border border-[#3f3a2b] bg-[#182b3e] p-4"><div className="mb-2 flex items-center gap-2 text-xs font-bold text-[#f5f0e8]"><Bot size={17} className="text-[#e0bf76]"/>INTRIGUE Assistant</div><p className="text-xs leading-6 text-[#d5dbe0]">You have <strong>{pendingTasks.length} pending follow-ups</strong> and <strong>{money(quotePipeline)}</strong> in unapproved quotations. What would you like to review first?</p></div>
-                  <div className="space-y-2">{QUICK_PROMPTS.map((prompt) => <button type="button" key={prompt} onClick={() => void askQuestion(prompt)} disabled={aiLoading} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#35485d] px-3.5 py-3 text-left text-xs font-medium text-[#d5dbe0] hover:border-[#caa961] hover:bg-[#2c3949]/50">{prompt}<ArrowRight size={15} className="shrink-0 text-[#9eacba]"/></button>)}</div>
+                  {isOwner && <div className="space-y-2">{QUICK_PROMPTS.map((prompt) => <button type="button" key={prompt} onClick={() => void askQuestion(prompt)} disabled={aiLoading} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#35485d] px-3.5 py-3 text-left text-xs font-medium text-[#d5dbe0] hover:border-[#caa961] hover:bg-[#2c3949]/50">{prompt}<ArrowRight size={15} className="shrink-0 text-[#9eacba]"/></button>)}</div>}
                   <div className="mt-4 text-[10px] text-[#9eacba]">AI answers use current database records. The model cannot modify business records.</div>
                 </div>
               </div>
@@ -795,21 +935,21 @@ export default function DashboardPage() {
           )}
 
           {section === "Customers" && <div className="overflow-hidden rounded-2xl border border-[#304153] bg-[#142539] shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2d3b4f] p-6"><div><h2 className="text-base font-bold">Customers & inquiries</h2><p className="mt-1 text-xs text-[#afbdcb]">Stored fictional records · Supabase</p></div><button type="button" onClick={()=>setShowCustomerForm(!showCustomerForm)} className={newButtonClass}><Plus size={14} className="mr-1 inline"/>New inquiry</button></div>
-            {showCustomerForm && <form onSubmit={addCustomer} className="grid gap-3 border-b border-[#2d3b4f] p-5 md:grid-cols-3"><input className={inputClass} placeholder="Customer name" aria-label="Customer name" required maxLength={150} value={customerForm.name} onChange={e=>setCustomerForm({...customerForm,name:e.target.value})}/><input className={inputClass} placeholder="Vehicle (optional)" aria-label="Vehicle" maxLength={120} value={customerForm.vehicle} onChange={e=>setCustomerForm({...customerForm,vehicle:e.target.value})}/><input className={inputClass} placeholder="Service request" aria-label="Service request" required maxLength={300} value={customerForm.service} onChange={e=>setCustomerForm({...customerForm,service:e.target.value})}/><button type="submit" disabled={busy} className={`${newButtonClass} md:col-span-3`}>Save customer & inquiry</button></form>}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2d3b4f] p-6"><div><h2 className="text-base font-bold">Customers & inquiries</h2><p className="mt-1 text-xs text-[#afbdcb]">Stored fictional records · Supabase</p></div>{isOwner && <button type="button" onClick={()=>setShowCustomerForm(!showCustomerForm)} className={newButtonClass}><Plus size={14} className="mr-1 inline"/>New inquiry</button>}</div>
+            {isOwner && showCustomerForm && <form onSubmit={addCustomer} className="grid gap-3 border-b border-[#2d3b4f] p-5 md:grid-cols-3"><input className={inputClass} placeholder="Customer name" aria-label="Customer name" required maxLength={150} value={customerForm.name} onChange={e=>setCustomerForm({...customerForm,name:e.target.value})}/><input className={inputClass} placeholder="Vehicle (optional)" aria-label="Vehicle" maxLength={120} value={customerForm.vehicle} onChange={e=>setCustomerForm({...customerForm,vehicle:e.target.value})}/><input className={inputClass} placeholder="Service request" aria-label="Service request" required maxLength={300} value={customerForm.service} onChange={e=>setCustomerForm({...customerForm,service:e.target.value})}/><button type="submit" disabled={busy} className={`${newButtonClass} md:col-span-3`}>Save customer & inquiry</button></form>}
             <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead><tr className="bg-[#1b2e42] text-xs text-[#afbdcb]"><th className="px-6 py-3">Name</th><th className="px-6 py-3">Vehicle</th><th className="px-6 py-3">Service request</th><th className="px-6 py-3">Status</th></tr></thead><tbody>{enquiries.map((row) => <tr className="border-t border-[#2d3b4f]" key={row.id}><td className="px-6 py-4 font-semibold">{customerName(row.customer_id)}</td><td className="px-6 py-4">{customerVehicle(row.customer_id)}</td><td className="px-6 py-4">{row.subject}</td><td className="px-6 py-4"><Tag>{statusText(row.status)}</Tag></td></tr>)}</tbody></table>{enquiries.length===0 && <p className="p-6 text-sm text-[#afbdcb]">No customer inquiries yet. Add one to get started.</p>}</div>
           </div>}
 
           {section === "Quotations" && <div className="overflow-hidden rounded-2xl border border-[#304153] bg-[#142539] shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2d3b4f] p-6"><div><h2 className="text-base font-bold">Draft quotations</h2><p className="mt-1 text-xs text-[#afbdcb]">Saved drafts only. Nothing is sent automatically.</p></div><button type="button" className={newButtonClass} onClick={()=>setShowQuoteForm(!showQuoteForm)}><Plus size={14} className="mr-1 inline"/>New quote</button></div>
-            {showQuoteForm && <form onSubmit={addQuote} className="grid gap-3 border-b border-[#2d3b4f] p-5 md:grid-cols-3"><select className={inputClass} required value={quoteForm.customerId} onChange={e=>setQuoteForm({...quoteForm,customerId:e.target.value})} aria-label="Select customer"><option value="">Select customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select><input className={inputClass} placeholder="Service description" aria-label="Service description" required maxLength={300} value={quoteForm.description} onChange={e=>setQuoteForm({...quoteForm,description:e.target.value})}/><input className={inputClass} type="number" min="0.01" step="0.01" placeholder="Amount in EUR" aria-label="Amount in EUR" required value={quoteForm.amount} onChange={e=>setQuoteForm({...quoteForm,amount:e.target.value})}/><button type="submit" disabled={busy || !customers.length} className={`${newButtonClass} md:col-span-3`}>Save draft quote</button></form>}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2d3b4f] p-6"><div><h2 className="text-base font-bold">Draft quotations</h2><p className="mt-1 text-xs text-[#afbdcb]">Saved drafts only. Nothing is sent automatically.</p></div>{isOwner && <button type="button" className={newButtonClass} onClick={()=>setShowQuoteForm(!showQuoteForm)}><Plus size={14} className="mr-1 inline"/>New quote</button>}</div>
+            {isOwner && showQuoteForm && <form onSubmit={addQuote} className="grid gap-3 border-b border-[#2d3b4f] p-5 md:grid-cols-3"><select className={inputClass} required value={quoteForm.customerId} onChange={e=>setQuoteForm({...quoteForm,customerId:e.target.value})} aria-label="Select customer"><option value="">Select customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select><input className={inputClass} placeholder="Service description" aria-label="Service description" required maxLength={300} value={quoteForm.description} onChange={e=>setQuoteForm({...quoteForm,description:e.target.value})}/><input className={inputClass} type="number" min="0.01" step="0.01" placeholder="Amount in EUR" aria-label="Amount in EUR" required value={quoteForm.amount} onChange={e=>setQuoteForm({...quoteForm,amount:e.target.value})}/><button type="submit" disabled={busy || !customers.length} className={`${newButtonClass} md:col-span-3`}>Save draft quote</button></form>}
             <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead><tr className="bg-[#1b2e42] text-xs text-[#afbdcb]"><th className="px-6 py-3">Quote</th><th className="px-6 py-3">Customer</th><th className="px-6 py-3">Service</th><th className="px-6 py-3">Amount</th><th className="px-6 py-3">Status</th></tr></thead><tbody>{quotes.map((row) => <tr className="border-t border-[#2d3b4f]" key={row.id}><td className="px-6 py-4 font-semibold">QT-{row.id.slice(0,6).toUpperCase()}</td><td className="px-6 py-4">{customerName(row.customer_id)}</td><td className="px-6 py-4">{row.description}</td><td className="px-6 py-4 font-semibold">{money(Number(row.amount))}</td><td className="px-6 py-4"><Tag variant="amber">{statusText(row.status)}</Tag></td></tr>)}</tbody></table>{quotes.length===0 && <p className="p-6 text-sm text-[#afbdcb]">No quotations yet.</p>}</div>
           </div>}
 
           {section === "Follow-ups" && <div className="space-y-4">
-            <div className="flex justify-end"><button type="button" className={newButtonClass} onClick={()=>setShowFollowForm(!showFollowForm)}><Plus size={14} className="mr-1 inline"/>New follow-up</button></div>
-            {showFollowForm && <form onSubmit={addFollowUp} className="grid gap-3 rounded-2xl border border-[#35485d] bg-[#142539] p-5 md:grid-cols-3"><select className={inputClass} required value={followForm.customerId} onChange={e=>setFollowForm({...followForm,customerId:e.target.value})} aria-label="Select customer"><option value="">Select customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select><input className={inputClass} required maxLength={300} placeholder="Follow-up task" aria-label="Follow-up task" value={followForm.title} onChange={e=>setFollowForm({...followForm,title:e.target.value})}/><input className={inputClass} required type="date" aria-label="Due date" value={followForm.date} onChange={e=>setFollowForm({...followForm,date:e.target.value})}/><button disabled={busy || !customers.length} className={`${newButtonClass} md:col-span-3`}>Save follow-up</button></form>}
-            <div className="grid gap-4 md:grid-cols-2">{tasks.map(task=><div key={task.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 shadow-sm"><div className="mb-4 flex items-start justify-between gap-3"><div className="text-base font-bold">{customerName(task.customer_id)}</div><Tag variant={task.status==="done"?"emerald":"amber"}>{task.status==="done"?"Completed":task.priority==="high"?"High priority":"Pending"}</Tag></div><p className="text-sm font-medium text-[#f0e9dc]">{task.title}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">Due {niceDate(task.due_at)} · {customerVehicle(task.customer_id)}</p>{task.status==="pending" && <button type="button" disabled={busy} onClick={()=>completeFollowUp(task.id)} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#9f7b39] px-3 py-2 text-xs text-[#e1c178] hover:bg-[#304153]"><CheckCircle2 size={15}/>Mark complete</button>}</div>)}</div>
+            {isOwner && <div className="flex justify-end"><button type="button" className={newButtonClass} onClick={()=>setShowFollowForm(!showFollowForm)}><Plus size={14} className="mr-1 inline"/>New follow-up</button></div>}
+            {isOwner && showFollowForm && <form onSubmit={addFollowUp} className="grid gap-3 rounded-2xl border border-[#35485d] bg-[#142539] p-5 md:grid-cols-3"><select className={inputClass} required value={followForm.customerId} onChange={e=>setFollowForm({...followForm,customerId:e.target.value})} aria-label="Select customer"><option value="">Select customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select><input className={inputClass} required maxLength={300} placeholder="Follow-up task" aria-label="Follow-up task" value={followForm.title} onChange={e=>setFollowForm({...followForm,title:e.target.value})}/><input className={inputClass} required type="date" aria-label="Due date" value={followForm.date} onChange={e=>setFollowForm({...followForm,date:e.target.value})}/><button disabled={busy || !customers.length} className={`${newButtonClass} md:col-span-3`}>Save follow-up</button></form>}
+            <div className="grid gap-4 md:grid-cols-2">{tasks.map(task=><div key={task.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 shadow-sm"><div className="mb-4 flex items-start justify-between gap-3"><div className="text-base font-bold">{customerName(task.customer_id)}</div><Tag variant={task.status==="done"?"emerald":"amber"}>{task.status==="done"?"Completed":task.priority==="high"?"High priority":"Pending"}</Tag></div><p className="text-sm font-medium text-[#f0e9dc]">{task.title}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">Due {niceDate(task.due_at)} · {customerVehicle(task.customer_id)}</p>{isOwner && task.status==="pending" && <button type="button" disabled={busy} onClick={()=>completeFollowUp(task.id)} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#9f7b39] px-3 py-2 text-xs text-[#e1c178] hover:bg-[#304153]"><CheckCircle2 size={15}/>Mark complete</button>}</div>)}</div>
             {tasks.length===0 && <p className="rounded-xl border border-[#35485d] p-6 text-sm text-[#afbdcb]">No follow-up tasks yet.</p>}
           </div>}
 
@@ -819,9 +959,9 @@ export default function DashboardPage() {
                 <div><div className="flex items-center gap-2"><BookOpen size={20} className="text-[#e0bf76]"/><h2 className="text-base font-bold">Company Knowledge Base</h2></div>
                   <p className="mt-2 max-w-xl text-xs leading-6 text-[#afbdcb]">Store fictional policies and text-based PDF, TXT or Markdown files. V7 can search by meaning once you build the semantic index. Scanned-PDF OCR is not included.</p>
                 </div>
-                <button type="button" onClick={() => setShowKnowledgeForm(v => !v)} className={newButtonClass} disabled={!workspace}><Plus size={15} className="mr-1 inline"/> Add knowledge</button>
+                {isOwner && <button type="button" onClick={() => setShowKnowledgeForm(v => !v)} className={newButtonClass} disabled={!workspace}><Plus size={15} className="mr-1 inline"/> Add knowledge</button>}
               </div>
-              <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
+              {isOwner && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
                 <div className="mb-4 flex items-center gap-3"><FileUp size={20} className="text-[#e0bf76]"/>
                   <div><h3 className="font-semibold text-sm">Upload company documents</h3>
                   <p className="mt-1 text-xs leading-5 text-[#afbdcb]">PDF (selectable text), TXT or Markdown. Max 2 MB, PDFs up to 15 pages. Only extracted text is stored in Supabase, not the original file. Use fictional documents.</p></div>
@@ -840,15 +980,20 @@ export default function DashboardPage() {
                   <button type="button" onClick={()=>void askQuestion("What do our uploaded documents say? List their filenames and summarize their main points.")} className="mt-2 rounded-xl border border-[#937b48] px-4 py-2.5 text-xs font-semibold text-[#e1c178] hover:bg-[#263447]">Ask AI about uploaded documents</button>
                 </div>}
                 {documents.length===0 && <p className="mt-3 text-xs text-[#afbdcb]">No uploaded documents yet.</p>}
-              </section>
-              <div className="mt-4 rounded-2xl border border-[#9c8046]/60 bg-[#1b2b40] px-5 py-4">
+              </section>}
+              {!isOwner && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
+                <h3 className="text-sm font-semibold">Company documents (read-only)</h3>
+                {documents.length===0 ? <p className="mt-2 text-xs text-[#afbdcb]">No company documents yet.</p> :
+                  <div className="mt-3 space-y-2">{documents.map(d=><div key={d.id} className="rounded-lg border border-[#35485d] p-3 text-xs text-[#d5dfeb]">{d.filename} · {d.page_count} page(s)</div>)}</div>}
+              </section>}
+              {isOwner && <div className="mt-4 rounded-2xl border border-[#9c8046]/60 bg-[#1b2b40] px-5 py-4">
                 <h3 className="text-sm font-semibold text-[#e4c47b]">Semantic Search · V7</h3>
                 <p className="mt-2 max-w-2xl text-xs leading-5 text-[#d0d8df]">Search the meaning of your documents, even when your question uses different words. Click to index your existing uploads and notes, up to 12 sections per click. This calls a paid OpenRouter embeddings model, so very small usage charges may apply. If you haven't added credit, existing keyword search will continue working.</p>
                 <button type="button" disabled={!workspace || semanticBusy} onClick={()=>void buildSemanticIndex()} className="mt-3 rounded-xl bg-[#c9a552] px-4 py-2.5 text-xs font-semibold text-[#111b29] hover:bg-[#e4c47b] disabled:opacity-50">{semanticBusy?"Indexing...":"Build semantic index"}</button>
                 {semanticStatus && <p role="status" className="mt-3 text-xs text-[#e8d8b4]">{semanticStatus}</p>}
-              </div>
+              </div>}
               {knowledgeError && <div role="alert" className="rounded-xl border border-[#a97955] bg-[#3d2a2e] px-4 py-3 text-xs leading-5 text-[#fff0da]">{knowledgeError}</div>}
-              {showKnowledgeForm && (
+              {isOwner && showKnowledgeForm && (
                 <form onSubmit={addKnowledge} className="space-y-3 rounded-2xl border border-[#35485d] bg-[#142539] p-6">
                   <h3 className="text-sm font-semibold">New knowledge entry</h3>
                   <div className="grid gap-3 md:grid-cols-[1fr_180px]">
@@ -868,26 +1013,92 @@ export default function DashboardPage() {
                   <div className="mb-3 flex items-start justify-between gap-3"><Tag variant="blue">{entry.category}</Tag><span className="text-[11px] text-[#afbdcb]">{niceDate(entry.created_at)}</span></div>
                   <h3 className="text-sm font-bold text-[#f5f0e8]">{entry.title}</h3>
                   <p className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-[#bec9d2]">{entry.content}</p>
-                  <button type="button" className="mt-5 rounded-lg border border-[#6b5253] px-3 py-2 text-xs text-[#f3c2b9] hover:bg-[#302a35] disabled:opacity-50" disabled={knowledgeBusy} onClick={() => void deleteKnowledge(entry.id)}>Delete entry</button>
+                  {isOwner && <button type="button" className="mt-5 rounded-lg border border-[#6b5253] px-3 py-2 text-xs text-[#f3c2b9] hover:bg-[#302a35] disabled:opacity-50" disabled={knowledgeBusy} onClick={() => void deleteKnowledge(entry.id)}>Delete entry</button>}
                 </article>)}
               </div>
-              {knowledgeEntries.length>0 && <button type="button" className="rounded-xl border border-[#937b48] px-4 py-2.5 text-xs font-semibold text-[#e1c178] hover:bg-[#263447]" onClick={()=>void askQuestion('Summarize the company policies and services in our knowledge base.')}>Ask AI about these entries</button>}
+              {isOwner && knowledgeEntries.length>0 && <button type="button" className="rounded-xl border border-[#937b48] px-4 py-2.5 text-xs font-semibold text-[#e1c178] hover:bg-[#263447]" onClick={()=>void askQuestion('Summarize the company policies and services in our knowledge base.')}>Ask AI about these entries</button>}
             </div>
           )}
 
           {section === "Integrations" && <div className="grid gap-4 md:grid-cols-2">{[{name:"Supabase",description:"Authentication and business data are connected"},{name:"OpenRouter",description:"Read-only reasoning over authorized records"},{name:"Native Queue",description:"Supabase durable jobs · V11 worker foundation"},{name:"WhatsApp",description:"Optional messaging and business interactions"}].map((item) => <div className="flex items-center gap-4 rounded-2xl border border-[#35485d] bg-[#142539] p-5 shadow-sm" key={item.name}><div className="rounded-xl bg-[#26384d] p-3 text-[#afbdcb]"><Plug size={20}/></div><div className="flex-1"><div className="text-sm font-bold">{item.name}</div><div className="mt-1 text-xs text-[#afbdcb]">{item.description}</div></div><Tag variant={item.name === "Supabase" || (item.name === "OpenRouter" && aiConnected) ? "emerald" : "slate"}>{item.name === "Supabase" ? "Connected" : item.name === "OpenRouter" && aiConnected ? "Configured" : item.name === "Native Queue" ? "Open Automation Center" : "Not connected"}</Tag></div>)}</div>}
 
-          {section === "Settings" && <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-7 shadow-sm">
-            <div className="flex items-center gap-3"><Settings className="text-[#e0bf76]" size={22}/><h2 className="font-bold">Company workspace</h2></div>
-            <div className="mt-5 rounded-xl border border-[#35485d] bg-[#102034] p-4">
-              <p className="text-[11px] uppercase tracking-widest text-[#d9bd7d]">Company</p>
-              <p className="mt-2 text-lg font-semibold text-[#f5f0e8]">{workspace.name}</p>
-              <p className="mt-1 text-xs text-[#aebdcb]">Workspace ID: {workspace.id}</p>
-              <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-[#b3ead0]"><ShieldCheck size={16}/>Owner-only access · Supabase RLS</div>
+          {section === "Settings" && <div className="space-y-5">
+            <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-7 shadow-sm">
+              <div className="flex items-center gap-3"><Settings className="text-[#e0bf76]" size={22}/><h2 className="text-lg font-bold">Company & assistant setup</h2></div>
+              <p className="mt-2 text-sm text-[#afbdcb]">Configure your business identity, service hours and AI preferences. All data stays in your workspace.</p>
+              <div className="mt-4 text-xs text-[#b3ead0]">Workspace: {workspace.name} · Your access: {role}</div>
+              {!isOwner ? <p className="mt-5 rounded-xl border border-[#526076] p-4 text-sm text-[#afbdcb]">Team members have read-only access. Ask the company owner to change these settings.</p> :
+              <form onSubmit={saveSettings} className="mt-6 space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="text-xs text-[#e7c37c]">Company name<input className={`${inputClass} mt-2`} value={companyEditName} maxLength={100} minLength={2} required onChange={e=>setCompanyEditName(e.target.value)}/></label>
+                  <label className="text-xs text-[#e7c37c]">Industry<select className={`${inputClass} mt-2`} value={settings.industry} onChange={e=>setSettings({...settings,industry:e.target.value})}>{["Automotive","Real Estate","Retail","Hospitality","Healthcare","Professional Services","Technology","Logistics","Other"].map(x=><option key={x}>{x}</option>)}</select></label>
+                  <label className="text-xs text-[#e7c37c]">Business email<input className={`${inputClass} mt-2`} type="email" maxLength={254} value={settings.contact_email} onChange={e=>setSettings({...settings,contact_email:e.target.value})}/></label>
+                  <label className="text-xs text-[#e7c37c]">Telephone<input className={`${inputClass} mt-2`} maxLength={60} value={settings.phone} onChange={e=>setSettings({...settings,phone:e.target.value})}/></label>
+                  <label className="text-xs text-[#e7c37c]">Website<input className={`${inputClass} mt-2`} maxLength={255} placeholder="https://example.com" value={settings.website} onChange={e=>setSettings({...settings,website:e.target.value})}/></label>
+                  <label className="text-xs text-[#e7c37c]">Business timezone<select className={`${inputClass} mt-2`} value={settings.timezone} onChange={e=>setSettings({...settings,timezone:e.target.value})}>{["Europe/Berlin","Europe/London","Africa/Nairobi","America/New_York","America/Los_Angeles","UTC"].map(x=><option key={x}>{x}</option>)}</select></label>
+                  <label className="text-xs text-[#e7c37c]">Currency<select className={`${inputClass} mt-2`} value={settings.currency} onChange={e=>setSettings({...settings,currency:e.target.value})}>{["EUR","USD","GBP","KES"].map(x=><option key={x}>{x}</option>)}</select></label>
+                  <label className="text-xs text-[#e7c37c]">Business hours<input className={`${inputClass} mt-2`} maxLength={350} placeholder="Mon–Fri 09:00–18:00" value={settings.business_hours} onChange={e=>setSettings({...settings,business_hours:e.target.value})}/></label>
+                </div>
+                <label className="block text-xs text-[#e7c37c]">What does your company do?<textarea className={`${inputClass} mt-2 min-h-24`} maxLength={1000} value={settings.description} onChange={e=>setSettings({...settings,description:e.target.value})}/></label>
+                <div className="border-t border-[#35485d] pt-5">
+                  <h3 className="flex items-center gap-2 text-base font-bold"><Bot size={18} className="text-[#d9bd7d]"/>AI Assistant configuration</h3>
+                  <p className="mt-1 text-xs text-[#afbdcb]">These preferences are included in the owner AI agent's system context. Security limits, tool permissions and human approval are unchanged.</p>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <label className="text-xs text-[#e7c37c]">Assistant name<input className={`${inputClass} mt-2`} minLength={2} maxLength={80} value={settings.ai_name} onChange={e=>setSettings({...settings,ai_name:e.target.value})}/></label>
+                    <label className="text-xs text-[#e7c37c]">Communication style<select className={`${inputClass} mt-2`} value={settings.ai_tone} onChange={e=>setSettings({...settings,ai_tone:e.target.value})}>{["Professional","Friendly","Concise","Formal"].map(x=><option key={x}>{x}</option>)}</select></label>
+                    <label className="text-xs text-[#e7c37c] sm:col-span-2">Business role<input className={`${inputClass} mt-2`} maxLength={160} minLength={4} value={settings.ai_role} onChange={e=>setSettings({...settings,ai_role:e.target.value})}/></label>
+                  </div>
+                  <label className="mt-4 block text-xs text-[#e7c37c]">Additional assistant guidance<textarea className={`${inputClass} mt-2 min-h-24`} maxLength={1000} placeholder="Preferred terminology and response style. Do not include secrets or private customer information." value={settings.ai_guidance} onChange={e=>setSettings({...settings,ai_guidance:e.target.value})}/></label>
+                </div>
+                {settingsError && <p role="alert" className="text-xs text-[#ffb3a7]">{settingsError}</p>}
+                {settingsMessage && <p role="status" className="text-xs text-[#b1ead0]">{settingsMessage}</p>}
+                <button type="submit" disabled={settingsBusy} className={newButtonClass}>{settingsBusy?"Saving...":"Save company & AI settings"}</button>
+              </form>}
             </div>
-            <h3 className="mt-7 font-semibold">V13 company isolation foundation</h3>
-            <p className="mt-2 text-sm leading-6 text-[#afbdcb]">Each new company account can create an independent workspace. The database records company ownership in a membership registry, but memberships do not grant access to customer data yet. Existing AI, approval and automation routes still require the workspace owner. Staff invitations, shared workspaces and billing are disabled until all permissions and server routes are audited.</p>
-            <p className="mt-4 text-xs text-[#d9bd7d]">Staging only. Use fictional records. No live customer onboarding until cross-account access tests pass.</p>
+            <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
+              <h3 className="text-base font-semibold">Onboarding checklist</h3>
+              <p className="mt-1 text-xs text-[#afbdcb]">Follow these steps before activating client-facing workflows.</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {[
+                  ["Create company",true],["Configure business profile",Boolean(settings.description.trim()&&settings.business_hours.trim())],
+                  ["Add company knowledge",knowledgeEntries.length>0||documents.length>0],["Review AI preferences",Boolean(settings.ai_role.trim())],
+                  ["Invite staff (optional)",teamMembers.length>1],["Pass production security tests",false],
+                ].map(([label,done])=><div key={String(label)} className="flex items-center gap-2 rounded-lg border border-[#35485d] p-3 text-xs"><CheckCircle2 size={16} className={done?"text-[#b3ead0]":"text-[#708093]"}/>{label}</div>)}
+              </div>
+              <button type="button" onClick={()=>navigate("Knowledge Base")} className="mt-4 rounded-lg border border-[#937b48] px-3 py-2 text-xs text-[#e7c37c]">Open Knowledge Base</button>
+            </div>
+          </div>}
+
+          {section === "Team" && <div className="space-y-5">
+            <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-7">
+              <div className="flex items-center gap-3"><UserPlus className="text-[#e0bf76]" size={22}/><h2 className="text-lg font-bold">Team members</h2></div>
+              <p className="mt-2 text-sm leading-6 text-[#afbdcb]">Invite colleagues to your workspace. V14.1 staff can view customers, quotations, follow-ups and knowledge, but cannot edit records, use AI, approve actions, or manage billing.</p>
+              {!isOwner ? <p className="mt-5 text-sm text-[#b3ead0]">You are a read-only team member. Company owners manage invitations.</p> : <>
+                <form onSubmit={createInvite} className="mt-5 flex flex-col gap-3 sm:flex-row">
+                  <input className={inputClass} type="email" placeholder="colleague@company.com" aria-label="Team member email" required maxLength={254} value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)}/>
+                  <button className={newButtonClass} type="submit" disabled={teamBusy}>{teamBusy?"Creating...":"Create invitation link"}</button>
+                </form>
+                {inviteLink && <div className="mt-4 rounded-xl border border-[#937b48] bg-[#17293d] p-4">
+                  <p className="mb-2 text-xs font-semibold text-[#e7c37c]">Copy this link now. It is shown only once.</p>
+                  <p className="break-all text-xs text-[#d5dfeb]">{inviteLink}</p>
+                  <button type="button" onClick={()=>void navigator.clipboard.writeText(inviteLink)} className="mt-3 rounded-lg bg-[#c9a552] px-3 py-2 text-xs font-semibold text-[#111b29]">Copy invitation</button>
+                  <p className="mt-2 text-[11px] text-[#afbdcb]">Share it only with the invited person. They must verify the exact invited email, sign in, then open this link and accept.</p>
+                </div>}
+                {teamError && <p role="alert" className="mt-4 text-sm text-[#ffb3a7]">{teamError}</p>}
+                {teamMessage && <p role="status" className="mt-4 text-xs text-[#b3ead0]">{teamMessage}</p>}
+                <h3 className="mt-7 text-sm font-bold">Active members</h3>
+                <div className="mt-3 space-y-2">{teamMembers.map(m=><div key={m.member_user_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#35485d] bg-[#102034] p-4">
+                  <div><p className="text-sm font-semibold">{m.email}</p><p className="mt-1 text-xs text-[#afbdcb]">{m.role} · Joined {niceDate(m.joined_at)}</p></div>
+                  {m.role!=="owner" && <button type="button" disabled={teamBusy} onClick={()=>void removeMember(m.member_user_id)} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]">Remove access</button>}
+                </div>)}</div>
+                <h3 className="mt-7 text-sm font-bold">Pending invitations</h3>
+                {teamInvites.length===0 && <p className="mt-3 text-xs text-[#afbdcb]">No pending invitations.</p>}
+                <div className="mt-3 space-y-2">{teamInvites.map(i=><div key={i.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#35485d] bg-[#102034] p-4">
+                  <div><p className="text-sm font-semibold">{i.invited_email}</p><p className="mt-1 text-xs text-[#afbdcb]">Read-only · Expires {niceDate(i.expires_at)}</p></div>
+                  <button type="button" disabled={teamBusy} onClick={()=>void revokeInvite(i.id)} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]">Revoke</button>
+                </div>)}</div>
+              </>}
+            </div>
           </div>}
 
           </>}

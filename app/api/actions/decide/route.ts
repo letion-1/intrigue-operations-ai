@@ -1,9 +1,10 @@
 import {NextResponse} from "next/server";
 import {createClient} from "@/lib/supabase/server";
+import {crossOrigin} from "@/lib/ai-security";
 
 export async function POST(request: Request) {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) return NextResponse.json({error:"Cross-origin request refused."},{status:403});
+  if (crossOrigin(request)) return NextResponse.json({error:"Cross-origin request refused."},{status:403,headers:{"Cache-Control":"no-store"}});
+  if (Number(request.headers.get("content-length") || 0) > 1500) return NextResponse.json({error:"Request too large."},{status:413});
   if (!request.headers.get("content-type")?.includes("application/json")) return NextResponse.json({error:"Expected JSON."},{status:415});
   const supabase = await createClient();
   const {data:{user},error:authError}=await supabase.auth.getUser();

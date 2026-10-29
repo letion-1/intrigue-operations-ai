@@ -48,7 +48,8 @@ type Section =
   | "Settings"
   | "Team"
   | "Service Catalog"
-  | "Get Started";
+  | "Get Started"
+  | "Security & Usage";
 
 type Message = { role: "assistant" | "user"; text: string; proposalId?: string; toolsUsed?: string[] };
 
@@ -66,6 +67,7 @@ const NAV = [
   { label: "Integrations", icon: Plug },
   { label: "Team", icon: UserPlus },
   { label: "Settings", icon: Settings },
+  { label: "Security & Usage", icon: ShieldCheck },
 ] as const;
 
 const QUICK_PROMPTS = [
@@ -76,6 +78,7 @@ const QUICK_PROMPTS = [
 
 type Workspace = { id: string; name: string; owner_id: string };
 type MemberRole = "owner" | "admin" | "staff" | "viewer" | "member";
+type FormerAccessNotice = { revoked: true; company_name: string; contact_email: string };
 type ServiceRow = {id:string; name:string; description:string; price:number; currency:string; is_active:boolean; created_at:string};
 type CompanySettings = {
   workspace_id: string; industry: string; description: string; contact_email: string;
@@ -90,7 +93,12 @@ const EMPTY_SETTINGS: Omit<CompanySettings, "workspace_id"> = {
 };
 type TeamMember = { member_user_id: string; email: string; role: MemberRole; joined_at: string };
 type TeamInvite = { id: string; invited_email: string; role: string; status: string; expires_at: string; created_at: string };
-const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","Action Center","Automation Center","Integrations"];
+type AiUsage = {
+  chat_today:number; chat_this_minute:number; index_today:number; index_this_minute:number;
+  chat_day_limit:number; chat_minute_limit:number; index_day_limit:number; index_minute_limit:number;
+  reset_utc:string;
+};
+const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","Action Center","Automation Center","Integrations","Security & Usage"];
 
 type Customer = { id: string; full_name: string; email: string | null; vehicle: string | null; created_at: string };
 type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string };
@@ -198,7 +206,11 @@ export default function DashboardPage() {
   const [teamBusy, setTeamBusy] = useState(false);
   const [teamError, setTeamError] = useState("");
   const [teamMessage, setTeamMessage] = useState("");
+  const [aiUsage,setAiUsage] = useState<AiUsage|null>(null);
+  const [usageBusy,setUsageBusy] = useState(false);
+  const [usageError,setUsageError] = useState("");
   const [joinToken, setJoinToken] = useState("");
+  const [accessNotice, setAccessNotice] = useState<FormerAccessNotice | null>(null);
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
@@ -251,6 +263,7 @@ export default function DashboardPage() {
   const refresh = useCallback(async () => {
     setLoading(true);
     setDbError("");
+    setAccessNotice(null);
     const { data: authData, error: authError } = await supabase.auth.getUser();
     if (authError || !authData.user) {
       setDbError("Your session has expired. Sign in again, then refresh this page.");
@@ -276,6 +289,18 @@ export default function DashboardPage() {
       setCompanyEditName(found.name);
     }
     if (!found) {
+      // An accepted historical invitation distinguishes a removed member from a new signup.
+      // The RPC returns only the current authenticated user's former company, if any.
+      const { data: previousAccess, error: accessError } = await supabase.rpc("get_intrigue_access_notice");
+      if (accessError) {
+        setDbError(`Unable to verify workspace access: ${accessError.message}. Apply the V14.3.1 SQL migration.`);
+      } else if (previousAccess && typeof previousAccess === "object" && previousAccess.revoked === true) {
+        setAccessNotice({
+          revoked: true,
+          company_name: typeof previousAccess.company_name === "string" ? previousAccess.company_name : "your former company",
+          contact_email: typeof previousAccess.contact_email === "string" ? previousAccess.contact_email : "",
+        });
+      }
       setCustomers([]); setEnquiries([]); setQuotes([]); setTasks([]);
       setLoading(false);
       return;
@@ -312,6 +337,17 @@ export default function DashboardPage() {
     } : EMPTY_SETTINGS);
   },[supabase,workspace]);
   useEffect(()=>{if(workspace) void loadSettings();},[workspace,loadSettings]);
+
+  // Read-only, owner-scoped quota summary from a security-definer database RPC.
+  const loadAiUsage = useCallback(async () => {
+    if (!workspace || !isOwner) {setAiUsage(null); return;}
+    setUsageBusy(true); setUsageError("");
+    const {data,error}=await supabase.rpc("get_intrigue_ai_usage");
+    if (error) { setUsageError("Usage reporting is unavailable. Apply V14.3 SQL: " + error.message);setAiUsage(null); }
+    else setAiUsage(data as AiUsage);
+    setUsageBusy(false);
+  },[supabase,workspace,isOwner]);
+  useEffect(()=>{if(section==="Security & Usage") void loadAiUsage();},[section,loadAiUsage]);
 
   const loadTeam = useCallback(async () => {
     if (!workspace || !isOwner) return;
@@ -766,6 +802,31 @@ export default function DashboardPage() {
     void askQuestion();
   }
 
+  // Block the new-company onboarding screen for members whose access was removed.
+  // Invitation links remain usable if the former member is invited to a workspace again.
+  if (!loading && !workspace && accessNotice && !joinToken && !dbError) {
+    const contactEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accessNotice.contact_email)
+      ? accessNotice.contact_email : "";
+    return <div className="intrigue-dashboard flex min-h-screen items-center justify-center bg-[#0b1827] px-5 py-12 text-[#f5f0e8]">
+      <div className="w-full max-w-xl rounded-3xl border border-[#93733c]/60 bg-[#142539] p-7 shadow-2xl md:p-10">
+        <div className="mb-5 inline-flex rounded-xl border border-[#b99a60]/30 bg-[#c9a552]/10 p-3 text-[#e9c577]"><ShieldCheck size={27}/></div>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#d5b46a]">INTRIGUE STUDIOS · Workspace access</p>
+        <h1 className="brand-display mt-3 text-4xl">Your access has been removed.</h1>
+        <p className="mt-4 text-sm leading-7 text-[#c7d4df]">
+          Your account no longer has permission to view <strong className="text-[#f5f0e8]">{accessNotice.company_name}</strong>.
+          If you think this was a mistake, contact the company administrator to request a new invitation.
+        </p>
+        <p className="mt-3 text-xs text-[#9eacba]">Your INTRIGUE login still exists, but this company’s data is no longer available to you.</p>
+        <div className="mt-7 flex flex-wrap gap-3">
+          {contactEmail && <a href={`mailto:${contactEmail}?subject=${encodeURIComponent("INTRIGUE workspace access")}`} className="rounded-xl bg-[#c9a552] px-5 py-3 text-sm font-semibold text-[#0b1827]">Contact company administrator</a>}
+          <button type="button" onClick={() => void refresh()} className="rounded-xl border border-[#506077] px-5 py-3 text-sm text-[#f5f0e8]">Check access again</button>
+          <button type="button" onClick={async () => { await supabase.auth.signOut(); window.location.assign("/auth/login"); }} className="rounded-xl border border-[#506077] px-5 py-3 text-sm text-[#f5f0e8]">Sign out</button>
+        </div>
+        {!contactEmail && <p className="mt-4 text-xs text-[#b8c7d4]">For contact details, reach the company owner through your usual communication channel.</p>}
+      </div>
+    </div>;
+  }
+
   const sidebar = (
     <>
       <div className="flex items-center gap-3 px-5 pb-8 pt-8">
@@ -1111,6 +1172,36 @@ export default function DashboardPage() {
           )}
 
           {section === "Integrations" && <div className="grid gap-4 md:grid-cols-2">{[{name:"Supabase",description:"Authentication and business data are connected"},{name:"OpenRouter",description:"Read-only reasoning over authorized records"},{name:"Native Queue",description:"Supabase durable jobs · V11 worker foundation"},{name:"WhatsApp",description:"Optional messaging and business interactions"}].map((item) => <div className="flex items-center gap-4 rounded-2xl border border-[#35485d] bg-[#142539] p-5 shadow-sm" key={item.name}><div className="rounded-xl bg-[#26384d] p-3 text-[#afbdcb]"><Plug size={20}/></div><div className="flex-1"><div className="text-sm font-bold">{item.name}</div><div className="mt-1 text-xs text-[#afbdcb]">{item.description}</div></div><Tag variant={item.name === "Supabase" || (item.name === "OpenRouter" && aiConnected) ? "emerald" : "slate"}>{item.name === "Supabase" ? "Connected" : item.name === "OpenRouter" && aiConnected ? "Configured" : item.name === "Native Queue" ? "Open Automation Center" : "Not connected"}</Tag></div>)}</div>}
+
+          {section === "Security & Usage" && isOwner && <div className="space-y-5">
+            <div className="rounded-2xl border border-[#997b45]/50 bg-[#142539] p-6 md:p-8">
+              <div className="flex items-center gap-3"><ShieldCheck size={24} className="text-[#e1bd72]"/><h2 className="text-lg font-bold">AI usage and safeguards</h2></div>
+              <p className="mt-3 text-sm leading-6 text-[#b7c7d5]">These are request allowances for the signed-in owner, not billing amounts or model-token costs. All limits are enforced atomically by Supabase before contacting the AI provider.</p>
+              <div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={()=>void loadAiUsage()} disabled={usageBusy} className="rounded-lg border border-[#967b48] px-4 py-2 text-xs font-semibold text-[#e7c37c] disabled:opacity-50">{usageBusy?"Refreshing…":"Refresh usage"}</button><Tag variant="amber">Staging · No real client data</Tag></div>
+              {usageError && <p role="alert" className="mt-4 rounded-xl border border-red-400/40 p-4 text-xs text-[#ffc2b9]">{usageError}</p>}
+              {aiUsage && <><div className="mt-6 grid gap-4 sm:grid-cols-2">
+                {[
+                  {name:"Chat requests today",value:aiUsage.chat_today,limit:aiUsage.chat_day_limit},
+                  {name:"Chat requests this minute",value:aiUsage.chat_this_minute,limit:aiUsage.chat_minute_limit},
+                  {name:"Indexing requests today",value:aiUsage.index_today,limit:aiUsage.index_day_limit},
+                  {name:"Indexing requests this minute",value:aiUsage.index_this_minute,limit:aiUsage.index_minute_limit},
+                ].map(item=><div key={item.name} className="rounded-xl border border-[#35485d] bg-[#0d1f31] p-5">
+                  <p className="text-xs text-[#bac9d7]">{item.name}</p>
+                  <p className="mt-2 text-2xl font-semibold text-[#f3d18e]">{item.value} <span className="text-sm font-normal text-[#aebdcb]">/ {item.limit}</span></p>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#34485c]"><div className="h-full bg-[#d2ae65]" style={{width:`${Math.min(100,Math.max(0,(item.value/Math.max(1,item.limit))*100))}%`}}/></div>
+                </div>)}
+              </div><p className="mt-4 text-xs text-[#bdc8d4]">Daily limits reset at {aiUsage.reset_utc} UTC. This screen never allows staff to reset or edit counters.</p></>}
+            </div>
+            <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
+              <h3 className="text-sm font-bold">Launch security gates</h3>
+              <div className="mt-4 space-y-3 text-xs leading-6 text-[#bccbd9]">
+                <p>• Database RLS and Owner/Admin/Staff/Viewer permissions: configuration and interface tests completed in V14.2.</p>
+                <p>• Cross-company denied reads and writes: use the V14.3 transaction rollback test from the upgrade ZIP.</p>
+                <p>• Quota rejection: use the no-provider-call rollback test. A displayed usage counter alone does not prove rejection.</p>
+                <p>• Production: confirm data retention, backups, provider processing agreements and real API-session authorization before accepting client data.</p>
+              </div>
+            </div>
+          </div>}
 
           {section === "Settings" && <div className="space-y-5">
             <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-7 shadow-sm">

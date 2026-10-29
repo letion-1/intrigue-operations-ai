@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { crossOrigin } from "@/lib/ai-security";
 
 // V8 deliberately uses deterministic, source-checked action planning.
 // The chat model is not trusted to invent prices or perform writes.
@@ -30,8 +31,7 @@ function dateInBerlinTomorrow(): string {
 }
 
 export async function POST(request: Request) {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) return reply({error: "Cross-origin request refused."}, 403);
+  if (crossOrigin(request)) return reply({error: "Cross-origin request refused."}, 403);
   if (!request.headers.get("content-type")?.includes("application/json")) return reply({error: "Expected JSON."}, 415);
   if (Number(request.headers.get("content-length") || 0) > 3000) return reply({error: "Request too large."}, 413);
   const supabase = await createClient();

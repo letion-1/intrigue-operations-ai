@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { embedTexts } from "@/lib/semantic-embeddings";
+import { crossOrigin, quotaErrorResponse } from "@/lib/ai-security";
 
 
 type CustomerRow = { id: string; full_name: string; vehicle: string | null };
@@ -22,6 +23,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (crossOrigin(request)) return json({error:"Cross-origin request refused."},403);
   // Authenticate on the server before reading any tenant data or contacting the model.
   const supabase = await createClient();
   const {data: {user}, error: authError} = await supabase.auth.getUser();
@@ -45,7 +47,9 @@ export async function POST(request: Request) {
   const {data: workspace, error: workspaceError} = await supabase.from("workspaces")
     .select("id,name").eq("owner_id",user.id).maybeSingle();
   if (workspaceError) return json({error:"Unable to load workspace."},500);
-  if (!workspace) return json({error:"Create the demo workspace on the dashboard first."},409);
+  if (!workspace) return json({error:"Create your workspace on the dashboard first."},409);
+  const { error: quotaError } = await supabase.rpc("consume_intrigue_ai_quota", { p_kind: "chat" });
+  if (quotaError) return quotaErrorResponse(quotaError);
 
   const [customersResult, enquiriesResult, quotesResult, tasksResult] = await Promise.all([
     supabase.from("customers").select("id,full_name,vehicle").eq("workspace_id",workspace.id).limit(101),
@@ -90,7 +94,7 @@ export async function POST(request: Request) {
     const score=tokens.reduce((sum, token) => sum + (title.includes(token) ? 5 : 0) + (content.includes(token) ? 1 : 0), 0);
     return {entry:k, score, position};
   }).sort((a,b)=>b.score-a.score || a.position-b.position);
-  const selectedKnowledge=scored.slice(0,8).map(({entry})=>({
+  const selectedKnowledge=scored.filter(item => item.score > 0).slice(0,8).map(({entry})=>({
     title:entry.title, category:entry.category, content:entry.content.slice(0,2500),
   }));
   // Lightweight, deterministic keyword ranking (not embeddings/semantic search yet).
@@ -101,7 +105,7 @@ export async function POST(request: Request) {
     const score=tokens.reduce((sum,token)=>sum+(lowerName.includes(token)?5:0)+(content.includes(token)?1:0),0);
     return {part,filename,score,index};
   }).sort((a,b)=>b.score-a.score||a.index-b.index)
-    .filter((row,i)=>row.score>0 || i<2).slice(0,5)
+    .filter(row=>row.score>0).slice(0,5)
     .map(({part,filename})=>({filename,page:part.page_no,content:part.content.slice(0,1600)}));
   // V7: Use similarity search when indexed records exist. Fall back to the
   // proven V6 keyword search on missing indexes, quota errors or provider issues.
@@ -151,20 +155,54 @@ export async function POST(request: Request) {
   }
 
 
+  // Privacy by default: summary counts go to OpenRouter without customer names.
+  // Send named operational records ONLY when the question calls for their details.
+  const q = question.toLocaleLowerCase();
+  const listIntent = /\b(show|list|which|who|details|display|find|pending|overdue|open|latest|today)\b/i.test(question);
+  const asksCustomer = /\b(customers?|clients?|vehicles?|leads?)\b/i.test(question);
+  const asksEnquiry = /\b(enquir(?:y|ies)|inquir(?:y|ies)|requests?|leads?)\b/i.test(question);
+  const asksQuote = /\b(quotations?|quotes?|estimates?|pricing|amounts?)\b/i.test(question);
+  const asksFollow = /\b(follow[ -]?ups?|tasks?|reminders?|due|overdue)\b/i.test(question);
+  const namedCustomers = customers.filter(c => {
+    const full = c.full_name.toLocaleLowerCase();
+    if (q.includes(full)) return true;
+    const parts = full.split(/\s+/).filter(part => part.length >= 4);
+    return parts.some(part => q.split(/[^\p{L}\p{N}]+/u).includes(part));
+  }).slice(0,8);
+  const selectedIds = new Set(namedCustomers.map(c => c.id));
+  const textualMatches = (value: string) => tokens.filter(t => t.length >= 4)
+    .some(t => value.toLocaleLowerCase().includes(t));
+  const focusedRecords = <T extends { customer_id: string }>(rows: T[], predicate: (row: T) => boolean) =>
+    rows.filter(row => selectedIds.size ? selectedIds.has(row.customer_id) : (listIntent && predicate(row))).slice(0,20);
+  const selectedEnquiries = focusedRecords(enquiries, e => asksEnquiry || textualMatches(e.subject));
+  const selectedQuotes = focusedRecords(quotes, e => asksQuote || textualMatches(e.description));
+  const selectedTasks = focusedRecords(tasks, e => asksFollow || textualMatches(e.title));
+  const relevantIds = new Set([...selectedIds, ...selectedEnquiries.map(e => e.customer_id),
+    ...selectedQuotes.map(e => e.customer_id), ...selectedTasks.map(e => e.customer_id)]);
+  const selectedCustomers = customers.filter(c => relevantIds.has(c.id) || (asksCustomer && listIntent))
+    .slice(0,20);
+  const countByStatus = (rows: Array<{status:string}>) => rows.reduce<Record<string,number>>((acc,row) => {
+    acc[row.status] = (acc[row.status] || 0) + 1; return acc;
+  },{});
   const snapshot={
     workspace:workspace.name,
     date_utc:new Date().toISOString(),
-    note:"Records may be limited to 100 per table. If any table has >100, summaries may be incomplete.",
+    note:"Summary counts cover at most 101 records per table; named details are limited to 20 relevant results. Ask for specific customer details if needed.",
     truncated:[customers,enquiries,quotes,tasks,knowledge].some(arr=>arr.length>100),
+    totals:{customers:customers.length,enquiries:enquiries.length,quotations:quotes.length,
+      follow_ups:tasks.length,quotation_amount_eur:formatAmount(quotes.reduce((sum,row)=>sum+Number(row.amount),0)),
+      enquiry_statuses:countByStatus(enquiries),quotation_statuses:countByStatus(quotes),
+      follow_up_statuses:countByStatus(tasks)},
     knowledge_search_note:`Retrieval: ${searchMode}. Matches can be incomplete; check citations. Original PDF binaries are not stored.`,
     knowledge_entries:selectedNotes,
-    documents:documentRows.slice(0,100).map(d=>({filename:d.filename,pages:d.page_count})),
+    documents:documentRows.filter(d => retrievedDocumentChunks.some(c => c.filename === d.filename))
+      .slice(0,10).map(d=>({filename:d.filename,pages:d.page_count})),
     document_passages:retrievedDocumentChunks,
     document_records_truncated:documentRows.length>100 || documentChunks.length>300,
-    customers:customers.slice(0,100).map(c=>({name:c.full_name,vehicle:c.vehicle})),
-    enquiries:enquiries.slice(0,100).map(e=>({customer:nameById.get(e.customer_id) || "Unknown",subject:e.subject,status:e.status,received:e.created_at})),
-    quotations:quotes.slice(0,100).map(q=>({customer:nameById.get(q.customer_id) || "Unknown",description:q.description,amount_eur:formatAmount(q.amount),status:q.status})),
-    follow_ups:tasks.slice(0,100).map(t=>({customer:nameById.get(t.customer_id) || "Unknown",title:t.title,due_at:t.due_at,status:t.status,priority:t.priority})),
+    customers:selectedCustomers.map(c=>({name:c.full_name,vehicle:c.vehicle})),
+    enquiries:selectedEnquiries.map(e=>({customer:nameById.get(e.customer_id) || "Unknown",subject:e.subject,status:e.status,received:e.created_at})),
+    quotations:selectedQuotes.map(e=>({customer:nameById.get(e.customer_id) || "Unknown",description:e.description,amount_eur:formatAmount(e.amount),status:e.status})),
+    follow_ups:selectedTasks.map(e=>({customer:nameById.get(e.customer_id) || "Unknown",title:e.title,due_at:e.due_at,status:e.status,priority:e.priority})),
   };
   const messages=[
     {role:"system",content:[

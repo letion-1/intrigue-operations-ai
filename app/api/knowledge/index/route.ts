@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { embedTexts } from "@/lib/semantic-embeddings";
+import { crossOrigin, quotaErrorResponse } from "@/lib/ai-security";
 
 const respond = (body: object, status = 200) => NextResponse.json(body, {status, headers:{"Cache-Control":"no-store"}});
 
 type Chunk = {id:string;content:string};
 type Note = {id:string;title:string;content:string};
 
-export async function POST() {
+export async function POST(request: Request) {
+  if (crossOrigin(request)) return respond({error:"Cross-origin request refused."},403);
   const supabase = await createClient();
   const {data:{user},error:authError} = await supabase.auth.getUser();
   if (authError || !user) return respond({error:"Sign in first."},401);
@@ -32,6 +34,8 @@ export async function POST() {
     ...notes.map(n => ({kind:"note" as const,id:n.id,text:`${n.title}: ${n.content}`.slice(0,4500)})),
   ];
   if (!items.length) return respond({indexed:0,message:"All available knowledge is already indexed."});
+  const { error: quotaError } = await supabase.rpc("consume_intrigue_ai_quota", { p_kind: "index" });
+  if (quotaError) return quotaErrorResponse(quotaError);
 
   let vectors:number[][];
   try { vectors=await embedTexts(items.map(i=>i.text)); }

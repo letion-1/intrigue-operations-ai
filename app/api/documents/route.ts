@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { extractText, getDocumentProxy } from "unpdf";
+import { crossOrigin } from "@/lib/ai-security";
 
 // V6 intentionally persists extracted TEXT only, not the uploaded PDF/TXT binary.
 // Local-first MVP limits protect the server from large or expensive documents.
@@ -38,6 +39,7 @@ function chunkPages(pages: string[]) {
 }
 
 export async function POST(request:Request) {
+  if (crossOrigin(request)) return respond({error:"Cross-origin request refused."},403);
   const {supabase,workspace,lookupError}=await getWorkspace();
   if (lookupError) return respond({error:"Cannot load workspace."},500);
   if (!workspace) return respond({error:"Please sign in and create your workspace first."},401);
@@ -95,6 +97,7 @@ export async function POST(request:Request) {
 }
 
 export async function DELETE(request:Request) {
+  if (crossOrigin(request)) return respond({error:"Cross-origin request refused."},403);
   const {supabase,workspace,lookupError}=await getWorkspace();
   if (lookupError) return respond({error:"Cannot load workspace."},500);
   if (!workspace) return respond({error:"Sign in again."},401);

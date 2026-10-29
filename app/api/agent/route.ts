@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { embedTexts } from "@/lib/semantic-embeddings";
+import { crossOrigin, quotaErrorResponse } from "@/lib/ai-security";
 
 // V10: the language model requests *read-only tools* or a proposal handoff.
 // It never receives credentials, executes SQL, approves actions, or sends messages.
@@ -82,8 +83,7 @@ function safeArgs(value: string): JsonObject {
 }
 
 export async function POST(request: Request) {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) return respond({ error: "Cross-origin request refused." }, 403);
+  if (crossOrigin(request)) return respond({ error: "Cross-origin request refused." }, 403);
   if (!request.headers.get("content-type")?.includes("application/json")) return respond({ error: "Expected JSON." }, 415);
   if (Number(request.headers.get("content-length") || 0) > 6000) return respond({ error: "Request too large." }, 413);
   const supabase = await createClient();
@@ -101,6 +101,8 @@ export async function POST(request: Request) {
     .select("id,name").eq("owner_id", user.id).maybeSingle();
   if (workspaceError || !workspace) return respond({ error: "Could not find your signed-in workspace." }, 409);
   const workspaceId = workspace.id;
+  const { error: quotaError } = await supabase.rpc("consume_intrigue_ai_quota", { p_kind: "chat" });
+  if (quotaError) return quotaErrorResponse(quotaError);
 
   const { data: customerRows, error: customersError } = await supabase.from("customers")
     .select("id,full_name,vehicle").eq("workspace_id", workspaceId).limit(200);
@@ -115,8 +117,12 @@ export async function POST(request: Request) {
     toolTrace.push(name);
     if (name === "find_customers") {
       const q = safeText(params.query).toLocaleLowerCase();
+      const explicitList = /\b(list|show|which|who|all)\b.{0,35}\b(customers?|clients?)\b/i.test(question);
+      if (!q && !explicitList) {
+        return { count: customers.length, results: [], note: "Ask for a specific customer or explicitly request a customer list." };
+      }
       const matches = customers.filter(c => !q || `${c.full_name} ${c.vehicle || ""}`.toLocaleLowerCase().includes(q));
-      return { results: matches.slice(0, 35).map(c => ({ name: c.full_name, vehicle: c.vehicle || "Not recorded" })), truncated: matches.length > 35 };
+      return { results: matches.slice(0, 20).map(c => ({ name: c.full_name, vehicle: c.vehicle || "Not recorded" })), truncated: matches.length > 20 };
     }
     if (name === "list_quotations" || name === "list_followups") {
       const customerName = safeText(params.customer_name);

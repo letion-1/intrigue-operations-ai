@@ -46,12 +46,15 @@ type Section =
   | "Knowledge Base"
   | "Integrations"
   | "Settings"
-  | "Team";
+  | "Team"
+  | "Service Catalog"
+  | "Get Started";
 
 type Message = { role: "assistant" | "user"; text: string; proposalId?: string; toolsUsed?: string[] };
 
 const NAV = [
   { label: "Overview", icon: LayoutDashboard },
+  { label: "Get Started", icon: ClipboardCheck },
   { label: "AI Assistant", icon: Bot },
   { label: "Action Center", icon: ClipboardCheck },
   { label: "Automation Center", icon: Zap },
@@ -59,6 +62,7 @@ const NAV = [
   { label: "Quotations", icon: FileText },
   { label: "Follow-ups", icon: ListTodo },
   { label: "Knowledge Base", icon: BookOpen },
+  { label: "Service Catalog", icon: FileText },
   { label: "Integrations", icon: Plug },
   { label: "Team", icon: UserPlus },
   { label: "Settings", icon: Settings },
@@ -71,7 +75,8 @@ const QUICK_PROMPTS = [
 ];
 
 type Workspace = { id: string; name: string; owner_id: string };
-type MemberRole = "owner" | "admin" | "member";
+type MemberRole = "owner" | "admin" | "staff" | "viewer" | "member";
+type ServiceRow = {id:string; name:string; description:string; price:number; currency:string; is_active:boolean; created_at:string};
 type CompanySettings = {
   workspace_id: string; industry: string; description: string; contact_email: string;
   phone: string; website: string; business_hours: string; timezone: string;
@@ -173,7 +178,15 @@ export default function DashboardPage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [role, setRole] = useState<MemberRole>("owner");
   const isOwner = role === "owner";
+  const canManageCatalog = role === "owner" || role === "admin";
+  const canWriteOps = canManageCatalog || role === "staff";
   const [settings, setSettings] = useState<Omit<CompanySettings,"workspace_id">>(EMPTY_SETTINGS);
+  const [services,setServices]=useState<ServiceRow[]>([]);
+  const [serviceBusy,setServiceBusy]=useState(false);
+  const [serviceError,setServiceError]=useState("");
+  const [showServiceForm,setShowServiceForm]=useState(false);
+  const [serviceForm,setServiceForm]=useState({id:"",name:"",description:"",price:"",currency:"EUR",is_active:true});
+  const [selectedInviteRole,setSelectedInviteRole]=useState<"admin"|"staff"|"viewer">("viewer");
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsError, setSettingsError] = useState("");
   const [settingsMessage, setSettingsMessage] = useState("");
@@ -255,7 +268,7 @@ export default function DashboardPage() {
     if (found) {
       const member = await supabase.from("workspace_memberships").select("role")
         .eq("workspace_id",found.id).eq("user_id",authData.user.id).maybeSingle();
-      if (member.error || !member.data || !["owner","admin","member"].includes(member.data.role)) {
+      if (member.error || !member.data || !["owner","admin","staff","viewer","member"].includes(member.data.role)) {
         setDbError("This account has no verified membership for its workspace.");
         setLoading(false); return;
       }
@@ -331,8 +344,8 @@ export default function DashboardPage() {
   async function createInvite(event:FormEvent<HTMLFormElement>) {
     event.preventDefault(); if(!workspace||!isOwner||teamBusy)return;
     setTeamBusy(true);setTeamError("");setTeamMessage("");setInviteLink("");
-    const {data,error}=await supabase.rpc("create_intrigue_team_invite",{
-      p_workspace_id:workspace.id,p_email:inviteEmail.trim().toLowerCase(),
+    const {data,error}=await supabase.rpc("create_intrigue_team_invite_v142",{
+      p_workspace_id:workspace.id,p_email:inviteEmail.trim().toLowerCase(),p_role:selectedInviteRole,
     });
     if(error)setTeamError(error.message);
     else if(typeof data==="string"){
@@ -348,7 +361,7 @@ export default function DashboardPage() {
     const {error}=await supabase.rpc("accept_intrigue_team_invite",{p_token:joinToken});
     if(error){setTeamError(error.message);setTeamBusy(false);return;}
     window.history.replaceState(null,"",window.location.pathname);
-    setJoinToken("");setTeamMessage("You joined your company workspace with read-only access.");
+    setJoinToken("");setTeamMessage("You joined your company workspace. Your access is controlled by your assigned role.");
     await refresh();setTeamBusy(false);
   }
   async function revokeInvite(id:string) {
@@ -362,6 +375,49 @@ export default function DashboardPage() {
     if(!workspace||!isOwner||teamBusy||!window.confirm("Remove this staff member's workspace access?"))return;
     setTeamBusy(true);setTeamError("");
     const {error}=await supabase.rpc("remove_intrigue_team_member",{p_workspace_id:workspace.id,p_member_id:id});
+    if(error)setTeamError(error.message);else await loadTeam();
+    setTeamBusy(false);
+  }
+
+  const loadServices=useCallback(async()=>{
+    if (!workspace) {setServices([]);return;}
+    const {data,error}=await supabase.from("workspace_services")
+      .select("id,name,description,price,currency,is_active,created_at")
+      .eq("workspace_id",workspace.id).order("name",{ascending:true}).limit(200);
+    if(error) setServiceError(error.message);
+    else {setServices((data||[]) as ServiceRow[]);setServiceError("");}
+  },[supabase,workspace]);
+  useEffect(()=>{void loadServices();},[loadServices]);
+
+  async function saveService(event:FormEvent<HTMLFormElement>){
+    event.preventDefault(); if(!workspace||!canManageCatalog||serviceBusy)return;
+    const price=Number(serviceForm.price);
+    if(!serviceForm.name.trim()||!Number.isFinite(price)||price<0||price>999999999) {
+      setServiceError("Enter a name and a valid non-negative price.");return;
+    }
+    setServiceBusy(true);setServiceError("");
+    const payload={workspace_id:workspace.id,name:serviceForm.name.trim(),
+      description:serviceForm.description.trim(),price,currency:serviceForm.currency,is_active:serviceForm.is_active};
+    const {error}=serviceForm.id
+      ? await supabase.from("workspace_services").update(payload).eq("id",serviceForm.id).eq("workspace_id",workspace.id)
+      : await supabase.from("workspace_services").insert(payload);
+    if(error)setServiceError(error.message);
+    else {setServiceForm({id:"",name:"",description:"",price:"",currency:settings.currency,is_active:true});setShowServiceForm(false);await loadServices();}
+    setServiceBusy(false);
+  }
+  async function removeService(id:string){
+    if(!workspace||!canManageCatalog||serviceBusy||!window.confirm("Delete this service?"))return;
+    setServiceBusy(true);
+    const {error}=await supabase.from("workspace_services").delete().eq("id",id).eq("workspace_id",workspace.id);
+    if(error)setServiceError(error.message);else await loadServices();
+    setServiceBusy(false);
+  }
+  async function updateTeamRole(id:string,newRole:"admin"|"staff"|"viewer"){
+    if(!workspace||!isOwner||teamBusy||!window.confirm(`Set this member's role to ${newRole}?`))return;
+    setTeamBusy(true);setTeamError("");
+    const {error}=await supabase.rpc("change_intrigue_team_role",{
+      p_workspace_id:workspace.id,p_member_id:id,p_role:newRole,
+    });
     if(error)setTeamError(error.message);else await loadTeam();
     setTeamBusy(false);
   }
@@ -390,7 +446,7 @@ export default function DashboardPage() {
 
   async function addCustomer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!workspace || !customerForm.name.trim() || !customerForm.service.trim()) return;
+    if (!workspace || !canWriteOps || !customerForm.name.trim() || !customerForm.service.trim()) return;
     setBusy(true); setDbError("");
     const {data, error} = await supabase.from("customers").insert({
       workspace_id:workspace.id, full_name:customerForm.name.trim(), vehicle:customerForm.vehicle.trim() || null,
@@ -418,7 +474,7 @@ export default function DashboardPage() {
 
   async function addFollowUp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!workspace || !followForm.customerId || !followForm.title.trim() || !followForm.date) return;
+    if (!workspace || !canWriteOps || !followForm.customerId || !followForm.title.trim() || !followForm.date) return;
     setBusy(true); setDbError("");
     const {error} = await supabase.from("follow_ups").insert({workspace_id:workspace.id, customer_id:followForm.customerId, title:followForm.title.trim(), due_at:new Date(`${followForm.date}T12:00:00`).toISOString(), status:"pending", priority:"normal"});
     if (error) setDbError(error.message);
@@ -427,6 +483,7 @@ export default function DashboardPage() {
   }
 
   async function completeFollowUp(id: string) {
+    if (!canWriteOps) return;
     setBusy(true); setDbError("");
     const {error} = await supabase.from("follow_ups").update({status:"done"}).eq("id", id).eq("workspace_id", workspace?.id ?? "");
     if (error) setDbError(error.message);
@@ -805,7 +862,7 @@ export default function DashboardPage() {
           {loading && <div className="rounded-2xl border border-[#304153] bg-[#142539] p-8 text-sm text-[#afbdcb]">Loading your Supabase workspace...</div>}
           {!loading && joinToken && <div className="mb-6 rounded-2xl border border-[#a18343]/60 bg-[#142539] p-6">
             <h2 className="text-lg font-semibold text-[#f2d486]">Team invitation</h2>
-            <p className="mt-2 text-sm text-[#d5dfeb]">Join the invited workspace using the account whose verified email matches the invitation. Team access is read-only in V14.1.</p>
+            <p className="mt-2 text-sm text-[#d5dfeb]">Join the invited workspace using the account whose verified email matches the invitation. Team access follows the role assigned by your company owner.</p>
             <button type="button" disabled={teamBusy} onClick={()=>void acceptInvite()} className="mt-4 rounded-xl bg-[#c9a552] px-4 py-2.5 text-sm font-semibold text-[#111b29] disabled:opacity-50">{teamBusy?"Joining...":"Accept invitation"}</button>
             {teamError && <p role="alert" className="mt-3 text-sm text-[#ffb3a7]">{teamError}</p>}
           </div>}
@@ -934,9 +991,42 @@ export default function DashboardPage() {
             </div>
           )}
 
+          {section === "Get Started" && <div className="space-y-5">
+            <div className="rounded-2xl border border-[#9c8046]/50 bg-[#142539] p-7">
+              <h2 className="brand-display text-3xl">Set up your workspace</h2>
+              <p className="mt-2 text-sm text-[#afbdcb]">Six practical steps to make INTRIGUE useful for your business. Complete them at your own pace; staff permissions are checked in the database.</p>
+              <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-[#28394b]"><div className="h-full bg-[#c9a552]" style={{width:`${Math.round(([true,Boolean(settings.description.trim()&&settings.business_hours.trim()),services.length>0,knowledgeEntries.length>0||documents.length>0,Boolean(settings.ai_name.trim()),teamMembers.length>1].filter(Boolean).length/6)*100)}%`}}/></div>
+              <p className="mt-2 text-xs text-[#d9bd7d]">{[true,Boolean(settings.description.trim()&&settings.business_hours.trim()),services.length>0,knowledgeEntries.length>0||documents.length>0,Boolean(settings.ai_name.trim()),teamMembers.length>1].filter(Boolean).length} of 6 steps complete (team optional)</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">{[
+              {label:"1. Create your company",done:!!workspace,to:"Settings" as Section,help:"Your workspace exists and belongs to your account."},
+              {label:"2. Complete business profile",done:Boolean(settings.description.trim()&&settings.business_hours.trim()),to:"Settings" as Section,help:"Industry, contacts, hours and timezone."},
+              {label:"3. Add services and pricing",done:services.length>0,to:"Service Catalog" as Section,help:"Create prices for your own business."},
+              {label:"4. Upload knowledge",done:knowledgeEntries.length>0||documents.length>0,to:"Knowledge Base" as Section,help:"Add your policies and service documents."},
+              {label:"5. Configure the AI assistant",done:Boolean(settings.ai_name.trim()&&settings.ai_role.trim()&&settings.ai_guidance.trim()),to:"Settings" as Section,help:"Set a name, role and business-specific guidance."},
+              {label:"6. Invite your team (optional)",done:teamMembers.length>1,to:"Team" as Section,help:"Choose Admin, Staff or Viewer roles."},
+            ].map(step=><button key={step.label} type="button" onClick={()=>navigate(step.to)} className="rounded-xl border border-[#35485d] bg-[#142539] p-5 text-left hover:border-[#c9a552]"><span className="flex items-center gap-2 text-sm font-semibold"><CheckCircle2 className={step.done?"text-[#b3ead0]":"text-[#71869b]"} size={17}/>{step.label}</span><span className="mt-2 block text-xs text-[#afbdcb]">{step.help}</span><span className="mt-3 block text-xs text-[#e7c37c]">{step.done?"Completed · Review":"Open setup"} →</span></button>)}</div>
+            <p className="text-xs text-[#e6cc8d]">Staging only. Do not upload real customer information until direct cross-account API tests and quota blocking tests pass.</p>
+          </div>}
+
+          {section === "Service Catalog" && <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#35485d] bg-[#142539] p-6"><div><h2 className="text-lg font-semibold">Your services & prices</h2><p className="mt-1 text-xs text-[#afbdcb]">Workspace-specific catalog. Your AI can look up active services; quotations still require the existing approval flow.</p></div>
+              {canManageCatalog && <button type="button" className={newButtonClass} onClick={()=>{setShowServiceForm(v=>!v);setServiceForm({id:"",name:"",description:"",price:"",currency:settings.currency,is_active:true});}}><Plus size={14} className="mr-1 inline"/>New service</button>}</div>
+            {serviceError && <p role="alert" className="rounded-lg border border-red-400/40 p-3 text-sm text-[#ffb3a7]">{serviceError}</p>}
+            {canManageCatalog && showServiceForm && <form onSubmit={saveService} className="grid gap-3 rounded-2xl border border-[#927b4e] bg-[#142539] p-5 md:grid-cols-2">
+              <label className="text-xs text-[#e7c37c]">Service name<input required minLength={2} maxLength={120} className={`${inputClass} mt-2`} value={serviceForm.name} onChange={e=>setServiceForm({...serviceForm,name:e.target.value})}/></label>
+              <label className="text-xs text-[#e7c37c]">Price<input type="number" min="0" max="999999999" step="0.01" required className={`${inputClass} mt-2`} value={serviceForm.price} onChange={e=>setServiceForm({...serviceForm,price:e.target.value})}/></label>
+              <label className="text-xs text-[#e7c37c]">Currency<select className={`${inputClass} mt-2`} value={serviceForm.currency} onChange={e=>setServiceForm({...serviceForm,currency:e.target.value})}>{["EUR","USD","GBP","KES"].map(x=><option key={x}>{x}</option>)}</select></label>
+              <label className="flex items-center gap-2 text-xs text-[#e7c37c]"><input type="checkbox" checked={serviceForm.is_active} onChange={e=>setServiceForm({...serviceForm,is_active:e.target.checked})}/>Active service</label>
+              <label className="text-xs text-[#e7c37c] md:col-span-2">Description<textarea maxLength={1000} className={`${inputClass} mt-2 min-h-20`} value={serviceForm.description} onChange={e=>setServiceForm({...serviceForm,description:e.target.value})}/></label>
+              <div className="flex gap-2 md:col-span-2"><button disabled={serviceBusy} className={newButtonClass} type="submit">{serviceBusy?"Saving...":serviceForm.id?"Save changes":"Add service"}</button><button type="button" onClick={()=>setShowServiceForm(false)} className="rounded-xl border border-[#526076] px-4 py-2 text-xs">Cancel</button></div>
+            </form>}
+            <div className="grid gap-3 md:grid-cols-2">{services.map(item=><article key={item.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-5"><div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold">{item.name}</h3><Tag variant={item.is_active?"emerald":"slate"}>{item.is_active?"Active":"Inactive"}</Tag></div><p className="mt-2 text-lg font-semibold text-[#e4c47b]">{new Intl.NumberFormat("en-GB",{style:"currency",currency:item.currency}).format(Number(item.price))}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">{item.description||"No description yet"}</p>{canManageCatalog && <div className="mt-4 flex gap-2"><button type="button" className="rounded-lg border border-[#8b764d] px-3 py-2 text-xs" onClick={()=>{setServiceForm({id:item.id,name:item.name,description:item.description,price:String(item.price),currency:item.currency,is_active:item.is_active});setShowServiceForm(true);}}>Edit</button><button type="button" disabled={serviceBusy} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]" onClick={()=>void removeService(item.id)}>Delete</button></div>}</article>)}{services.length===0 && <p className="rounded-2xl border border-[#35485d] bg-[#142539] p-7 text-sm text-[#afbdcb]">No services yet. {canManageCatalog?"Add the first service to begin.":"Ask your owner or admin to add services."}</p>}</div>
+          </div>}
+
           {section === "Customers" && <div className="overflow-hidden rounded-2xl border border-[#304153] bg-[#142539] shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2d3b4f] p-6"><div><h2 className="text-base font-bold">Customers & inquiries</h2><p className="mt-1 text-xs text-[#afbdcb]">Stored fictional records · Supabase</p></div>{isOwner && <button type="button" onClick={()=>setShowCustomerForm(!showCustomerForm)} className={newButtonClass}><Plus size={14} className="mr-1 inline"/>New inquiry</button>}</div>
-            {isOwner && showCustomerForm && <form onSubmit={addCustomer} className="grid gap-3 border-b border-[#2d3b4f] p-5 md:grid-cols-3"><input className={inputClass} placeholder="Customer name" aria-label="Customer name" required maxLength={150} value={customerForm.name} onChange={e=>setCustomerForm({...customerForm,name:e.target.value})}/><input className={inputClass} placeholder="Vehicle (optional)" aria-label="Vehicle" maxLength={120} value={customerForm.vehicle} onChange={e=>setCustomerForm({...customerForm,vehicle:e.target.value})}/><input className={inputClass} placeholder="Service request" aria-label="Service request" required maxLength={300} value={customerForm.service} onChange={e=>setCustomerForm({...customerForm,service:e.target.value})}/><button type="submit" disabled={busy} className={`${newButtonClass} md:col-span-3`}>Save customer & inquiry</button></form>}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2d3b4f] p-6"><div><h2 className="text-base font-bold">Customers & inquiries</h2><p className="mt-1 text-xs text-[#afbdcb]">Stored fictional records · Supabase</p></div>{canWriteOps && <button type="button" onClick={()=>setShowCustomerForm(!showCustomerForm)} className={newButtonClass}><Plus size={14} className="mr-1 inline"/>New inquiry</button>}</div>
+            {canWriteOps && showCustomerForm && <form onSubmit={addCustomer} className="grid gap-3 border-b border-[#2d3b4f] p-5 md:grid-cols-3"><input className={inputClass} placeholder="Customer name" aria-label="Customer name" required maxLength={150} value={customerForm.name} onChange={e=>setCustomerForm({...customerForm,name:e.target.value})}/><input className={inputClass} placeholder="Vehicle (optional)" aria-label="Vehicle" maxLength={120} value={customerForm.vehicle} onChange={e=>setCustomerForm({...customerForm,vehicle:e.target.value})}/><input className={inputClass} placeholder="Service request" aria-label="Service request" required maxLength={300} value={customerForm.service} onChange={e=>setCustomerForm({...customerForm,service:e.target.value})}/><button type="submit" disabled={busy} className={`${newButtonClass} md:col-span-3`}>Save customer & inquiry</button></form>}
             <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead><tr className="bg-[#1b2e42] text-xs text-[#afbdcb]"><th className="px-6 py-3">Name</th><th className="px-6 py-3">Vehicle</th><th className="px-6 py-3">Service request</th><th className="px-6 py-3">Status</th></tr></thead><tbody>{enquiries.map((row) => <tr className="border-t border-[#2d3b4f]" key={row.id}><td className="px-6 py-4 font-semibold">{customerName(row.customer_id)}</td><td className="px-6 py-4">{customerVehicle(row.customer_id)}</td><td className="px-6 py-4">{row.subject}</td><td className="px-6 py-4"><Tag>{statusText(row.status)}</Tag></td></tr>)}</tbody></table>{enquiries.length===0 && <p className="p-6 text-sm text-[#afbdcb]">No customer inquiries yet. Add one to get started.</p>}</div>
           </div>}
 
@@ -947,9 +1037,9 @@ export default function DashboardPage() {
           </div>}
 
           {section === "Follow-ups" && <div className="space-y-4">
-            {isOwner && <div className="flex justify-end"><button type="button" className={newButtonClass} onClick={()=>setShowFollowForm(!showFollowForm)}><Plus size={14} className="mr-1 inline"/>New follow-up</button></div>}
-            {isOwner && showFollowForm && <form onSubmit={addFollowUp} className="grid gap-3 rounded-2xl border border-[#35485d] bg-[#142539] p-5 md:grid-cols-3"><select className={inputClass} required value={followForm.customerId} onChange={e=>setFollowForm({...followForm,customerId:e.target.value})} aria-label="Select customer"><option value="">Select customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select><input className={inputClass} required maxLength={300} placeholder="Follow-up task" aria-label="Follow-up task" value={followForm.title} onChange={e=>setFollowForm({...followForm,title:e.target.value})}/><input className={inputClass} required type="date" aria-label="Due date" value={followForm.date} onChange={e=>setFollowForm({...followForm,date:e.target.value})}/><button disabled={busy || !customers.length} className={`${newButtonClass} md:col-span-3`}>Save follow-up</button></form>}
-            <div className="grid gap-4 md:grid-cols-2">{tasks.map(task=><div key={task.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 shadow-sm"><div className="mb-4 flex items-start justify-between gap-3"><div className="text-base font-bold">{customerName(task.customer_id)}</div><Tag variant={task.status==="done"?"emerald":"amber"}>{task.status==="done"?"Completed":task.priority==="high"?"High priority":"Pending"}</Tag></div><p className="text-sm font-medium text-[#f0e9dc]">{task.title}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">Due {niceDate(task.due_at)} · {customerVehicle(task.customer_id)}</p>{isOwner && task.status==="pending" && <button type="button" disabled={busy} onClick={()=>completeFollowUp(task.id)} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#9f7b39] px-3 py-2 text-xs text-[#e1c178] hover:bg-[#304153]"><CheckCircle2 size={15}/>Mark complete</button>}</div>)}</div>
+            {canWriteOps && <div className="flex justify-end"><button type="button" className={newButtonClass} onClick={()=>setShowFollowForm(!showFollowForm)}><Plus size={14} className="mr-1 inline"/>New follow-up</button></div>}
+            {canWriteOps && showFollowForm && <form onSubmit={addFollowUp} className="grid gap-3 rounded-2xl border border-[#35485d] bg-[#142539] p-5 md:grid-cols-3"><select className={inputClass} required value={followForm.customerId} onChange={e=>setFollowForm({...followForm,customerId:e.target.value})} aria-label="Select customer"><option value="">Select customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select><input className={inputClass} required maxLength={300} placeholder="Follow-up task" aria-label="Follow-up task" value={followForm.title} onChange={e=>setFollowForm({...followForm,title:e.target.value})}/><input className={inputClass} required type="date" aria-label="Due date" value={followForm.date} onChange={e=>setFollowForm({...followForm,date:e.target.value})}/><button disabled={busy || !customers.length} className={`${newButtonClass} md:col-span-3`}>Save follow-up</button></form>}
+            <div className="grid gap-4 md:grid-cols-2">{tasks.map(task=><div key={task.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 shadow-sm"><div className="mb-4 flex items-start justify-between gap-3"><div className="text-base font-bold">{customerName(task.customer_id)}</div><Tag variant={task.status==="done"?"emerald":"amber"}>{task.status==="done"?"Completed":task.priority==="high"?"High priority":"Pending"}</Tag></div><p className="text-sm font-medium text-[#f0e9dc]">{task.title}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">Due {niceDate(task.due_at)} · {customerVehicle(task.customer_id)}</p>{canWriteOps && task.status==="pending" && <button type="button" disabled={busy} onClick={()=>completeFollowUp(task.id)} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#9f7b39] px-3 py-2 text-xs text-[#e1c178] hover:bg-[#304153]"><CheckCircle2 size={15}/>Mark complete</button>}</div>)}</div>
             {tasks.length===0 && <p className="rounded-xl border border-[#35485d] p-6 text-sm text-[#afbdcb]">No follow-up tasks yet.</p>}
           </div>}
 
@@ -1061,21 +1151,22 @@ export default function DashboardPage() {
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {[
                   ["Create company",true],["Configure business profile",Boolean(settings.description.trim()&&settings.business_hours.trim())],
-                  ["Add company knowledge",knowledgeEntries.length>0||documents.length>0],["Review AI preferences",Boolean(settings.ai_role.trim())],
+                  ["Add services and pricing",services.length>0],["Add company knowledge",knowledgeEntries.length>0||documents.length>0],["Review AI preferences",Boolean(settings.ai_role.trim())],
                   ["Invite staff (optional)",teamMembers.length>1],["Pass production security tests",false],
                 ].map(([label,done])=><div key={String(label)} className="flex items-center gap-2 rounded-lg border border-[#35485d] p-3 text-xs"><CheckCircle2 size={16} className={done?"text-[#b3ead0]":"text-[#708093]"}/>{label}</div>)}
               </div>
-              <button type="button" onClick={()=>navigate("Knowledge Base")} className="mt-4 rounded-lg border border-[#937b48] px-3 py-2 text-xs text-[#e7c37c]">Open Knowledge Base</button>
+              <button type="button" onClick={()=>navigate("Get Started")} className="mt-4 rounded-lg border border-[#937b48] px-3 py-2 text-xs text-[#e7c37c]">Open guided setup</button>
             </div>
           </div>}
 
           {section === "Team" && <div className="space-y-5">
             <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-7">
               <div className="flex items-center gap-3"><UserPlus className="text-[#e0bf76]" size={22}/><h2 className="text-lg font-bold">Team members</h2></div>
-              <p className="mt-2 text-sm leading-6 text-[#afbdcb]">Invite colleagues to your workspace. V14.1 staff can view customers, quotations, follow-ups and knowledge, but cannot edit records, use AI, approve actions, or manage billing.</p>
-              {!isOwner ? <p className="mt-5 text-sm text-[#b3ead0]">You are a read-only team member. Company owners manage invitations.</p> : <>
+              <p className="mt-2 text-sm leading-6 text-[#afbdcb]">Invite colleagues as Admin, Staff or Viewer. Admins manage services; Staff can add enquiries and follow-ups; Viewers only read. AI, actions, settings and invitations remain owner-only.</p>
+              {!isOwner ? <p className="mt-5 text-sm text-[#b3ead0]">Your role is {role}. Only the workspace owner manages invitations and roles.</p> : <>
                 <form onSubmit={createInvite} className="mt-5 flex flex-col gap-3 sm:flex-row">
                   <input className={inputClass} type="email" placeholder="colleague@company.com" aria-label="Team member email" required maxLength={254} value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)}/>
+                  <select className={`${inputClass} sm:max-w-40`} aria-label="Invitation role" value={selectedInviteRole} onChange={e=>setSelectedInviteRole(e.target.value as "admin"|"staff"|"viewer")}><option value="viewer">Viewer</option><option value="staff">Staff</option><option value="admin">Admin</option></select>
                   <button className={newButtonClass} type="submit" disabled={teamBusy}>{teamBusy?"Creating...":"Create invitation link"}</button>
                 </form>
                 {inviteLink && <div className="mt-4 rounded-xl border border-[#937b48] bg-[#17293d] p-4">
@@ -1089,12 +1180,12 @@ export default function DashboardPage() {
                 <h3 className="mt-7 text-sm font-bold">Active members</h3>
                 <div className="mt-3 space-y-2">{teamMembers.map(m=><div key={m.member_user_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#35485d] bg-[#102034] p-4">
                   <div><p className="text-sm font-semibold">{m.email}</p><p className="mt-1 text-xs text-[#afbdcb]">{m.role} · Joined {niceDate(m.joined_at)}</p></div>
-                  {m.role!=="owner" && <button type="button" disabled={teamBusy} onClick={()=>void removeMember(m.member_user_id)} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]">Remove access</button>}
+                  {m.role!=="owner" && <div className="flex items-center gap-2"><select aria-label={`Role for ${m.email}`} disabled={teamBusy} className="rounded-lg border border-[#526076] bg-[#182c41] px-2 py-2 text-xs" value={m.role==="member"?"viewer":m.role} onChange={e=>void updateTeamRole(m.member_user_id,e.target.value as "admin"|"staff"|"viewer")}><option value="viewer">Viewer</option><option value="staff">Staff</option><option value="admin">Admin</option></select><button type="button" disabled={teamBusy} onClick={()=>void removeMember(m.member_user_id)} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]">Remove access</button></div>}
                 </div>)}</div>
                 <h3 className="mt-7 text-sm font-bold">Pending invitations</h3>
                 {teamInvites.length===0 && <p className="mt-3 text-xs text-[#afbdcb]">No pending invitations.</p>}
                 <div className="mt-3 space-y-2">{teamInvites.map(i=><div key={i.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#35485d] bg-[#102034] p-4">
-                  <div><p className="text-sm font-semibold">{i.invited_email}</p><p className="mt-1 text-xs text-[#afbdcb]">Read-only · Expires {niceDate(i.expires_at)}</p></div>
+                  <div><p className="text-sm font-semibold">{i.invited_email}</p><p className="mt-1 text-xs text-[#afbdcb]">{i.role} · Expires {niceDate(i.expires_at)}</p></div>
                   <button type="button" disabled={teamBusy} onClick={()=>void revokeInvite(i.id)} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]">Revoke</button>
                 </div>)}</div>
               </>}

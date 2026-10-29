@@ -52,6 +52,14 @@ const definitions = [
   {
     type: "function",
     function: {
+      name: "list_services",
+      description: "Read current active services and exact prices from the signed-in workspace catalog. Use this for questions about offered services or prices. A listed price does NOT authorize quotation approval; existing proposal rules still apply.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Optional service name filter" } }, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "search_business_knowledge",
       description: "Search saved policy notes and uploaded document passages for accurate service prices or business rules. Return explicit source labels.",
       parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false },
@@ -144,6 +152,18 @@ export async function POST(request: Request) {
       if (error) return { error: "Could not read follow-ups." };
       const rows = (data || []).filter(t => status === "all" || t.status === status);
       return { followups: rows.slice(0, 40).map(t => ({ customer: customers.find(c => c.id === t.customer_id)?.full_name || "Unknown", title: t.title, due_at: t.due_at, status: t.status, priority: t.priority })), truncated: (data || []).length > 40 };
+    }
+    if (name === "list_services") {
+      const filter = safeText(params.query,120).toLocaleLowerCase();
+      const {data,error}=await supabase.from("workspace_services")
+        .select("name,description,price,currency")
+        .eq("workspace_id",workspaceId).eq("is_active",true)
+        .order("name",{ascending:true}).limit(101);
+      if(error)return {error:"Service catalog not available. Check V14.2 SQL migration."};
+      const rows=(data||[]).filter(x=>!filter||`${x.name} ${x.description}`.toLocaleLowerCase().includes(filter));
+      return {source:"workspace_service_catalog",services:rows.slice(0,30).map(x=>({
+        name:x.name,description:String(x.description||"").slice(0,250),price:Number(x.price),currency:x.currency,
+      })),truncated:rows.length>30};
     }
     if (name === "search_business_knowledge") {
       const q = safeText(params.query, 300);

@@ -29,6 +29,7 @@ import {
   Settings,
   UserPlus,
   ShieldCheck,
+  CreditCard,
   Sparkles,
   Users,
   X,
@@ -49,7 +50,8 @@ type Section =
   | "Team"
   | "Service Catalog"
   | "Get Started"
-  | "Security & Usage";
+  | "Security & Usage"
+  | "Plans & Billing";
 
 type Message = { role: "assistant" | "user"; text: string; proposalId?: string; toolsUsed?: string[] };
 
@@ -68,6 +70,7 @@ const NAV = [
   { label: "Team", icon: UserPlus },
   { label: "Settings", icon: Settings },
   { label: "Security & Usage", icon: ShieldCheck },
+  { label: "Plans & Billing", icon: CreditCard },
 ] as const;
 
 const QUICK_PROMPTS = [
@@ -94,12 +97,20 @@ const EMPTY_SETTINGS: Omit<CompanySettings, "workspace_id"> = {
 type TeamMember = { member_user_id: string; email: string; role: MemberRole; joined_at: string };
 type TeamInvite = { id: string; invited_email: string; role: string; status: string; expires_at: string; created_at: string };
 type TeamAuditEvent = { event_at: string; event_type: string; member_email: string; actor_email: string; old_role: string | null; new_role: string | null };
+type PlanTier = "pilot" | "growth" | "scale";
+type PlanInterest = { requested_tier: PlanTier; requested_at: string; request_notes: string };
+const PLAN_PREVIEWS: {tier:PlanTier; name:string; audience:string; details:string}[] = [
+  {tier:"pilot",name:"Pilot",audience:"For early testers",details:"Guided evaluation with fictional business records."},
+  {tier:"growth",name:"Growth",audience:"For operating teams",details:"Potential fit for multi-user company operations."},
+  {tier:"scale",name:"Scale",audience:"For larger workflows",details:"Discuss tailored rollout, governance and integration needs."},
+];
+
 type AiUsage = {
   chat_today:number; chat_this_minute:number; index_today:number; index_this_minute:number;
   chat_day_limit:number; chat_minute_limit:number; index_day_limit:number; index_minute_limit:number;
   reset_utc:string;
 };
-const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","Action Center","Automation Center","Integrations","Security & Usage"];
+const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","Action Center","Automation Center","Integrations","Security & Usage","Plans & Billing"];
 
 type Customer = { id: string; full_name: string; email: string | null; vehicle: string | null; created_at: string };
 type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string };
@@ -212,6 +223,11 @@ export default function DashboardPage() {
   const [aiUsage,setAiUsage] = useState<AiUsage|null>(null);
   const [usageBusy,setUsageBusy] = useState(false);
   const [usageError,setUsageError] = useState("");
+  const [planInterest,setPlanInterest] = useState<PlanInterest|null>(null);
+  const [planLoading,setPlanLoading] = useState(false);
+  const [planSaving,setPlanSaving] = useState(false);
+  const [planError,setPlanError] = useState("");
+  const [planSuccess,setPlanSuccess] = useState("");
   const [joinToken, setJoinToken] = useState("");
   const [accessNotice, setAccessNotice] = useState<FormerAccessNotice | null>(null);
 
@@ -369,6 +385,29 @@ export default function DashboardPage() {
     setUsageBusy(false);
   },[supabase,workspace,isOwner]);
   useEffect(()=>{if(section==="Security & Usage") void loadAiUsage();},[section,loadAiUsage]);
+
+  const loadPlanInterest = useCallback(async () => {
+    if (!workspace || !isOwner) { setPlanInterest(null); return; }
+    setPlanLoading(true); setPlanError("");
+    const { data, error } = await supabase.from("workspace_plan_interest")
+      .select("requested_tier,requested_at,request_notes")
+      .eq("workspace_id", workspace.id).maybeSingle();
+    if (error) { setPlanError("Plan preview unavailable: " + error.message); setPlanInterest(null); }
+    else setPlanInterest((data || null) as PlanInterest|null);
+    setPlanLoading(false);
+  }, [supabase,workspace,isOwner]);
+  useEffect(() => { if (section === "Plans & Billing") void loadPlanInterest(); }, [section,loadPlanInterest]);
+
+  async function savePlanInterest(tier:PlanTier) {
+    if (!workspace || !isOwner || planSaving) return;
+    setPlanSaving(true); setPlanError(""); setPlanSuccess("");
+    const { data,error } = await supabase.from("workspace_plan_interest")
+      .upsert({workspace_id:workspace.id,requested_tier:tier,request_notes:"",requested_at:new Date().toISOString()}, {onConflict:"workspace_id"})
+      .select("requested_tier,requested_at,request_notes").single();
+    if (error) setPlanError(error.message);
+    else { setPlanInterest(data as PlanInterest); setPlanSuccess("Interest saved for your company. No payment, subscription, or entitlement has been created."); }
+    setPlanSaving(false);
+  }
 
   const loadTeam = useCallback(async () => {
     if (!workspace || !isOwner) return;
@@ -1204,6 +1243,32 @@ export default function DashboardPage() {
           )}
 
           {section === "Integrations" && <div className="grid gap-4 md:grid-cols-2">{[{name:"Supabase",description:"Authentication and business data are connected"},{name:"OpenRouter",description:"Read-only reasoning over authorized records"},{name:"Native Queue",description:"Supabase durable jobs · V11 worker foundation"},{name:"WhatsApp",description:"Optional messaging and business interactions"}].map((item) => <div className="flex items-center gap-4 rounded-2xl border border-[#35485d] bg-[#142539] p-5 shadow-sm" key={item.name}><div className="rounded-xl bg-[#26384d] p-3 text-[#afbdcb]"><Plug size={20}/></div><div className="flex-1"><div className="text-sm font-bold">{item.name}</div><div className="mt-1 text-xs text-[#afbdcb]">{item.description}</div></div><Tag variant={item.name === "Supabase" || (item.name === "OpenRouter" && aiConnected) ? "emerald" : "slate"}>{item.name === "Supabase" ? "Connected" : item.name === "OpenRouter" && aiConnected ? "Configured" : item.name === "Native Queue" ? "Open Automation Center" : "Not connected"}</Tag></div>)}</div>}
+
+          {section === "Plans & Billing" && isOwner && (
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-[#a18343]/55 bg-[#142539] p-6 md:p-8">
+                <div className="mb-4 flex items-center gap-3"><CreditCard size={23} className="text-[#e0bf76]"/><h2 className="text-lg font-bold">Plans & Billing · Private Preview</h2></div>
+                <p className="max-w-3xl text-sm leading-6 text-[#c6d2df]">Explore possible launch tiers and register your company's interest. This preview does not collect payment information, create subscriptions, process invoices, or change your current access or AI request limits.</p>
+                <div className="mt-5 flex flex-wrap gap-2"><Tag variant="amber">No charges enabled</Tag><Tag variant="slate">No plans activated</Tag><Tag variant="blue">Company owner only</Tag></div>
+                {planLoading && <p role="status" className="mt-4 text-xs text-[#bbcbd8]">Loading your plan interest…</p>}
+                {planInterest && <p className="mt-5 text-sm text-[#b3ead0]">Interest on file: <strong className="capitalize">{planInterest.requested_tier}</strong> · Submitted {niceDate(planInterest.requested_at)}. You can update your interest below.</p>}
+              </div>
+              <div className="grid gap-4 lg:grid-cols-3">
+                {PLAN_PREVIEWS.map(plan => <article key={plan.tier} className="flex flex-col rounded-2xl border border-[#3f5064] bg-[#142539] p-6">
+                  <div className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-[#c8a65f]">{plan.audience}</div>
+                  <h3 className="brand-display text-3xl">{plan.name}</h3>
+                  <p className="mt-3 flex-1 text-sm leading-6 text-[#abbccd]">{plan.details}</p>
+                  <p className="my-5 border-t border-[#37485b] pt-4 text-xs text-[#d0bc8f]">Pricing by proposal · Not yet available for purchase</p>
+                  <button type="button" disabled={planSaving || planLoading || !workspace} onClick={()=>void savePlanInterest(plan.tier)} className={`${newButtonClass} w-full`}>{planSaving?"Saving…":planInterest?.requested_tier===plan.tier?"Update interest":"Register interest"}</button>
+                </article>)}
+              </div>
+              {planError && <p role="alert" className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-[#ffc2b9]">{planError}</p>}
+              {planSuccess && <p role="status" className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-[#b3ead0]">{planSuccess}</p>}
+              <div className="rounded-xl border border-[#46576a] bg-[#102234] p-5 text-sm leading-6 text-[#aebfcf]">
+                <strong className="text-[#f0d18e]">What this does not do:</strong> Your selection is an expression of interest only. No billing integration, payment provider, invoices, subscription benefits, AI quota changes, or company-wide usage enforcement are activated.
+              </div>
+            </div>
+          )}
 
           {section === "Security & Usage" && isOwner && <div className="space-y-5">
             <div className="rounded-2xl border border-[#997b45]/50 bg-[#142539] p-6 md:p-8">

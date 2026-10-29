@@ -93,6 +93,7 @@ const EMPTY_SETTINGS: Omit<CompanySettings, "workspace_id"> = {
 };
 type TeamMember = { member_user_id: string; email: string; role: MemberRole; joined_at: string };
 type TeamInvite = { id: string; invited_email: string; role: string; status: string; expires_at: string; created_at: string };
+type TeamAuditEvent = { event_at: string; event_type: string; member_email: string; actor_email: string; old_role: string | null; new_role: string | null };
 type AiUsage = {
   chat_today:number; chat_this_minute:number; index_today:number; index_this_minute:number;
   chat_day_limit:number; chat_minute_limit:number; index_day_limit:number; index_minute_limit:number;
@@ -201,6 +202,8 @@ export default function DashboardPage() {
   const [companyEditName, setCompanyEditName] = useState("");
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [teamInvites, setTeamInvites] = useState<TeamInvite[]>([]);
+  const [teamAudit,setTeamAudit] = useState<TeamAuditEvent[]>([]);
+  const [teamAuditError,setTeamAuditError] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLink, setInviteLink] = useState("");
   const [teamBusy, setTeamBusy] = useState(false);
@@ -324,6 +327,24 @@ export default function DashboardPage() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  // Re-validate when the tab becomes active again. A removed or demoted member
+  // should not continue looking at a stale cached dashboard after role changes.
+  // Server-side RLS remains the actual authorization boundary.
+  useEffect(() => {
+    let lastCheck = Date.now();
+    const recheck = () => {
+      if (document.visibilityState !== "visible" || Date.now()-lastCheck < 10000) return;
+      lastCheck = Date.now();
+      void refresh();
+    };
+    window.addEventListener("focus", recheck);
+    document.addEventListener("visibilitychange", recheck);
+    return () => {
+      window.removeEventListener("focus", recheck);
+      document.removeEventListener("visibilitychange", recheck);
+    };
+  }, [refresh]);
+
   const loadSettings = useCallback(async () => {
     if (!workspace) return;
     const {data,error} = await supabase.from("workspace_settings").select("*")
@@ -362,6 +383,17 @@ export default function DashboardPage() {
     else {setTeamError("");setTeamMembers((members.data||[]) as TeamMember[]);setTeamInvites((invites.data||[]) as TeamInvite[]);}
   },[supabase,workspace,isOwner]);
   useEffect(()=>{if(section==="Team" || section==="Settings") void loadTeam();},[section,loadTeam]);
+
+  const loadTeamAudit = useCallback(async () => {
+    if (!workspace || !isOwner) {setTeamAudit([]);return;}
+    const {data,error} = await supabase.rpc("get_intrigue_membership_history",{
+      p_workspace_id:workspace.id,p_limit:30,
+    });
+    if (error) {setTeamAuditError(error.message);setTeamAudit([]);}
+    else {setTeamAuditError("");setTeamAudit((data||[]) as TeamAuditEvent[]);}
+  },[supabase,workspace,isOwner]);
+  useEffect(()=>{if(section==="Team") void loadTeamAudit();},[section,loadTeamAudit]);
+  useEffect(()=>{if(section==="Team") void loadTeamAudit();},[teamMembers,section,loadTeamAudit]);
 
   async function saveSettings(event:FormEvent<HTMLFormElement>) {
     event.preventDefault(); if(!workspace||!isOwner||settingsBusy)return;
@@ -1279,6 +1311,20 @@ export default function DashboardPage() {
                   <div><p className="text-sm font-semibold">{i.invited_email}</p><p className="mt-1 text-xs text-[#afbdcb]">{i.role} · Expires {niceDate(i.expires_at)}</p></div>
                   <button type="button" disabled={teamBusy} onClick={()=>void revokeInvite(i.id)} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]">Revoke</button>
                 </div>)}</div>
+                <div className="mt-8 rounded-xl border border-[#35485d] bg-[#102034] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-sm font-bold text-[#f3d18e]">Membership activity</h3>
+                    <button type="button" onClick={()=>void loadTeamAudit()} className="rounded-lg border border-[#937b48] px-3 py-2 text-xs text-[#e7c37c]">Refresh history</button>
+                  </div>
+                  <p className="mt-2 text-xs text-[#afbdcb]">Owner-only audit trail. Events start after installing V14.4.</p>
+                  {teamAuditError && <p role="alert" className="mt-3 text-xs text-[#ffb3a7]">{teamAuditError}</p>}
+                  {!teamAuditError && teamAudit.length===0 && <p className="mt-4 text-xs text-[#afbdcb]">No membership changes recorded yet.</p>}
+                  <div className="mt-3 space-y-2">{teamAudit.map((event,i)=><div key={`${event.event_at}-${i}`} className="rounded-lg border border-[#35485d] p-3 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2"><strong>{event.event_type==="role_changed"?"Role changed":event.event_type==="removed"?"Access removed":"Member joined"}</strong><span className="text-[#afbdcb]">{new Date(event.event_at).toLocaleString()}</span></div>
+                    <p className="mt-1 break-all">{event.member_email}{event.old_role||event.new_role?` · ${event.old_role||"none"} → ${event.new_role||"none"}`:""}</p>
+                    <p className="mt-1 break-all text-[#afbdcb]">By: {event.actor_email}</p>
+                  </div>)}</div>
+                </div>
               </>}
             </div>
           </div>}

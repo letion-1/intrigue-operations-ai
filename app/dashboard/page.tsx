@@ -158,6 +158,7 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useState<FollowUp[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [companyName, setCompanyName] = useState("");
   const [dbError, setDbError] = useState("");
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
@@ -243,11 +244,14 @@ export default function DashboardPage() {
     return () => { alive = false; };
   }, []);
 
-  async function initializeWorkspace() {
+  async function createCompany(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = companyName.trim();
+    if (name.length < 2 || name.length > 100 || busy) return;
     setBusy(true); setDbError("");
-    const { error } = await supabase.rpc("initialize_demo_workspace");
-    if (error) setDbError(`Could not create demo workspace: ${error.message}`);
-    else await refresh();
+    const { error } = await supabase.rpc("create_intrigue_company", { p_name: name });
+    if (error) setDbError(`Could not create company: ${error.message}`);
+    else { setCompanyName(""); await refresh(); }
     setBusy(false);
   }
 
@@ -587,8 +591,8 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#bd9955]/20 text-[#e1c27f]"><CarFront size={19}/></div>
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold text-[#f5f0e8]">{workspace?.name ?? "Northline Auto"}</div>
-            <div className="text-[11px] text-[#9eacba]">Fictional demo workspace</div>
+            <div className="truncate text-[13px] font-semibold text-[#f5f0e8]">{workspace?.name ?? "Your company"}</div>
+            <div className="text-[11px] text-[#9eacba]">Private staging workspace</div>
           </div>
         </div>
       </div>
@@ -644,7 +648,7 @@ export default function DashboardPage() {
             <span className="text-sm font-semibold">{section}</span>
           </div>
           <div className="flex items-center gap-3 md:gap-5">
-            <span className="hidden items-center gap-1.5 rounded-full bg-[#654e24]/40 px-3 py-1.5 text-[11px] font-bold text-[#e7c37c] sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-[#ddb96d]"/>DEMO DATA</span>
+            <span className="hidden items-center gap-1.5 rounded-full bg-[#654e24]/40 px-3 py-1.5 text-[11px] font-bold text-[#e7c37c] sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-[#ddb96d]"/>STAGING DATA</span>
             <Bell size={19} className="text-[#9eacba]" aria-label="Notifications are not enabled"/>
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#80642f] text-xs font-bold text-[#f5f0e8]">IS</div>
           </div>
@@ -653,9 +657,9 @@ export default function DashboardPage() {
         <main className="mx-auto max-w-[1430px] px-5 pb-12 pt-8 md:px-9">
           <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.26em] text-[#d4b469]">{workspace?.name.toUpperCase() ?? "NORTHLINE AUTO"}  /  DEMO WORKSPACE</div>
+              <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.26em] text-[#d4b469]">{workspace?.name.toUpperCase() ?? "NEW COMPANY"}  /  PRIVATE STAGING</div>
               <h1 className="brand-display text-[34px] font-medium leading-none tracking-[-0.04em] md:text-[46px]">{section === "Overview" ? "Your operations, in focus." : section}</h1>
-              <p className="mt-1.5 text-sm text-[#afbdcb]">{section === "Overview" ? "An intelligent view of everything moving your business forward." : "Saved fictional demo records from Supabase."}</p>
+              <p className="mt-1.5 text-sm text-[#afbdcb]">{section === "Overview" ? "An intelligent view of everything moving your business forward." : "Saved records from your private staging workspace."}</p>
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => navigate("Quotations")} className="flex items-center gap-2 rounded-xl border border-[#415064] bg-[#142539] px-4 py-2.5 text-xs font-semibold text-[#f0e9dc] shadow-sm hover:bg-[#1b2e42]"><Plus size={16}/>View quotes</button>
@@ -665,7 +669,18 @@ export default function DashboardPage() {
 
           {dbError && <div role="alert" className="mb-6 rounded-xl border border-red-400/40 bg-red-500/10 p-4 text-sm text-red-200">{dbError} <button type="button" onClick={()=>void refresh()} className="ml-3 underline">Retry</button></div>}
           {loading && <div className="rounded-2xl border border-[#304153] bg-[#142539] p-8 text-sm text-[#afbdcb]">Loading your Supabase workspace...</div>}
-          {!loading && !workspace && !dbError && <div className="rounded-2xl border border-[#a18343]/40 bg-[#142539] p-8"><h2 className="brand-display text-4xl text-[#f5f0e8]">Your workspace is ready to begin.</h2><p className="mt-3 max-w-xl text-sm leading-6 text-[#afbdcb]">Create a Northline Auto demo workspace with fictional customers, enquiries, quotations and follow-ups. Records will be saved securely under your signed-in account.</p><button type="button" onClick={initializeWorkspace} disabled={busy} className="mt-6 rounded-xl bg-[#c9a552] px-5 py-3 text-sm font-bold text-[#111b29] disabled:opacity-50">{busy ? "Creating workspace..." : "Create demo workspace"}</button></div>}
+          {!loading && !workspace && !dbError && (
+            <div className="rounded-2xl border border-[#a18343]/40 bg-[#142539] p-8">
+              <h2 className="brand-display text-4xl text-[#f5f0e8]">Create your company workspace.</h2>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-[#afbdcb]">V13 starts each newly registered company with an empty, owner-only workspace. Your other company records remain private. For testing, enter a fictional company name and do not upload real customer data.</p>
+              <form onSubmit={createCompany} className="mt-6 flex max-w-xl flex-col gap-3 sm:flex-row">
+                <label htmlFor="v13-company-name" className="sr-only">Company name</label>
+                <input id="v13-company-name" type="text" required minLength={2} maxLength={100} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="e.g. Demo Garage Two" className="min-w-0 flex-1 rounded-xl border border-[#51627a] bg-[#101e31] px-4 py-3 text-sm text-[#f5f0e8] outline-none focus:border-[#c9a552]" />
+                <button type="submit" disabled={busy || companyName.trim().length < 2} className="rounded-xl bg-[#c9a552] px-5 py-3 text-sm font-bold text-[#111b29] disabled:opacity-50">{busy ? "Creating..." : "Create company"}</button>
+              </form>
+              <p className="mt-4 text-xs text-[#d5b46a]">One company per account in V13. Team invitations and multiple companies per login are intentionally not enabled yet.</p>
+            </div>
+          )}
           {!loading && workspace && <>
           {section === "Overview" && (
             <div className="space-y-6">
@@ -862,7 +877,18 @@ export default function DashboardPage() {
 
           {section === "Integrations" && <div className="grid gap-4 md:grid-cols-2">{[{name:"Supabase",description:"Authentication and business data are connected"},{name:"OpenRouter",description:"Read-only reasoning over authorized records"},{name:"Native Queue",description:"Supabase durable jobs · V11 worker foundation"},{name:"WhatsApp",description:"Optional messaging and business interactions"}].map((item) => <div className="flex items-center gap-4 rounded-2xl border border-[#35485d] bg-[#142539] p-5 shadow-sm" key={item.name}><div className="rounded-xl bg-[#26384d] p-3 text-[#afbdcb]"><Plug size={20}/></div><div className="flex-1"><div className="text-sm font-bold">{item.name}</div><div className="mt-1 text-xs text-[#afbdcb]">{item.description}</div></div><Tag variant={item.name === "Supabase" || (item.name === "OpenRouter" && aiConnected) ? "emerald" : "slate"}>{item.name === "Supabase" ? "Connected" : item.name === "OpenRouter" && aiConnected ? "Configured" : item.name === "Native Queue" ? "Open Automation Center" : "Not connected"}</Tag></div>)}</div>}
 
-          {section === "Settings" && <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-7 shadow-sm"><div className="flex items-center gap-3"><Settings className="text-[#e0bf76]" size={22}/><h2 className="font-bold">Workspace settings</h2></div><p className="mt-3 text-sm leading-6 text-[#afbdcb]">This first workspace is restricted to its account owner using Supabase Row Level Security. V8 provides owner-only approval and audit logs for draft actions. Team sharing, legal reviews and production protections are not included yet.</p><div className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#e1c178]"><CheckCircle2 size={16}/>Owner-only demo workspace</div></div>}
+          {section === "Settings" && <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-7 shadow-sm">
+            <div className="flex items-center gap-3"><Settings className="text-[#e0bf76]" size={22}/><h2 className="font-bold">Company workspace</h2></div>
+            <div className="mt-5 rounded-xl border border-[#35485d] bg-[#102034] p-4">
+              <p className="text-[11px] uppercase tracking-widest text-[#d9bd7d]">Company</p>
+              <p className="mt-2 text-lg font-semibold text-[#f5f0e8]">{workspace.name}</p>
+              <p className="mt-1 text-xs text-[#aebdcb]">Workspace ID: {workspace.id}</p>
+              <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-[#b3ead0]"><ShieldCheck size={16}/>Owner-only access · Supabase RLS</div>
+            </div>
+            <h3 className="mt-7 font-semibold">V13 company isolation foundation</h3>
+            <p className="mt-2 text-sm leading-6 text-[#afbdcb]">Each new company account can create an independent workspace. The database records company ownership in a membership registry, but memberships do not grant access to customer data yet. Existing AI, approval and automation routes still require the workspace owner. Staff invitations, shared workspaces and billing are disabled until all permissions and server routes are audited.</p>
+            <p className="mt-4 text-xs text-[#d9bd7d]">Staging only. Use fictional records. No live customer onboarding until cross-account access tests pass.</p>
+          </div>}
 
           </>}
 

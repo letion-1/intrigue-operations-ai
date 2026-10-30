@@ -1,5 +1,6 @@
 "use client";
 import {useCallback,useEffect,useState} from "react";
+import GoogleCalendarVoice from "./google-calendar-voice";
 
 type Provider="cal"|"calendly";
 type Status={cal:{connected:boolean;connected_at:string|null};calendly:{connected:boolean;connected_at:string|null}};
@@ -126,6 +127,7 @@ export default function CalendarConnections(){
       {voiceNote&&<p role="status" className="mt-3 text-xs text-[#ffc9a4]">{voiceNote}</p>}
       <p className="mt-3 text-xs text-[#9db5c5]">Vapi tool names: check_availability, book_appointment. Use your existing authenticated Vapi webhook URL and Bearer credential. Do not enable bookings until test tool calls and consent handling pass.</p>
     </div>
+    <GoogleCalendarVoice />
     <p className="mt-4 text-xs leading-5 text-[#96a9ba]">Only the signed-in company owner may manage scheduling. Other calendar integrations and outbound email are unchanged.</p>
   </section>;
 }

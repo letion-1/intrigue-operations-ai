@@ -1,4 +1,5 @@
 import { handleCalendlyVoiceTool } from "@/lib/intrigue-vapi-calendly";
+import { handleGoogleTool } from "@/lib/intrigue-vapi-google";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -64,6 +65,13 @@ export async function POST(request: NextRequest) {
             ? { result: JSON.stringify({ booking_url: url, status: "link_only", booked: false }) }
             : { error: "No booking link configured. Ask caller to contact the business." }),
         };
+      }
+      if (name === "google_check_availability" || name === "google_book_appointment") {
+        const response = await handleGoogleTool({
+          db: supabase, token: match[1], assistantId, callId, toolCallId,
+          name, arguments: asObj(item.function).arguments,
+        });
+        return {toolCallId,...response};
       }
       if (name === "check_availability" || name === "book_appointment") {
         const response=await handleCalendlyVoiceTool({

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import "./brand.css";
+import IntegrationsPanel from "./integrations-panel";
 import {
   Activity,
   ArrowRight,
@@ -1308,7 +1309,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {section === "Integrations" && <div className="grid gap-4 md:grid-cols-2">{[{name:"Supabase",description:"Authentication and business data are connected"},{name:"OpenRouter",description:"Read-only reasoning over authorized records"},{name:"Native Queue",description:"Supabase durable jobs · V11 worker foundation"},{name:"WhatsApp",description:"Optional messaging and business interactions"}].map((item) => <div className="flex items-center gap-4 rounded-2xl border border-[#35485d] bg-[#142539] p-5 shadow-sm" key={item.name}><div className="rounded-xl bg-[#26384d] p-3 text-[#afbdcb]"><Plug size={20}/></div><div className="flex-1"><div className="text-sm font-bold">{item.name}</div><div className="mt-1 text-xs text-[#afbdcb]">{item.description}</div></div><Tag variant={item.name === "Supabase" || (item.name === "OpenRouter" && aiConnected) ? "emerald" : "slate"}>{item.name === "Supabase" ? "Connected" : item.name === "OpenRouter" && aiConnected ? "Configured" : item.name === "Native Queue" ? "Open Automation Center" : "Not connected"}</Tag></div>)}</div>}
+          {section === "Integrations" && workspace && isOwner && <IntegrationsPanel workspaceId={workspace.id} onImported={() => { void refresh(); }} />}
 
           {section === "Plans & Billing" && isOwner && (
             <div className="space-y-6">

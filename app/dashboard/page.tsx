@@ -106,7 +106,7 @@ type PilotForm = {
   contact_name: string; contact_email: string; intended_use: string;
   success_criteria: string; estimated_seats: number; preferred_start: string; request_notes: string;
 };
-type PilotRequest = PilotForm & { status: PilotReviewStatus; submitted_at: string; updated_at: string };
+type PilotRequest = PilotForm & { status: PilotReviewStatus; submitted_at: string; updated_at: string; review_message: string; reviewed_at: string | null };
 const EMPTY_PILOT_FORM: PilotForm = {
   contact_name: "", contact_email: "", intended_use: "", success_criteria: "",
   estimated_seats: 1, preferred_start: "", request_notes: "",
@@ -433,7 +433,7 @@ export default function DashboardPage() {
     if (!workspace || !isOwner) { setPilotRequest(null); return; }
     setPilotLoading(true); setPilotError("");
     const { data, error } = await supabase.from("workspace_pilot_requests")
-      .select("contact_name,contact_email,intended_use,success_criteria,estimated_seats,preferred_start,request_notes,status,submitted_at,updated_at")
+      .select("contact_name,contact_email,intended_use,success_criteria,estimated_seats,preferred_start,request_notes,status,submitted_at,updated_at,review_message,reviewed_at")
       .eq("workspace_id", workspace.id).maybeSingle();
     if (error) { setPilotError("Pilot request unavailable: " + error.message); setPilotRequest(null); }
     else if (data) {
@@ -1347,9 +1347,20 @@ export default function DashboardPage() {
                 <div className="mb-3 flex items-center gap-3"><ClipboardCheck className="text-[#e0bf76]" size={24}/><h2 className="text-lg font-bold">Apply for a guided pilot</h2></div>
                 <p className="max-w-3xl text-sm leading-6 text-[#b7c7d5]">Tell INTRIGUE STUDIOS what you want to evaluate. A submitted request is for discussion only. It does not activate payments, extend AI quotas, enable automation workers or authorize production customer data.</p>
                 <div className="mt-4 flex flex-wrap gap-2"><Tag variant="amber">Private preview</Tag><Tag variant="blue">Owner only</Tag><Tag variant="slate">Manual review</Tag></div>
+                <div className="mt-5 grid gap-3 text-xs md:grid-cols-3">
+                  <div className="rounded-xl border border-[#46586a] bg-[#0e2235] p-3"><strong className="text-[#e7c37c]">1 · Submitted</strong><p className="mt-1 text-[#b7c7d5]">Your request is stored privately for operator review.</p></div>
+                  <div className="rounded-xl border border-[#46586a] bg-[#0e2235] p-3"><strong className="text-[#e7c37c]">2 · Contacted</strong><p className="mt-1 text-[#b7c7d5]">An operator has marked the request for follow-up, not activated service.</p></div>
+                  <div className="rounded-xl border border-[#46586a] bg-[#0e2235] p-3"><strong className="text-[#e7c37c]">3 · Closed</strong><p className="mt-1 text-[#b7c7d5]">The review is complete; no billing or trial is started.</p></div>
+                </div>
                 {pilotRequest && <div className="mt-5 rounded-xl border border-[#40566a] bg-[#102234] p-4 text-sm">
                   <p>Current request: <strong className="capitalize text-[#efcd85]">{pilotRequest.status.replaceAll("_"," ")}</strong> · First submitted {niceDate(pilotRequest.submitted_at)}</p>
-                  <p className="mt-2 text-xs text-[#b7c7d5]">Status is assigned by INTRIGUE STUDIOS outside this dashboard. It does not itself grant access.</p>
+                  {pilotRequest.reviewed_at && <p className="mt-2 text-xs text-[#b7c7d5]">Latest operator review: {niceDate(pilotRequest.reviewed_at)}</p>}
+                  {pilotRequest.review_message && <div className="mt-3 rounded-lg border border-[#6f6250]/60 bg-[#152d3e] p-3 text-sm text-[#f5dfb2]">
+                    <strong className="mb-1 block text-xs uppercase tracking-widest text-[#dfbf7b]">Message from INTRIGUE STUDIOS</strong>
+                    <p className="whitespace-pre-wrap break-words">{pilotRequest.review_message}</p>
+                  </div>}
+                  <p className="mt-3 text-xs text-[#b7c7d5]">An operator sets this status manually. Neither “contacted” nor “closed” activates a trial, subscription, payment, or higher AI limits.</p>
+                  <button type="button" onClick={()=>void loadPilotRequest()} disabled={pilotLoading} className="mt-3 rounded-lg border border-[#997b45] px-4 py-2 text-xs font-semibold text-[#e7c37c] disabled:opacity-50">{pilotLoading?"Refreshing…":"Refresh application status"}</button>
                 </div>}
               </div>
               <form onSubmit={submitPilotRequest} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 md:p-8">

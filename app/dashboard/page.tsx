@@ -294,6 +294,7 @@ export default function DashboardPage() {
   useEffect(() => {
     // The invitation code is never transmitted to the AI or analytics.
     const params = new URLSearchParams(window.location.search);
+    if (params.has("integration")) setSection("Integrations");
     const token = params.get("join");
     if (token && /^[0-9a-f]{64}$/.test(token)) setJoinToken(token);
   }, []);

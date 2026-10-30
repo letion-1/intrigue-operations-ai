@@ -1,7 +1,14 @@
+import { NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy";
 import { type NextRequest } from "next/server";
 
 export async function proxy(request: NextRequest) {
+  // Vapi authenticates using its own Bearer token.
+  // Do not redirect machine-to-machine webhooks to Supabase login.
+  if (request.nextUrl.pathname === "/api/integrations/vapi/webhook") {
+    return NextResponse.next();
+  }
+
   return await updateSession(request);
 }
 

@@ -1,3 +1,4 @@
+import { handleCalendlyVoiceTool } from "@/lib/intrigue-vapi-calendly";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
 
   if (eventType === "tool-calls") {
     const calls = Array.isArray(message.toolCallList) ? message.toolCallList.slice(0, 10) : [];
-    return json({ results: calls.map((value: unknown) => {
+    return json({ results: await Promise.all(calls.map(async (value: unknown) => {
       const item = asObj(value);
       const name = asStr(asObj(item.function).name);
       const toolCallId = asStr(item.id);
@@ -64,8 +65,15 @@ export async function POST(request: NextRequest) {
             : { error: "No booking link configured. Ask caller to contact the business." }),
         };
       }
+      if (name === "check_availability" || name === "book_appointment") {
+        const response=await handleCalendlyVoiceTool({
+          supabase,token:match[1],assistantId,callId,toolCallId,
+          name,arguments:asObj(item.function).arguments,
+        });
+        return {toolCallId,...response};
+      }
       return { toolCallId, error: "This tool is not enabled. Do not claim a booking or message was sent." };
-    }) });
+    })) });
   }
   return json({ received: true });
 }

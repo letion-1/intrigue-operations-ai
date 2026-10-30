@@ -19,7 +19,7 @@ export async function GET(request:NextRequest) {
       params.set("scope","BOOKING_READ");
       url=`https://app.cal.com/auth/oauth2/authorize?${params.toString()}`;
     } else {
-      params.set("scope","scheduled_events:read event_types:read availability:read scheduled_events:write");
+      params.set("scope","users:read scheduled_events:read event_types:read availability:read scheduled_events:write");
       params.set("response_type","code");
       params.set("code_challenge_method","S256");
       params.set("code_challenge",createHash("sha256").update(verifier).digest("base64url"));

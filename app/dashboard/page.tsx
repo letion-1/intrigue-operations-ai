@@ -51,7 +51,8 @@ type Section =
   | "Service Catalog"
   | "Get Started"
   | "Security & Usage"
-  | "Plans & Billing";
+  | "Plans & Billing"
+  | "Pilot Application";
 
 type Message = { role: "assistant" | "user"; text: string; proposalId?: string; toolsUsed?: string[] };
 
@@ -71,6 +72,7 @@ const NAV = [
   { label: "Settings", icon: Settings },
   { label: "Security & Usage", icon: ShieldCheck },
   { label: "Plans & Billing", icon: CreditCard },
+  { label: "Pilot Application", icon: ClipboardCheck },
 ] as const;
 
 const QUICK_PROMPTS = [
@@ -99,6 +101,16 @@ type TeamInvite = { id: string; invited_email: string; role: string; status: str
 type TeamAuditEvent = { event_at: string; event_type: string; member_email: string; actor_email: string; old_role: string | null; new_role: string | null };
 type PlanTier = "pilot" | "growth" | "scale";
 type PlanInterest = { requested_tier: PlanTier; requested_at: string; request_notes: string };
+type PilotReviewStatus = "submitted" | "contacted" | "closed";
+type PilotForm = {
+  contact_name: string; contact_email: string; intended_use: string;
+  success_criteria: string; estimated_seats: number; preferred_start: string; request_notes: string;
+};
+type PilotRequest = PilotForm & { status: PilotReviewStatus; submitted_at: string; updated_at: string };
+const EMPTY_PILOT_FORM: PilotForm = {
+  contact_name: "", contact_email: "", intended_use: "", success_criteria: "",
+  estimated_seats: 1, preferred_start: "", request_notes: "",
+};
 const PLAN_PREVIEWS: {tier:PlanTier; name:string; audience:string; details:string}[] = [
   {tier:"pilot",name:"Pilot",audience:"For early testers",details:"Guided evaluation with fictional business records."},
   {tier:"growth",name:"Growth",audience:"For operating teams",details:"Potential fit for multi-user company operations."},
@@ -110,7 +122,7 @@ type AiUsage = {
   chat_day_limit:number; chat_minute_limit:number; index_day_limit:number; index_minute_limit:number;
   reset_utc:string;
 };
-const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","Action Center","Automation Center","Integrations","Security & Usage","Plans & Billing"];
+const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","Action Center","Automation Center","Integrations","Security & Usage","Plans & Billing","Pilot Application"];
 
 type Customer = { id: string; full_name: string; email: string | null; vehicle: string | null; created_at: string };
 type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string };
@@ -228,6 +240,12 @@ export default function DashboardPage() {
   const [planSaving,setPlanSaving] = useState(false);
   const [planError,setPlanError] = useState("");
   const [planSuccess,setPlanSuccess] = useState("");
+  const [pilotForm,setPilotForm] = useState<PilotForm>(EMPTY_PILOT_FORM);
+  const [pilotRequest,setPilotRequest] = useState<PilotRequest|null>(null);
+  const [pilotLoading,setPilotLoading] = useState(false);
+  const [pilotSaving,setPilotSaving] = useState(false);
+  const [pilotError,setPilotError] = useState("");
+  const [pilotSuccess,setPilotSuccess] = useState("");
   const [joinToken, setJoinToken] = useState("");
   const [accessNotice, setAccessNotice] = useState<FormerAccessNotice | null>(null);
 
@@ -384,7 +402,7 @@ export default function DashboardPage() {
     else setAiUsage(data as AiUsage);
     setUsageBusy(false);
   },[supabase,workspace,isOwner]);
-  useEffect(()=>{if(section==="Security & Usage") void loadAiUsage();},[section,loadAiUsage]);
+  useEffect(()=>{if(section==="Security & Usage" || section==="Plans & Billing") void loadAiUsage();},[section,loadAiUsage]);
 
   const loadPlanInterest = useCallback(async () => {
     if (!workspace || !isOwner) { setPlanInterest(null); return; }
@@ -407,6 +425,54 @@ export default function DashboardPage() {
     if (error) setPlanError(error.message);
     else { setPlanInterest(data as PlanInterest); setPlanSuccess("Interest saved for your company. No payment, subscription, or entitlement has been created."); }
     setPlanSaving(false);
+  }
+
+  // Pilot applications are saved per workspace. Review is manual; no trial access
+  // or paid entitlement is created by this interface.
+  const loadPilotRequest = useCallback(async () => {
+    if (!workspace || !isOwner) { setPilotRequest(null); return; }
+    setPilotLoading(true); setPilotError("");
+    const { data, error } = await supabase.from("workspace_pilot_requests")
+      .select("contact_name,contact_email,intended_use,success_criteria,estimated_seats,preferred_start,request_notes,status,submitted_at,updated_at")
+      .eq("workspace_id", workspace.id).maybeSingle();
+    if (error) { setPilotError("Pilot request unavailable: " + error.message); setPilotRequest(null); }
+    else if (data) {
+      const item = data as PilotRequest;
+      setPilotRequest(item);
+      setPilotForm({ contact_name: item.contact_name, contact_email: item.contact_email,
+        intended_use: item.intended_use, success_criteria: item.success_criteria,
+        estimated_seats: item.estimated_seats, preferred_start: item.preferred_start || "",
+        request_notes: item.request_notes });
+    } else {
+      setPilotRequest(null);
+    }
+    setPilotLoading(false);
+  }, [supabase,workspace,isOwner]);
+  useEffect(()=>{if(section==="Pilot Application") void loadPilotRequest();},[section,loadPilotRequest]);
+
+  async function submitPilotRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!workspace || !isOwner || pilotSaving || (pilotRequest && pilotRequest.status !== "submitted")) return;
+    const form = {
+      ...pilotForm, contact_name: pilotForm.contact_name.trim(),
+      contact_email: pilotForm.contact_email.trim(), intended_use: pilotForm.intended_use.trim(),
+      success_criteria: pilotForm.success_criteria.trim(), request_notes: pilotForm.request_notes.trim(),
+      preferred_start: pilotForm.preferred_start || null,
+      estimated_seats: Number(pilotForm.estimated_seats),
+    };
+    if (form.contact_name.length < 2 || form.intended_use.length < 20 ||
+      form.success_criteria.length < 10 || !/^\S+@\S+\.\S+$/.test(form.contact_email) ||
+      !Number.isInteger(form.estimated_seats) || form.estimated_seats < 1 || form.estimated_seats > 1000) {
+      setPilotError("Enter a valid contact, email, use case, success criteria and team size."); return;
+    }
+    setPilotSaving(true); setPilotError(""); setPilotSuccess("");
+    const payload = { ...form, updated_at:new Date().toISOString() };
+    const {error} = pilotRequest
+      ? await supabase.from("workspace_pilot_requests").update(payload).eq("workspace_id",workspace.id)
+      : await supabase.from("workspace_pilot_requests").insert({workspace_id:workspace.id,...payload});
+    if (error) setPilotError(error.message);
+    else { setPilotSuccess("Application saved. Our team must review it manually. No trial, payment or feature access has been activated."); await loadPilotRequest(); }
+    setPilotSaving(false);
   }
 
   const loadTeam = useCallback(async () => {
@@ -1267,6 +1333,57 @@ export default function DashboardPage() {
               <div className="rounded-xl border border-[#46576a] bg-[#102234] p-5 text-sm leading-6 text-[#aebfcf]">
                 <strong className="text-[#f0d18e]">What this does not do:</strong> Your selection is an expression of interest only. No billing integration, payment provider, invoices, subscription benefits, AI quota changes, or company-wide usage enforcement are activated.
               </div>
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#46576a] bg-[#142539] p-5">
+                <div><h3 className="text-sm font-semibold">Request a guided pilot evaluation</h3><p className="mt-2 text-xs leading-5 text-[#aebfcf]">Define your business goal and success criteria for manual review. No automatic trial or subscription.</p></div>
+                <button type="button" className={newButtonClass} onClick={()=>navigate("Pilot Application")}>Open pilot application →</button>
+              </div>
+              {aiUsage && <p className="text-xs text-[#aebfcf]">AI requests today for this company's owner account: <strong className="text-[#e7c37c]">{aiUsage.chat_today} / {aiUsage.chat_day_limit}</strong>. The limit remains per owner account, not pooled across staff.</p>}
+            </div>
+          )}
+
+          {section === "Pilot Application" && isOwner && (
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-[#a18343]/50 bg-[#142539] p-6 md:p-8">
+                <div className="mb-3 flex items-center gap-3"><ClipboardCheck className="text-[#e0bf76]" size={24}/><h2 className="text-lg font-bold">Apply for a guided pilot</h2></div>
+                <p className="max-w-3xl text-sm leading-6 text-[#b7c7d5]">Tell INTRIGUE STUDIOS what you want to evaluate. A submitted request is for discussion only. It does not activate payments, extend AI quotas, enable automation workers or authorize production customer data.</p>
+                <div className="mt-4 flex flex-wrap gap-2"><Tag variant="amber">Private preview</Tag><Tag variant="blue">Owner only</Tag><Tag variant="slate">Manual review</Tag></div>
+                {pilotRequest && <div className="mt-5 rounded-xl border border-[#40566a] bg-[#102234] p-4 text-sm">
+                  <p>Current request: <strong className="capitalize text-[#efcd85]">{pilotRequest.status.replaceAll("_"," ")}</strong> · First submitted {niceDate(pilotRequest.submitted_at)}</p>
+                  <p className="mt-2 text-xs text-[#b7c7d5]">Status is assigned by INTRIGUE STUDIOS outside this dashboard. It does not itself grant access.</p>
+                </div>}
+              </div>
+              <form onSubmit={submitPilotRequest} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 md:p-8">
+                <h3 className="mb-5 text-sm font-semibold">Your evaluation request</h3>
+                <fieldset disabled={pilotSaving || pilotLoading || (!!pilotRequest && pilotRequest.status!=="submitted")} className="grid gap-4 md:grid-cols-2 disabled:opacity-65">
+                  <label className="text-xs font-medium text-[#e6c17b]">Contact name
+                    <input required minLength={2} maxLength={100} autoComplete="name" className={`${inputClass} mt-2`} value={pilotForm.contact_name} onChange={e=>setPilotForm(v=>({...v,contact_name:e.target.value}))}/>
+                  </label>
+                  <label className="text-xs font-medium text-[#e6c17b]">Business contact email
+                    <input required type="email" maxLength={254} autoComplete="email" className={`${inputClass} mt-2`} value={pilotForm.contact_email} onChange={e=>setPilotForm(v=>({...v,contact_email:e.target.value}))}/>
+                  </label>
+                  <label className="text-xs font-medium text-[#e6c17b]">Expected team size
+                    <input required type="number" min={1} max={1000} step={1} className={`${inputClass} mt-2`} value={pilotForm.estimated_seats} onChange={e=>setPilotForm(v=>({...v,estimated_seats:Number(e.target.value)}))}/>
+                  </label>
+                  <label className="text-xs font-medium text-[#e6c17b]">Preferred start date (optional)
+                    <input type="date" className={`${inputClass} mt-2`} value={pilotForm.preferred_start} onChange={e=>setPilotForm(v=>({...v,preferred_start:e.target.value}))}/>
+                  </label>
+                  <label className="text-xs font-medium text-[#e6c17b] md:col-span-2">What would you like to automate or improve?
+                    <textarea required minLength={20} maxLength={1200} rows={4} className={`${inputClass} mt-2 resize-y`} placeholder="Describe a fictional or non-sensitive example workflow…" value={pilotForm.intended_use} onChange={e=>setPilotForm(v=>({...v,intended_use:e.target.value}))}/>
+                  </label>
+                  <label className="text-xs font-medium text-[#e6c17b] md:col-span-2">How would you measure success?
+                    <textarea required minLength={10} maxLength={800} rows={3} className={`${inputClass} mt-2 resize-y`} placeholder="For example: reduce manual follow-up work during a controlled demo…" value={pilotForm.success_criteria} onChange={e=>setPilotForm(v=>({...v,success_criteria:e.target.value}))}/>
+                  </label>
+                  <label className="text-xs font-medium text-[#e6c17b] md:col-span-2">Additional notes (optional)
+                    <textarea maxLength={500} rows={2} className={`${inputClass} mt-2 resize-y`} value={pilotForm.request_notes} onChange={e=>setPilotForm(v=>({...v,request_notes:e.target.value}))}/>
+                  </label>
+                </fieldset>
+                {pilotError && <p role="alert" className="mt-4 rounded-lg border border-red-400/40 p-3 text-xs text-[#ffb3a7]">{pilotError}</p>}
+                {pilotSuccess && <p role="status" className="mt-4 rounded-lg border border-emerald-400/30 p-3 text-xs text-[#b3ead0]">{pilotSuccess}</p>}
+                {pilotLoading && <p role="status" className="mt-4 text-xs text-[#b7c7d5]">Loading your request…</p>}
+                {pilotRequest && pilotRequest.status!=="submitted" && <p className="mt-4 text-xs text-[#e7c37c]">This request is already in review or closed; contact INTRIGUE STUDIOS to make changes.</p>}
+                <button type="submit" disabled={pilotSaving || pilotLoading || (!!pilotRequest && pilotRequest.status!=="submitted")} className={`${newButtonClass} mt-5`}>{pilotSaving?"Saving…":pilotRequest?"Update submitted request":"Submit pilot request"}</button>
+                <p className="mt-4 text-xs leading-5 text-[#b7c7d5]">For staging, use fictional use cases only. This form does not send an email automatically or start a pilot.</p>
+              </form>
             </div>
           )}
 

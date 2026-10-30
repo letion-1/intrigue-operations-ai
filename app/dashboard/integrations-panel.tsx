@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import CalendarConnections from "./calendar-connections";
+import VapiReceptionist from "./vapi-receptionist";
 
 type Scheduler = "none" | "cal" | "calendly";
 type MailProvider = "none" | "gmail" | "outlook";
@@ -191,6 +192,7 @@ export default function IntegrationsPanel({workspaceId,onImported}:{workspaceId:
       {error&&<p role="alert" className="mt-3 text-xs text-[#ffc1b8]">{error}</p>}
     </div>
     <CalendarConnections />
+    <VapiReceptionist workspaceId={workspaceId} />
     <div className="grid gap-3 md:grid-cols-3">
       {[
         {title:"Scheduling",desc:"Booking-page link is available when saved. API availability and meeting sync need OAuth + webhooks."},

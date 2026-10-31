@@ -1,9 +1,5 @@
-'use client';
-
-import ReceptionistPanel from './ReceptionistPanel';
-
-// V15.8 UI preview. Real call data will be connected only after
-// the existing INTRIGUE auth and Vapi webhook code are inspected.
+import { redirect } from 'next/navigation';
+// V15.9: Always enter through the existing authenticated dashboard.
 export default function ReceptionistPage() {
-  return <ReceptionistPanel calls={[]} />;
+  redirect('/dashboard?section=ai-receptionist');
 }

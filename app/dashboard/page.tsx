@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { createClient } from "@/lib/supabase/client";
 import "./brand.css";
 import IntegrationsPanel from "./integrations-panel";
+import ReceptionistPanel from "./ai-receptionist/ReceptionistPanel";
 import {
   Activity,
   ArrowRight,
@@ -26,6 +27,7 @@ import {
   Menu,
   Plus,
   Plug,
+  PhoneCall,
   Send,
   Settings,
   UserPlus,
@@ -40,6 +42,7 @@ import {
 type Section =
   | "Overview"
   | "AI Assistant"
+  | "AI Receptionist"
   | "Action Center"
   | "Automation Center"
   | "Customers"
@@ -61,6 +64,7 @@ const NAV = [
   { label: "Overview", icon: LayoutDashboard },
   { label: "Get Started", icon: ClipboardCheck },
   { label: "AI Assistant", icon: Bot },
+  { label: "AI Receptionist", icon: PhoneCall },
   { label: "Action Center", icon: ClipboardCheck },
   { label: "Automation Center", icon: Zap },
   { label: "Customers", icon: Users },
@@ -123,7 +127,7 @@ type AiUsage = {
   chat_day_limit:number; chat_minute_limit:number; index_day_limit:number; index_minute_limit:number;
   reset_utc:string;
 };
-const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","Action Center","Automation Center","Integrations","Security & Usage","Plans & Billing","Pilot Application"];
+const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","AI Receptionist","Action Center","Automation Center","Integrations","Security & Usage","Plans & Billing","Pilot Application"];
 
 type Customer = { id: string; full_name: string; email: string | null; vehicle: string | null; created_at: string };
 type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string };
@@ -295,6 +299,7 @@ export default function DashboardPage() {
     // The invitation code is never transmitted to the AI or analytics.
     const params = new URLSearchParams(window.location.search);
     if (params.has("integration")) setSection("Integrations");
+    else if (params.get("section") === "ai-receptionist") setSection("AI Receptionist");
     const token = params.get("join");
     if (token && /^[0-9a-f]{64}$/.test(token)) setJoinToken(token);
   }, []);
@@ -1124,6 +1129,10 @@ export default function DashboardPage() {
               </div>
               <div className="rounded-xl border border-dashed border-[#516071] bg-[#0f1e2d] px-4 py-3 text-xs text-[#abb8c3]"><strong>Demo workspace:</strong> Figures reflect fictional records stored in your Supabase database. AI is read-only in this phase.</div>
             </div>
+          )}
+
+          {section === "AI Receptionist" && workspace && isOwner && (
+            <ReceptionistPanel workspaceId={workspace.id} />
           )}
 
           {section === "AI Assistant" && (

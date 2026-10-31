@@ -1,34 +1,82 @@
-/* INTRIGUE V16.1 Phase 2: appearance scope. Retains brand navy and muted gold. */
-.intrigue-dashboard { transition: background-color .22s ease, color .22s ease; }
-.intrigue-dashboard.intrigue-glass[data-intrigue-theme="dark"] main > div > div[class*="rounded-2xl"],
-.intrigue-dashboard.intrigue-glass[data-intrigue-theme="dark"] main section { backdrop-filter: blur(8px); }
-/* Light theme overrides for the application's existing hard-coded Tailwind palette.
-   All selectors are scoped to the dashboard. Controls keep dark text on gold actions. */
-.intrigue-dashboard[data-intrigue-theme="light"] { background: #f4f2ec !important; color: #17283b !important; }
+/* INTRIGUE V16.1 Phase 2.1 | Ivory & Gold contrast correction
+   Site reference: warm ivory #f5f3ec, white card surfaces, #10243a ink, subtle warm borders.
+   Scope: Dashboard only. No booking, Vapi, auth, or backend changes.
+*/
+.intrigue-dashboard { transition: background-color .2s ease, color .2s ease; }
+.intrigue-dashboard.intrigue-glass main > div > div[class*="rounded-2xl"] { backdrop-filter: blur(6px); }
+.intrigue-dashboard[data-intrigue-theme="light"] {
+  --intrigue-ivory:#f5f3ec;
+  --intrigue-paper:#ffffff;
+  --intrigue-ink:#10243a;
+  --intrigue-muted:#526276;
+  --intrigue-gold:#a78245;
+  --intrigue-border:#e5dfd2;
+  background:var(--intrigue-ivory)!important;
+  color:var(--intrigue-ink)!important;
+}
+/* Canvas, nav, header */
+.intrigue-dashboard[data-intrigue-theme="light"] aside,
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#0a1624]"],
-.intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#0f2032]"] { background-color: #f3efe7 !important; }
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#0f2032]"] { background-color:var(--intrigue-ivory)!important; }
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#0f2032]"] { border-color:var(--intrigue-border)!important; }
+/* Standard card surfaces: warm white instead of gray-on-gray */
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#142539]"],
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#0b1827]"],
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#101e31]"],
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#0d1e30]"],
-.intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#1e3248]"] { background-color: #fffdf8 !important; }
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#1e3248]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#182c41]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#182b3e]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#192b3e]"] { background-color:var(--intrigue-paper)!important; }
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#26384d]"],
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#1b2e42]"],
-.intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#344358]"] { background-color: #e9e4d9 !important; }
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="bg-[#344358]"] { background-color:#eee9de!important; }
+/* Common text: foreground and muted foreground must contrast with ivory */
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#f2efe8]"],
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#f5f0e8]"],
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#f4efe5]"],
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#f0e9dc]"],
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#d5dfeb]"],
-.intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#d9e2eb]"] { color: #17283b !important; }
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#d9e2eb]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#d5dbe0]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#f5f0e8]"] { color:var(--intrigue-ink)!important; }
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#9eacba]"],
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#afbdcb]"],
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#b8c7d4]"],
-.intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#aebed0]"] { color: #506176 !important; }
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#aebed0]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#c7d4df]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#abb8c3]"] { color:var(--intrigue-muted)!important; }
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="border-[#2c3b4d]"],
 .intrigue-dashboard[data-intrigue-theme="light"] [class*="border-[#35485d]"],
-.intrigue-dashboard[data-intrigue-theme="light"] [class*="border-[#415064]"] { border-color: #d6d0c4 !important; }
-.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-activity-popover { background: #fffdf8 !important; color: #17283b !important; }
-.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-activity-popover h3 { color: #856023 !important; }
-.intrigue-dashboard[data-intrigue-theme="light"] button:focus-visible { outline: 2px solid #ac8542; outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) { .intrigue-dashboard { transition: none; } }
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="border-[#415064]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="border-[#304153]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="border-[#2d3b4f]"] { border-color:var(--intrigue-border)!important; }
+/* Navigation brand lettering, selected link and table headings */
+.intrigue-dashboard[data-intrigue-theme="light"] .brand-wordmark { color:#142a40!important; }
+.intrigue-dashboard[data-intrigue-theme="light"] aside [class*="text-[#d5dfeb]"] { color:#20334a!important; }
+.intrigue-dashboard[data-intrigue-theme="light"] aside [class*="text-[#f1cb75]"] { color:#876526!important; }
+.intrigue-dashboard[data-intrigue-theme="light"] aside [class*="bg-[#d1ad60]"] { background:#ece5d5!important; }
+/* Hero: intentionally dark editorial contrast, never dark text on navy. */
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-hero {
+  background:linear-gradient(115deg,#14283d 0%,#182d40 60%,#393225 100%)!important;
+  border-color:rgba(191,155,84,.4)!important;
+  color:#fffaf1!important;
+}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-hero h2 { color:#fffaf1!important; text-shadow:0 2px 12px rgba(0,0,0,.15); }
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-hero p { color:#e4e3df!important; opacity:1!important; }
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-hero [class*="text-[#f2d486]"] { color:#f3d695!important; }
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-hero button { color:#152538!important; }
+/* Gold on bright surfaces needs deeper tone; preserve ink on solid gold buttons */
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#edd4a0]"] { color:#87652d!important; }
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#e0bf76]"] { color:#846227!important; }
+.intrigue-dashboard[data-intrigue-theme="light"] [class*="text-[#c4a86e]"] { color:#936b2f!important; }
+/* Inputs and menus; avoid unstyled dark fill when page is light */
+.intrigue-dashboard[data-intrigue-theme="light"] input:not([type="checkbox"]):not([type="radio"]),
+.intrigue-dashboard[data-intrigue-theme="light"] select,
+.intrigue-dashboard[data-intrigue-theme="light"] textarea { color:#10243a; border-color:#d7d0c2; }
+.intrigue-dashboard[data-intrigue-theme="light"] input::placeholder,
+.intrigue-dashboard[data-intrigue-theme="light"] textarea::placeholder { color:#677486; }
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-activity-popover { background:#fff!important; color:#10243a!important; border-color:#ded5c5!important; }
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-activity-popover h3 { color:#87652d!important; }
+.intrigue-dashboard[data-intrigue-theme="light"] button:focus-visible { outline:2px solid #9b793c; outline-offset:2px; }
+@media(prefers-reduced-motion:reduce) { .intrigue-dashboard { transition:none; } }

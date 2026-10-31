@@ -1120,7 +1120,7 @@ export default function DashboardPage() {
           {!loading && workspace && <>
           {section === "Overview" && (
             <div className="space-y-6">
-              <div className="relative overflow-hidden rounded-[20px] border border-[#a18343]/35 bg-[linear-gradient(118deg,#15283c_0%,#1a2c3f_62%,#403626_100%)] p-6 text-[#f5f0e8] shadow-[0_18px_45px_rgba(0,0,0,0.14)] md:p-8">
+              <div className="intrigue-hero relative overflow-hidden rounded-[20px] border border-[#a18343]/35 bg-[linear-gradient(118deg,#15283c_0%,#1a2c3f_62%,#403626_100%)] p-6 text-[#f5f0e8] shadow-[0_18px_45px_rgba(0,0,0,0.14)] md:p-8">
                 <div className="absolute -right-12 -top-20 h-64 w-64 rounded-full border-[45px] border-[#d5b264]/10"/>
                 <div className="absolute right-20 top-16 h-44 w-44 rounded-full border-[28px] border-[#d5b264]/10"/>
                 <img src="https://intriguestudios.de/intrigue-logo.png" alt="" aria-hidden="true" className="pointer-events-none absolute -right-8 -top-24 hidden h-[410px] w-[360px] object-contain opacity-[0.24] lg:block" />

@@ -1,5 +1,6 @@
 import { handleCalendlyVoiceTool } from "@/lib/intrigue-vapi-calendly";
 import { handleGoogleTool } from "@/lib/intrigue-vapi-google";
+import { callRow } from "@/lib/intrigue-vapi-call-history";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -82,6 +83,16 @@ export async function POST(request: NextRequest) {
       }
       return { toolCallId, error: "This tool is not enabled. Do not claim a booking or message was sent." };
     })) });
+  }
+  // V16.0 call history is best-effort and cannot affect a successful call or booking.
+  if (eventType === 'end-of-call-report' && uuid.test(callId)) {
+    const history = callRow({ ...call, id: callId, assistantId, endedReason: asStr(message.endedReason) || asStr(call.endedReason), artifact: asObj(message.artifact) }, false);
+    try {
+      const { error:historyError } = await supabase.rpc('intrigue_v160_webhook_ingest', {
+        p_token: match[1], p_assistant_id: assistantId, p_record: history,
+      });
+      if (historyError) console.error('V16 call history ingestion failed (booking unaffected):', historyError.code);
+    } catch { console.error('V16 call history ingestion failed (booking unaffected)'); }
   }
   return json({ received: true });
 }

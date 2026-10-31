@@ -1,0 +1,27 @@
+/* V16.3: only Knowledge Hub; no global dashboard, sidebar or table selectors. */
+.intrigue-khub { color: inherit; }
+.intrigue-khub .intrigue-khub-notice,
+.intrigue-khub .intrigue-khub-file,
+.intrigue-khub .intrigue-khub-result,
+.intrigue-khub .intrigue-khub-option,
+.intrigue-khub .intrigue-khub-input,
+.intrigue-khub .intrigue-khub-secondary { transition: background-color .16s ease, border-color .16s ease; }
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-khub .intrigue-khub-notice {background:#fbf6ed!important;border-color:#e2cfb1!important;color:#364154!important;}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-khub .intrigue-khub-option {background:#fff!important;border-color:#e4d7c8!important;color:#243348!important;}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-khub .intrigue-khub-option:hover {background:#fbf6ed!important;}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-khub .intrigue-khub-option.intrigue-khub-selected {background:#f2e5d3!important;border-color:#c39b5a!important;box-shadow:inset 0 0 0 1px #c39b5a33;}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-khub .intrigue-khub-file {background:#fff!important;border-color:#e4d7c8!important;color:#253348!important;}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-khub .intrigue-khub-input {background:#fff!important;border-color:#e4d7c8!important;color:#253348!important;}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-khub .intrigue-khub-result {background:#fcf7ef!important;border-color:#dcc299!important;color:#253348!important;}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-khub .intrigue-khub-secondary {background:#fff!important;border-color:#c9a979!important;color:#7b5322!important;}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-khub .intrigue-khub-delete {background:#fff!important;border-color:#dcb8aa!important;color:#963f2f!important;}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-khub .intrigue-khub-error {color:#a32727!important;}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-khub .intrigue-khub-notice {background:#203147!important;border-color:#80673c!important;color:#ede2d2!important;}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-khub .intrigue-khub-option {background:#13283e!important;border-color:#465872!important;color:#f0eee6!important;}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-khub .intrigue-khub-option.intrigue-khub-selected {background:#23364a!important;border-color:#d0ae68!important;}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-khub .intrigue-khub-file,
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-khub .intrigue-khub-result {background:#172b41!important;border-color:#42536a!important;color:#f1eee9!important;}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-khub .intrigue-khub-input {background:#172b41!important;border-color:#42536a!important;color:#f1eee9!important;}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-khub .intrigue-khub-secondary {background:#182e43!important;border-color:#a18b63!important;color:#ead2a0!important;}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-khub .intrigue-khub-delete {border-color:#8c6262!important;color:#ffc6bd!important;}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-khub .intrigue-khub-error {color:#ffc6bd!important;}

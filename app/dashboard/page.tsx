@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { createClient } from "@/lib/supabase/client";
 import "./brand.css";
 import "./intrigue-themes.css";
+import "./knowledge-hub.css";
 import IntegrationsPanel from "./integrations-panel";
 import CalendarConnections from "./calendar-connections";
 import ReceptionistPanel from "./ai-receptionist/ReceptionistPanel";
@@ -296,7 +297,11 @@ export default function DashboardPage() {
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [knowledgeError, setKnowledgeError] = useState("");
   const [knowledgeBusy, setKnowledgeBusy] = useState(false);
-  const [showKnowledgeForm, setShowKnowledgeForm] = useState(false);
+
+  const [knowledgeHubMode, setKnowledgeHubMode] = useState<'files'|'write'>('files');
+  const [knowledgeAnalysis, setKnowledgeAnalysis] = useState('');
+  const [knowledgeAnalysisError, setKnowledgeAnalysisError] = useState('');
+  const [knowledgeAnalysisBusy, setKnowledgeAnalysisBusy] = useState(false);
   const [knowledgeForm, setKnowledgeForm] = useState({ title: "", category: "Policy", content: "" });
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
@@ -305,7 +310,7 @@ export default function DashboardPage() {
   const [documentSuccess, setDocumentSuccess] = useState("");
   const [semanticBusy, setSemanticBusy] = useState(false);
   const [semanticStatus, setSemanticStatus] = useState("");
-  const [actionPrompt, setActionPrompt] = useState("Prepare a quotation for Alex Fischer's brake inspection using our service prices, and create a follow-up task for tomorrow.");
+  const [actionPrompt, setActionPrompt] = useState("");
   const [actionProposals, setActionProposals] = useState<ActionProposal[]>([]);
   const [actionAudit, setActionAudit] = useState<ActionAudit[]>([]);
   const [actionBusy, setActionBusy] = useState(false);
@@ -787,10 +792,42 @@ export default function DashboardPage() {
     if (error) setKnowledgeError(`Could not save knowledge: ${error.message}`);
     else {
       setKnowledgeForm({ title: "", category: "Policy", content: "" });
-      setShowKnowledgeForm(false);
       await loadKnowledge();
     }
     setKnowledgeBusy(false);
+  }
+
+  // AI review is informational ONLY: it never prepares approval proposals or
+  // creates quotations, customers, services, or follow-up records.
+  async function reviewKnowledgeWithAi(mode: 'files'|'write') {
+    if (knowledgeAnalysisBusy || !workspace || !isOwner) return;
+    const draft = knowledgeForm.content.trim();
+    if (mode === 'write' && draft.length < 10 && knowledgeEntries.length === 0) {
+      setKnowledgeAnalysisError('Type at least 10 characters or save a knowledge entry first.');
+      return;
+    }
+    if (mode === 'files' && documents.length === 0) {
+      setKnowledgeAnalysisError('Upload a company document before requesting file analysis.');
+      return;
+    }
+    setKnowledgeAnalysis('');
+    setKnowledgeAnalysisError('');
+    setKnowledgeAnalysisBusy(true);
+    const question = mode === 'files'
+      ? 'Review ONLY the uploaded company knowledge documents. List filenames, summarize business facts, products or services, policies, and any missing information. Distinguish facts from unknowns. This is an analysis request, NOT a request to draft a quotation, contact a customer or create approval proposals.'
+      : 'Analyze the following fictional company notes and any saved company knowledge entries. Produce a clear summary of company identity, offering, policies, and missing information. Do not invent prices, orders, quotations or customer records. This is informational analysis only.\n\nNotes: '+draft.slice(0,4000);
+    try {
+      const response=await fetch('/api/agent',{
+        method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',
+        body:JSON.stringify({question}),
+      });
+      const result:{reply?:string;error?:string;proposed_action_prompt?:string}=await response.json();
+      if(!response.ok) throw new Error(result.error || 'AI analysis could not be completed.');
+      setKnowledgeAnalysis(result.reply?.trim() || 'The AI returned no analysis. Try describing a specific document or policy.');
+      if(result.proposed_action_prompt) setKnowledgeAnalysisError('The assistant suggested an action, but nothing was submitted for approval or changed in your records.');
+    } catch(err){
+      setKnowledgeAnalysisError(err instanceof Error ? err.message : 'AI analysis unavailable.');
+    } finally { setKnowledgeAnalysisBusy(false); }
   }
 
   async function deleteKnowledge(id: string) {
@@ -918,8 +955,8 @@ export default function DashboardPage() {
   }
 
   function takeToActionCenter() {
-    const lastRequest=[...messages].reverse().find(m=>m.role==="user")?.text;
-    setActionPrompt(draft.trim() || lastRequest || "Prepare a quotation for Alex Fischer's brake inspection using our service prices, and create a follow-up task for tomorrow.");
+    // The Action Center is for actionable, supported commands only.
+    setActionPrompt("");
     setSection("Action Center");
   }
 
@@ -1180,7 +1217,7 @@ export default function DashboardPage() {
             <div className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-[#2c3b4d] bg-[#0f2032] shadow-sm">
               <div className="flex items-center gap-3 border-b border-[#2d3b4f] p-5"><div className="rounded-xl bg-[#263447] p-3 text-[#e0bf76]"><Bot size={22}/></div><div><div className="text-sm font-bold">INTRIGUE Assistant</div><div className="text-[11px] text-[#afbdcb]">Tool-calling agent Â· Reads records and prepares approval proposals</div></div><span className="ml-auto"><Tag variant={aiConnected ? "emerald" : "amber"}>{aiConnected ? "AI configured" : "API key missing"}</Tag></span></div>
               <div className="flex h-[440px] flex-col gap-4 overflow-y-auto bg-[#0d1c2b] p-5 md:p-6" aria-live="polite">{messages.map((message, index) => <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`${message.proposalId?"w-full max-w-[90%]":"max-w-[85%]"} space-y-3`}><div className={`whitespace-pre-wrap rounded-2xl px-4 py-3 text-[13px] leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#30455b] text-[#f5f0e8]" : "rounded-tl-sm border border-[#304153] bg-[#142539] text-[#f0e9dc]"}`}>{message.text}</div>{message.toolsUsed?.length ? <p className="text-[11px] text-[#d6bc80]">Tools: {message.toolsUsed.join(" Â· ")}</p> : null}{message.proposalId && (actionProposals.find(p=>p.id===message.proposalId) ? <ProposalReviewCard proposal={actionProposals.find(p=>p.id===message.proposalId)!} customer={customerName(actionProposals.find(p=>p.id===message.proposalId)!.customer_id)} busy={actionBusy} onDecide={(id,decision)=>void decideAction(id,decision)} onEdit={editAction}/> : <button type="button" className="text-xs text-[#e9c577] underline" onClick={()=>navigate("Action Center")}>Open proposal in Action Center</button>)}</div></div>)}{aiLoading && <p className="text-xs text-[#d8c18e]">{chatActionBusy?"Preparing a verified proposal...":"Calling authorized business tools..."}</p>}{actionError && <p role="alert" className="rounded-lg border border-red-400/40 bg-red-400/10 p-3 text-xs text-[#ffc2b9]">Action: {actionError}</p>}{actionMessage && <p role="status" className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs text-[#b3ead0]">{actionMessage}</p>}</div>
-              <div className="border-t border-[#2d3b4f] p-4 md:p-5"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-[#afbdcb]">V10 tools: customers, quotations, follow-ups, knowledge and approval drafts. Human approval required.</span><button type="button" onClick={takeToActionCenter} className="rounded-lg border border-[#b18c46] px-3 py-2 text-xs font-semibold text-[#e9c577] hover:bg-[#26384d]">Prepare actions for approval</button></div><div className="mb-3 flex flex-wrap gap-2">{QUICK_PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => void askQuestion(prompt)} disabled={aiLoading} className="rounded-full border border-[#35485d] px-3 py-1.5 text-[11px] text-[#d5dbe0] hover:bg-[#1b2e42]">{prompt}</button>)}</div><form onSubmit={submitChat} className="flex gap-2"><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask a question or request a draft quote..." className="min-w-0 flex-1 rounded-xl border border-[#35485d] bg-[#182c41] px-4 py-3 text-sm text-[#f5f0e8] placeholder:text-[#98a8b8] outline-none focus:border-[#caa961]" aria-label="Message"/><button type="submit" disabled={!draft.trim() || aiLoading} className="flex h-[46px] w-[48px] items-center justify-center rounded-xl bg-[#30455b] text-[#f5f0e8] disabled:opacity-40" aria-label="Send message"><Send size={18}/></button></form></div>
+              <div className="border-t border-[#2d3b4f] p-4 md:p-5"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-[#afbdcb]">V10 tools: customers, quotations, follow-ups, knowledge and approval drafts. Human approval required.</span><button type="button" onClick={takeToActionCenter} className="rounded-lg border border-[#b18c46] px-3 py-2 text-xs font-semibold text-[#e9c577] hover:bg-[#26384d]">Open Action Center</button></div><div className="mb-3 flex flex-wrap gap-2">{QUICK_PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => void askQuestion(prompt)} disabled={aiLoading} className="rounded-full border border-[#35485d] px-3 py-1.5 text-[11px] text-[#d5dbe0] hover:bg-[#1b2e42]">{prompt}</button>)}</div><form onSubmit={submitChat} className="flex gap-2"><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask a question or request a draft quote..." className="min-w-0 flex-1 rounded-xl border border-[#35485d] bg-[#182c41] px-4 py-3 text-sm text-[#f5f0e8] placeholder:text-[#98a8b8] outline-none focus:border-[#caa961]" aria-label="Message"/><button type="submit" disabled={!draft.trim() || aiLoading} className="flex h-[46px] w-[48px] items-center justify-center rounded-xl bg-[#30455b] text-[#f5f0e8] disabled:opacity-40" aria-label="Send message"><Send size={18}/></button></form></div>
             </div>
           )}
 
@@ -1191,10 +1228,10 @@ export default function DashboardPage() {
                 <p className="mb-5 max-w-3xl text-xs leading-6 text-[#c9d4df]">Turn a request into a proposed draft quotation and/or follow-up. Prices come from your saved policies or service lists, not from an AI guess. Nothing is written to customer business records until you approve. No emails or WhatsApp messages are sent.</p>
                 <form onSubmit={prepareAction} className="space-y-3">
                   <label htmlFor="action-prompt" className="block text-xs font-semibold text-[#e9c577]">What should INTRIGUE prepare?</label>
-                  <textarea id="action-prompt" className={`${inputClass} min-h-[100px] resize-y`} value={actionPrompt} maxLength={1000} onChange={e=>setActionPrompt(e.target.value)} placeholder="Prepare a quotation for Alex Fischer's brake inspection and a follow-up task for tomorrow." />
+                  <textarea id="action-prompt" className={`${inputClass} min-h-[100px] resize-y`} value={actionPrompt} maxLength={1000} onChange={e=>setActionPrompt(e.target.value)} placeholder="Example: Prepare a quotation for a known customer using a verified service price. For document questions, use Knowledge Base → Analyze with AI." />
                   <button className={newButtonClass} type="submit" disabled={actionBusy || !workspace || actionPrompt.trim().length<10}>{actionBusy?"Working...":"Prepare proposal"}</button>
                 </form>
-                <p className="mt-3 text-[11px] text-[#aab9c8]">V9 proposal parsing is rule-based and supports brake inspections, cabin air filters, exact customer names, and tomorrow or YYYY-MM-DD dates. Chat remains powered by OpenRouter.</p>
+                <p className="mt-3 text-[11px] text-[#aab9c8]">This is an approval workflow for supported quotation or follow-up requests, not a company document analysis tool. The current demo parser supports specific service and date patterns only; it does not import records from uploaded documents.</p>
                 {actionError && <p role="alert" className="mt-4 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs text-[#ffc2b9]">{actionError}</p>}
                 {actionMessage && <p role="status" className="mt-4 rounded-lg border border-emerald-400/25 bg-emerald-400/10 p-3 text-xs text-[#b3ead0]">{actionMessage}</p>}
               </div>
@@ -1294,69 +1331,105 @@ export default function DashboardPage() {
           </div>}
 
           {section === "Knowledge Base" && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-                <div><div className="flex items-center gap-2"><BookOpen size={20} className="text-[#e0bf76]"/><h2 className="text-base font-bold">Company Knowledge Base</h2></div>
-                  <p className="mt-2 max-w-xl text-xs leading-6 text-[#afbdcb]">Store fictional policies and text-based PDF, TXT or Markdown files. V7 can search by meaning once you build the semantic index. Scanned-PDF OCR is not included.</p>
-                </div>
-                {isOwner && <button type="button" onClick={() => setShowKnowledgeForm(v => !v)} className={newButtonClass} disabled={!workspace}><Plus size={15} className="mr-1 inline"/> Add knowledge</button>}
+            <div className="space-y-5 intrigue-khub">
+              <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
+                <div className="flex items-center gap-2"><BookOpen size={20}/><h2 className="text-lg font-bold">Company Knowledge Base</h2></div>
+                <p className="mt-2 text-sm leading-6">Give INTRIGUE the information it should know about this company. Choose a file or write the information yourself. Then review it with AI.</p>
+                <p className="mt-3 rounded-xl border px-4 py-3 text-xs leading-5 intrigue-khub-notice">Knowledge documents and notes are searchable context. They do <strong>not</strong> automatically become customers, products, orders, follow-ups or quotations. Those records have their own import and creation workflows.</p>
               </div>
-              {isOwner && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-                <div className="mb-4 flex items-center gap-3"><FileUp size={20} className="text-[#e0bf76]"/>
-                  <div><h3 className="font-semibold text-sm">Upload company documents</h3>
-                  <p className="mt-1 text-xs leading-5 text-[#afbdcb]">PDF (selectable text), TXT or Markdown. Max 2 MB, PDFs up to 15 pages. Only extracted text is stored in Supabase, not the original file. Use fictional documents.</p></div>
-                </div>
-                <form onSubmit={uploadDocument} className="flex flex-wrap gap-3 items-center">
-                  <input id="intrigue-document-file" aria-label="Choose a document to upload" type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" onChange={e=>setDocumentFile(e.target.files?.[0]||null)} className="block min-w-0 max-w-full flex-1 rounded-xl border border-[#35485d] bg-[#182c41] px-3 py-2 text-xs text-[#d5dfeb]"/>
-                  <button className={newButtonClass} type="submit" disabled={!documentFile||!workspace||documentBusy}>{documentBusy?"Reading & saving...":"Upload document"}</button>
-                </form>
-                {documentError && <p role="alert" className="mt-3 text-xs text-[#ffb3a7]">{documentError}</p>}
-                {documentSuccess && <p role="status" className="mt-3 text-xs text-[#b1ead0]">{documentSuccess}</p>}
-                {documents.length>0 && <div className="mt-5 space-y-2">
-                  {documents.map(d=><div key={d.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#35485d] bg-[#0d2032] px-4 py-3">
-                    <div className="min-w-0"><p className="break-all text-xs font-semibold text-[#f5f0e8]">{d.filename}</p><p className="mt-1 text-[11px] text-[#afbdcb]">{d.file_type.toUpperCase()} Â· {d.page_count} page(s) Â· {d.characters.toLocaleString()} characters Â· {niceDate(d.created_at)}</p></div>
-                    <button type="button" title="Delete document" aria-label={`Delete ${d.filename}`} disabled={documentBusy} className="rounded-lg border border-[#6b5253] px-3 py-2 text-xs text-[#f3c2b9] hover:bg-[#302a35]" onClick={()=>void deleteDocument(d.id)}><Trash2 size={14}/></button>
-                  </div>)}
-                  <button type="button" onClick={()=>void askQuestion("What do our uploaded documents say? List their filenames and summarize their main points.")} className="mt-2 rounded-xl border border-[#937b48] px-4 py-2.5 text-xs font-semibold text-[#e1c178] hover:bg-[#263447]">Ask AI about uploaded documents</button>
-                </div>}
-                {documents.length===0 && <p className="mt-3 text-xs text-[#afbdcb]">No uploaded documents yet.</p>}
-              </section>}
-              {!isOwner && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-                <h3 className="text-sm font-semibold">Company documents (read-only)</h3>
-                {documents.length===0 ? <p className="mt-2 text-xs text-[#afbdcb]">No company documents yet.</p> :
-                  <div className="mt-3 space-y-2">{documents.map(d=><div key={d.id} className="rounded-lg border border-[#35485d] p-3 text-xs text-[#d5dfeb]">{d.filename} Â· {d.page_count} page(s)</div>)}</div>}
-              </section>}
-              {isOwner && <div className="mt-4 rounded-2xl border border-[#9c8046]/60 bg-[#1b2b40] px-5 py-4">
-                <h3 className="text-sm font-semibold text-[#e4c47b]">Semantic Search Â· V7</h3>
-                <p className="mt-2 max-w-2xl text-xs leading-5 text-[#d0d8df]">Search the meaning of your documents, even when your question uses different words. Click to index your existing uploads and notes, up to 12 sections per click. This calls a paid OpenRouter embeddings model, so very small usage charges may apply. If you haven't added credit, existing keyword search will continue working.</p>
-                <button type="button" disabled={!workspace || semanticBusy} onClick={()=>void buildSemanticIndex()} className="mt-3 rounded-xl bg-[#c9a552] px-4 py-2.5 text-xs font-semibold text-[#111b29] hover:bg-[#e4c47b] disabled:opacity-50">{semanticBusy?"Indexing...":"Build semantic index"}</button>
-                {semanticStatus && <p role="status" className="mt-3 text-xs text-[#e8d8b4]">{semanticStatus}</p>}
+
+              {isOwner && <div className="grid gap-3 md:grid-cols-2" role="group" aria-label="Choose how to add company knowledge">
+                <button type="button" aria-pressed={knowledgeHubMode==='files'} onClick={()=>{setKnowledgeHubMode('files');setKnowledgeAnalysis('');setKnowledgeAnalysisError('');}} className={`intrigue-khub-option rounded-2xl border p-5 text-left ${knowledgeHubMode==='files'?'intrigue-khub-selected':''}`}>
+                  <div className="flex items-center gap-3"><FileUp size={23}/><strong>1. Upload company files</strong></div>
+                  <p className="mt-2 text-xs leading-5">PDF, TXT and Markdown policies, catalogs, FAQs or company descriptions.</p>
+                </button>
+                <button type="button" aria-pressed={knowledgeHubMode==='write'} onClick={()=>{setKnowledgeHubMode('write');setKnowledgeAnalysis('');setKnowledgeAnalysisError('');}} className={`intrigue-khub-option rounded-2xl border p-5 text-left ${knowledgeHubMode==='write'?'intrigue-khub-selected':''}`}>
+                  <div className="flex items-center gap-3"><Pencil size={23}/><strong>2. Write company details</strong></div>
+                  <p className="mt-2 text-xs leading-5">Paste business details, policies and services directly as text.</p>
+                </button>
               </div>}
-              {knowledgeError && <div role="alert" className="rounded-xl border border-[#a97955] bg-[#3d2a2e] px-4 py-3 text-xs leading-5 text-[#fff0da]">{knowledgeError}</div>}
-              {isOwner && showKnowledgeForm && (
-                <form onSubmit={addKnowledge} className="space-y-3 rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-                  <h3 className="text-sm font-semibold">New knowledge entry</h3>
+
+              {isOwner && knowledgeHubMode === 'files' && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
+                <h3 className="flex items-center gap-2 text-sm font-semibold"><FileUp size={19}/>Upload files for AI knowledge</h3>
+                <p className="mt-2 text-xs leading-5">Text-based PDFs (up to 15 pages), TXT or Markdown, max 2 MB. Extracted text is saved in Supabase. Scanned PDFs without selectable text are not supported.</p>
+                <form onSubmit={uploadDocument} className="mt-4 flex flex-wrap items-center gap-3">
+                  <input id="intrigue-document-file" aria-label="Choose a company document" type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" onChange={e=>setDocumentFile(e.target.files?.[0]||null)} className="block min-w-0 max-w-full flex-1 rounded-xl border px-3 py-2 text-xs intrigue-khub-input"/>
+                  <button className={newButtonClass} type="submit" disabled={!documentFile||!workspace||documentBusy}>{documentBusy?'Uploading…':'Upload document'}</button>
+                </form>
+                {documentError && <p role="alert" className="mt-3 text-xs intrigue-khub-error">{documentError}</p>}
+                {documentSuccess && <p role="status" className="mt-3 text-xs">{documentSuccess}</p>}
+                <div className="mt-5 space-y-2">
+                  <h4 className="text-xs font-semibold">Uploaded documents ({documents.length})</h4>
+                  {documents.length===0 && <p className="text-xs">No uploaded files yet.</p>}
+                  {documents.map(d=><div key={d.id} className="intrigue-khub-file flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3">
+                    <div className="min-w-0"><p className="break-all text-xs font-semibold">{d.filename}</p><p className="mt-1 text-[11px]">{d.file_type.toUpperCase()} · {d.page_count} page(s) · {d.characters.toLocaleString()} characters</p></div>
+                    <button type="button" aria-label={`Delete ${d.filename}`} disabled={documentBusy} onClick={()=>void deleteDocument(d.id)} className="intrigue-khub-delete rounded-lg border px-3 py-2 text-xs"><Trash2 size={14}/></button>
+                  </div>)}
+                </div>
+                <button type="button" disabled={!documents.length||knowledgeAnalysisBusy||!workspace} onClick={()=>void reviewKnowledgeWithAi('files')} className={`${newButtonClass} mt-5 inline-flex items-center gap-2`}><Sparkles size={16}/>{knowledgeAnalysisBusy?'Analyzing…':'Analyze uploaded files with AI'}</button>
+              </section>}
+
+              {isOwner && knowledgeHubMode === 'write' && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
+                <h3 className="flex items-center gap-2 text-sm font-semibold"><Pencil size={18}/>Write or paste company information</h3>
+                <p className="mt-2 text-xs leading-5">Describe your company, products, service prices, delivery, returns, FAQs, policies and operating hours. Save notes for future AI retrieval, or analyze the draft first.</p>
+                <form onSubmit={addKnowledge} className="mt-5 space-y-3">
                   <div className="grid gap-3 md:grid-cols-[1fr_180px]">
-                    <input className={inputClass} aria-label="Knowledge title" placeholder="e.g. Brake inspection policy" value={knowledgeForm.title} maxLength={120} required minLength={3} onChange={e => setKnowledgeForm({...knowledgeForm, title:e.target.value})}/>
-                    <select className={inputClass} aria-label="Knowledge category" value={knowledgeForm.category} onChange={e => setKnowledgeForm({...knowledgeForm, category:e.target.value})}>
+                    <input className={inputClass} aria-label="Knowledge title" placeholder="e.g. About NOVA THREADS" value={knowledgeForm.title} maxLength={120} required minLength={3} onChange={e=>setKnowledgeForm({...knowledgeForm,title:e.target.value})}/>
+                    <select className={inputClass} aria-label="Knowledge category" value={knowledgeForm.category} onChange={e=>setKnowledgeForm({...knowledgeForm,category:e.target.value})}>
                       {['Policy','Service','FAQ','Supplier'].map(category=><option key={category} value={category}>{category}</option>)}
                     </select>
                   </div>
-                  <textarea className={`${inputClass} min-h-[150px] resize-y`} aria-label="Knowledge content" placeholder="Paste a fictional service policy, opening hours or a FAQ answer..." required minLength={10} maxLength={4000} value={knowledgeForm.content} onChange={e => setKnowledgeForm({...knowledgeForm, content:e.target.value})}/>
-                  <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-xs text-[#afbdcb]">{knowledgeForm.content.length}/4000 characters. Use demo data only.</span><button type="submit" disabled={knowledgeBusy || !workspace} className={newButtonClass}>{knowledgeBusy ? 'Saving...' : 'Save knowledge'}</button></div>
+                  <textarea className={`${inputClass} min-h-[230px] resize-y`} aria-label="Company information" placeholder="Company name:\nWhat we sell:\nProducts/services:\nPrices (if verified):\nOpening hours:\nShipping/returns:\nContact information:\nFrequently asked questions:" required minLength={10} maxLength={4000} value={knowledgeForm.content} onChange={e=>setKnowledgeForm({...knowledgeForm,content:e.target.value})}/>
+                  <p className="text-xs">{knowledgeForm.content.length}/4,000 characters. Save multiple entries for longer company descriptions.</p>
+                  <div className="flex flex-wrap gap-3">
+                    <button type="submit" disabled={knowledgeBusy||!workspace} className={newButtonClass}>{knowledgeBusy?'Saving…':'Save company details'}</button>
+                    <button type="button" disabled={knowledgeAnalysisBusy||(!knowledgeForm.content.trim()&&!knowledgeEntries.length)} onClick={()=>void reviewKnowledgeWithAi('write')} className="intrigue-khub-secondary inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold"><Sparkles size={16}/>{knowledgeAnalysisBusy?'Analyzing…':'Ask AI to analyze'}</button>
+                  </div>
                 </form>
-              )}
-              {knowledgeLoading && <p className="rounded-xl border border-[#35485d] p-5 text-xs text-[#afbdcb]">Loading saved knowledge...</p>}
-              {!knowledgeLoading && !knowledgeError && knowledgeEntries.length===0 && <div className="rounded-2xl border border-dashed border-[#45576a] bg-[#0f2032] px-6 py-10 text-center"><h3 className="text-sm font-semibold">No knowledge entries yet</h3><p className="mt-2 text-xs text-[#afbdcb]">Add a fictional company policy and ask the AI a question about it.</p></div>}
-              <div className="grid gap-3 md:grid-cols-2">
-                {knowledgeEntries.map(entry => <article key={entry.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-5">
-                  <div className="mb-3 flex items-start justify-between gap-3"><Tag variant="blue">{entry.category}</Tag><span className="text-[11px] text-[#afbdcb]">{niceDate(entry.created_at)}</span></div>
-                  <h3 className="text-sm font-bold text-[#f5f0e8]">{entry.title}</h3>
-                  <p className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-[#bec9d2]">{entry.content}</p>
-                  {isOwner && <button type="button" className="mt-5 rounded-lg border border-[#6b5253] px-3 py-2 text-xs text-[#f3c2b9] hover:bg-[#302a35] disabled:opacity-50" disabled={knowledgeBusy} onClick={() => void deleteKnowledge(entry.id)}>Delete entry</button>}
-                </article>)}
-              </div>
-              {isOwner && knowledgeEntries.length>0 && <button type="button" className="rounded-xl border border-[#937b48] px-4 py-2.5 text-xs font-semibold text-[#e1c178] hover:bg-[#263447]" onClick={()=>void askQuestion('Summarize the company policies and services in our knowledge base.')}>Ask AI about these entries</button>}
+                {knowledgeError && <p role="alert" className="mt-3 text-xs intrigue-khub-error">{knowledgeError}</p>}
+              </section>}
+
+              {isOwner && (knowledgeAnalysis||knowledgeAnalysisError||knowledgeAnalysisBusy) && <section className="intrigue-khub-result rounded-2xl border p-6" aria-live="polite">
+                <div className="flex items-center gap-2"><Sparkles size={19}/><h3 className="text-sm font-bold">AI company analysis</h3></div>
+                <p className="mt-2 text-xs">This is a read-only review. No quotations, CRM records or approvals are created.</p>
+                {knowledgeAnalysisBusy && <p className="mt-3 text-sm">Reviewing company information…</p>}
+                {knowledgeAnalysisError && <p role="alert" className="mt-3 text-xs intrigue-khub-error">{knowledgeAnalysisError}</p>}
+                {knowledgeAnalysis && <div className="mt-4 whitespace-pre-wrap break-words text-sm leading-7">{knowledgeAnalysis}</div>}
+              </section>}
+
+              {!isOwner && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
+                <h3 className="text-sm font-semibold">Company documents (read-only)</h3>
+                <div className="mt-3 space-y-2">{documents.length ? documents.map(d=><div key={d.id} className="rounded-lg border p-3 text-xs">{d.filename}</div>) : <p className="text-xs">No documents uploaded yet.</p>}</div>
+              </section>}
+
+              <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
+                <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-bold">Saved company knowledge ({knowledgeEntries.length})</h3><span className="text-xs">Structured notes and FAQs, not customer transactions</span></div>
+                {knowledgeLoading && <p className="mt-3 text-xs">Loading saved notes…</p>}
+                {!knowledgeLoading&&knowledgeEntries.length===0&&<p className="mt-4 text-xs">No saved text entries yet. Upload a document or write company details above.</p>}
+                {knowledgeError && knowledgeHubMode !== 'write' && <p role="alert" className="mt-3 text-xs intrigue-khub-error">{knowledgeError}</p>}
+                <div className="mt-4 grid gap-3 md:grid-cols-2">{knowledgeEntries.map(entry=><article key={entry.id} className="intrigue-khub-file rounded-xl border p-4">
+                  <div className="flex items-center justify-between gap-3"><Tag variant="blue">{entry.category}</Tag><span className="text-[11px]">{niceDate(entry.created_at)}</span></div>
+                  <h4 className="mt-3 text-sm font-semibold">{entry.title}</h4>
+                  <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-6">{entry.content}</p>
+                  {isOwner&&<button type="button" disabled={knowledgeBusy} className="intrigue-khub-delete mt-4 rounded-lg border px-3 py-2 text-xs" onClick={()=>void deleteKnowledge(entry.id)}>Delete</button>}
+                </article>)}</div>
+              </section>
+
+              {isOwner && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
+                <h3 className="text-sm font-semibold">Structured business data belongs in Data Management</h3>
+                <p className="mt-2 text-xs leading-6">To populate customer and service records, import CSV/JSON through Data Management. To create a real draft quotation, add a customer and a verified amount in Quotations &amp; Proposals. The current importer does not bulk-create enquiries, quotations or orders from a knowledge document.</p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button type="button" onClick={()=>navigate('Data Management')} className={newButtonClass}>Open Data Management</button>
+                  <button type="button" onClick={()=>navigate('Quotations')} className="intrigue-khub-secondary rounded-xl border px-4 py-2.5 text-xs font-semibold">Open Quotations</button>
+                </div>
+              </section>}
+
+              {isOwner && <details className="rounded-2xl border border-[#35485d] bg-[#142539] p-5">
+                <summary className="cursor-pointer text-xs font-semibold">Advanced: semantic search indexing</summary>
+                <p className="mt-3 text-xs leading-5">Index up to 12 saved sections for meaning-based retrieval. Embedding model usage may incur charges. Keyword search remains available.</p>
+                <button type="button" disabled={!workspace||semanticBusy} onClick={()=>void buildSemanticIndex()} className={`${newButtonClass} mt-3`}>{semanticBusy?'Indexing…':'Build semantic index'}</button>
+                {semanticStatus && <p role="status" className="mt-3 text-xs">{semanticStatus}</p>}
+              </details>}
             </div>
           )}
 

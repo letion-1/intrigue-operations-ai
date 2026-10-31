@@ -7,6 +7,7 @@ import "./intrigue-themes.css";
 import IntegrationsPanel from "./integrations-panel";
 import CalendarConnections from "./calendar-connections";
 import ReceptionistPanel from "./ai-receptionist/ReceptionistPanel";
+import DataManagementPanel from "./data-management/DataManagementPanel";
 import {
   Activity,
   ArrowRight,
@@ -56,6 +57,7 @@ type Section =
   | "Integrations"
   | "Calendar"
   | "Settings"
+  | "Data Management"
   | "Team"
   | "Service Catalog"
   | "Get Started"
@@ -81,6 +83,7 @@ const NAV = [
   { label: "Integrations", icon: Plug },
   { label: "Team", icon: UserPlus },
   { label: "Settings", icon: Settings },
+  { label: "Data Management", icon: ShieldCheck },
   { label: "Security & Usage", icon: ShieldCheck },
   { label: "Plans & Billing", icon: CreditCard },
   { label: "Pilot Application", icon: ClipboardCheck },
@@ -133,7 +136,7 @@ type AiUsage = {
   chat_day_limit:number; chat_minute_limit:number; index_day_limit:number; index_minute_limit:number;
   reset_utc:string;
 };
-const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","AI Receptionist","Action Center","Automation Center","Integrations","Calendar","Security & Usage","Plans & Billing","Pilot Application"];
+const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","AI Receptionist","Action Center","Automation Center","Integrations","Calendar","Data Management","Security & Usage","Plans & Billing","Pilot Application"];
 
 type Customer = { id: string; full_name: string; email: string | null; vehicle: string | null; created_at: string };
 type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string };
@@ -1167,6 +1170,10 @@ export default function DashboardPage() {
 
           {section === "AI Receptionist" && workspace && isOwner && (
             <ReceptionistPanel workspaceId={workspace.id} />
+          )}
+
+          {section === "Data Management" && workspace && isOwner && (
+            <DataManagementPanel workspaceId={workspace.id} onCompleted={() => { void refresh(); }} />
           )}
 
           {section === "AI Assistant" && (

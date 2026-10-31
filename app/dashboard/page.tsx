@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -1012,8 +1012,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-      <div className="px-4">
-        <nav className="space-y-1">
+      <div className="intrigue-sidebar-nav min-h-0 flex-1 overflow-y-auto overscroll-contain px-4">
+        <nav className="space-y-1" aria-label="Workspace navigation">
           {NAV.filter(item => isOwner || !OWNER_ONLY_SECTIONS.includes(item.label)).map((item) => {
             const Icon = item.icon;
             const selected = section === item.label;
@@ -1024,7 +1024,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => navigate(item.label)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] font-medium transition-colors ${selected ? "bg-[#d1ad60]/15 text-[#f1cb75] ring-1 ring-[#c7a250]/20" : "text-[#d5dfeb] hover:bg-[#e5c47c]/10 hover:text-[#f5f0e8]"}`}
+                className={`intrigue-nav-item flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] font-medium transition-colors ${selected ? "intrigue-nav-item-active" : ""}`}
               >
                 <Icon size={18} strokeWidth={selected ? 2.4 : 1.8} />
                 <span className="flex-1">{item.label === "Customers" ? "Customers & CRM" : item.label === "Quotations" ? "Quotations & Proposals" : item.label}</span>
@@ -1049,16 +1049,16 @@ export default function DashboardPage() {
   );
 
   return (
-    <div data-intrigue-theme={appearance} className="intrigue-dashboard intrigue-glass min-h-screen bg-[#0b1827] font-sans text-[#f2efe8] lg:flex">
-      <aside className="hidden w-[258px] shrink-0 flex-col bg-[#0a1624] lg:flex">{sidebar}</aside>
+    <div data-intrigue-theme={appearance} className="intrigue-dashboard intrigue-glass min-h-screen bg-[#0b1827] font-sans text-[#f2efe8] lg:flex lg:h-dvh lg:overflow-hidden">
+      <aside className="intrigue-sidebar hidden h-dvh w-[258px] shrink-0 flex-col overflow-hidden bg-[#0a1624] lg:flex">{sidebar}</aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-50 flex bg-[#030810]/85 lg:hidden">
-          <aside className="flex h-full w-[275px] flex-col overflow-y-auto bg-[#0a1624]">{sidebar}</aside>
+          <aside className="intrigue-sidebar flex h-full w-[275px] flex-col overflow-hidden bg-[#0a1624]">{sidebar}</aside>
           <button className="flex h-14 flex-1 justify-end p-4 text-[#f5f0e8]" type="button" aria-label="Close navigation" onClick={() => setMobileOpen(false)}><X size={23}/></button>
         </div>
       )}
-      <div className="min-w-0 flex-1">
-        <header className="flex h-[76px] items-center justify-between border-b border-[#2c3b4d] bg-[#0f2032] px-5 md:px-9">
+      <div className="intrigue-main-scroll min-w-0 flex-1 lg:h-dvh lg:overflow-y-auto lg:overscroll-contain">
+        <header className="sticky top-0 z-30 flex h-[76px] items-center justify-between border-b border-[#2c3b4d] bg-[#0f2032] px-5 md:px-9">
           <div className="flex items-center gap-3">
             <button type="button" className="rounded-lg p-2 hover:bg-[#26384d] lg:hidden" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={22}/></button>
             <span className="hidden text-[13px] text-[#9eacba] sm:block">Workspace</span>
@@ -1151,7 +1151,7 @@ export default function DashboardPage() {
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(310px,1fr)]">
                 <div className="rounded-2xl border border-[#304153] bg-[#142539] shadow-sm">
                   <div className="flex items-center justify-between border-b border-[#2d3b4f] px-5 py-5 md:px-6"><div><h3 className="text-[15px] font-bold">Recent inquiries</h3><p className="mt-1 text-xs text-[#9eacba]">Customers that need your attention</p></div><button type="button" onClick={() => navigate("Customers")} className="flex items-center gap-1 text-xs font-semibold text-[#e0bf76] hover:underline">View all <ArrowUpRight size={15}/></button></div>
-                  <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left"><thead><tr className="border-b border-[#2d3b4f] bg-[#192b3e]/70 text-[11px] uppercase tracking-[0.04em] text-[#9eacba]"><th className="px-6 py-3 font-semibold">Customer</th><th className="px-3 py-3 font-semibold">Request</th><th className="px-3 py-3 font-semibold">Status</th><th className="px-4 py-3 font-semibold">Received</th></tr></thead><tbody>{enquiries.slice(0, 5).map((row) => <tr key={row.id} className="border-b border-[#2d3b4f] last:border-0"><td className="px-6 py-4"><div className="text-xs font-bold text-[#f5f0e8]">{customerName(row.customer_id)}</div><div className="mt-1 text-[11px] text-[#9eacba]">{customerVehicle(row.customer_id)}</div></td><td className="px-3 py-4 text-xs text-[#d5dbe0]">{row.subject}</td><td className="px-3 py-4"><Tag variant={row.status === "follow_up" ? "amber" : row.status === "scheduled" ? "emerald" : row.status === "new" ? "blue" : "slate"}>{statusText(row.status)}</Tag></td><td className="px-4 py-4 text-[11px] text-[#9eacba]">{niceDate(row.created_at)}</td></tr>)}</tbody></table></div>
+                  <div className="intrigue-inquiries-overview min-w-0"><table className="w-full table-fixed text-left"><thead><tr className="border-b border-[#2d3b4f] bg-[#192b3e]/70 text-[11px] uppercase tracking-[0.04em] text-[#9eacba]"><th className="px-6 py-3 font-semibold">Customer</th><th className="px-3 py-3 font-semibold">Request</th><th className="px-3 py-3 font-semibold">Status</th><th className="px-4 py-3 font-semibold">Received</th></tr></thead><tbody>{enquiries.slice(0, 5).map((row) => <tr key={row.id} className="border-b border-[#2d3b4f] last:border-0"><td className="px-6 py-4"><div className="text-xs font-bold text-[#f5f0e8]">{customerName(row.customer_id)}</div><div className="mt-1 text-[11px] text-[#9eacba]">{customerVehicle(row.customer_id)}</div></td><td className="px-3 py-4 text-xs text-[#d5dbe0]">{row.subject}</td><td className="px-3 py-4"><Tag variant={row.status === "follow_up" ? "amber" : row.status === "scheduled" ? "emerald" : row.status === "new" ? "blue" : "slate"}>{statusText(row.status)}</Tag></td><td className="px-4 py-4 text-[11px] text-[#9eacba]">{niceDate(row.created_at)}</td></tr>)}</tbody></table></div>
                 </div>
                 <div className="rounded-2xl border border-[#304153] bg-[#142539] p-5 shadow-sm md:p-6">
                   <div className="mb-1 flex items-center gap-2"><Sparkles size={19} className="text-[#e0bb72]"/><h3 className="text-[15px] font-bold">Ask your business</h3></div>

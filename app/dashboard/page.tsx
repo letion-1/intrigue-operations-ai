@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import "./brand.css";
+import "./intrigue-themes.css";
 import IntegrationsPanel from "./integrations-panel";
 import CalendarConnections from "./calendar-connections";
 import ReceptionistPanel from "./ai-receptionist/ReceptionistPanel";
@@ -12,6 +13,8 @@ import {
   ClipboardCheck,
   ArrowUpRight,
   Bell,
+  Sun,
+  Moon,
   BookOpen,
   Bot,
   CalendarDays,
@@ -206,6 +209,20 @@ function Tag({ children, variant = "slate" }: { children: ReactNode; variant?: "
 export default function DashboardPage() {
   const [section, setSection] = useState<Section>("Overview");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [appearance, setAppearance] = useState<"dark" | "light">("dark");
+  const [activityOpen, setActivityOpen] = useState(false);
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("intrigue-appearance-v1");
+      if (stored === "dark" || stored === "light") setAppearance(stored);
+    } catch { /* Storage can be disabled in private browsing. */ }
+  }, []);
+  const toggleAppearance = () => setAppearance(current => {
+    const next = current === "dark" ? "light" : "dark";
+    try { window.localStorage.setItem("intrigue-appearance-v1", next); } catch { /* Non-persistent fallback. */ }
+    return next;
+  });
+
   const [draft, setDraft] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiConnected, setAiConnected] = useState(false);
@@ -1032,7 +1049,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="intrigue-dashboard min-h-screen bg-[#0b1827] font-sans text-[#f2efe8] lg:flex">
+    <div data-intrigue-theme={appearance} className="intrigue-dashboard intrigue-glass min-h-screen bg-[#0b1827] font-sans text-[#f2efe8] lg:flex">
       <aside className="hidden w-[258px] shrink-0 flex-col bg-[#0a1624] lg:flex">{sidebar}</aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-50 flex bg-[#030810]/85 lg:hidden">
@@ -1050,7 +1067,19 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-3 md:gap-5">
             <span className="hidden items-center gap-1.5 rounded-full bg-[#654e24]/40 px-3 py-1.5 text-[11px] font-bold text-[#e7c37c] sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-[#ddb96d]"/>STAGING DATA</span>
-            <Bell size={19} className="text-[#9eacba]" aria-label="Notifications are not yet configured"/>
+            <button type="button" onClick={toggleAppearance} aria-label={appearance === "dark" ? "Switch to light appearance" : "Switch to dark appearance"} title={appearance === "dark" ? "Light mode" : "Dark mode"} className="rounded-xl border border-[#415064] p-2 text-[#d9c18b] transition hover:bg-[#26384d]">
+              {appearance === "dark" ? <Sun size={18}/> : <Moon size={18}/>}
+            </button>
+            <div className="relative">
+              <button type="button" onClick={() => setActivityOpen(open => !open)} aria-expanded={activityOpen} aria-label="Open activity notifications" className="rounded-xl border border-[#415064] p-2 text-[#d9c18b] transition hover:bg-[#26384d]">
+                <Bell size={18}/>
+              </button>
+              {activityOpen && <div role="dialog" aria-label="Notifications" className="intrigue-activity-popover absolute right-0 top-12 z-50 w-[min(345px,85vw)] rounded-2xl border border-[#45566b] bg-[#13263b] p-4 shadow-2xl">
+                <div className="flex items-center justify-between gap-4"><h3 className="text-sm font-semibold text-[#f1d189]">Activity & notifications</h3><button onClick={() => setActivityOpen(false)} type="button" aria-label="Close notifications" className="rounded-lg p-1 hover:bg-[#26384d]"><X size={17}/></button></div>
+                <p className="mt-3 text-sm text-[#d9e2eb]">No business notifications are connected yet.</p>
+                <p className="mt-2 text-xs leading-5 text-[#aebed0]">Contract signatures, quotation approvals, missed appointments and integration alerts will appear here after the secure event service is enabled. This panel does not claim to monitor those events yet.</p>
+              </div>}
+            </div>
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#80642f] text-xs font-bold text-[#f5f0e8]">IS</div>
           </div>
         </header>

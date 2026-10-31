@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
-import CalendarConnections from "./calendar-connections";
 import VapiReceptionist from "./vapi-receptionist";
 
 type Scheduler = "none" | "cal" | "calendly";
@@ -68,7 +67,7 @@ function bookingUrlOk(provider:Scheduler,url:string):boolean{
   }catch{return false;}
 }
 
-export default function IntegrationsPanel({workspaceId,onImported}:{workspaceId:string;onImported:()=>void}){
+export default function IntegrationsPanel({workspaceId,onImported,onOpenCalendar,onOpenReceptionist}:{workspaceId:string;onImported:()=>void;onOpenCalendar?:()=>void;onOpenReceptionist?:()=>void}){
   const supabase=useMemo(()=>createClient(),[]);
   const [pref,setPref]=useState<Preferences>(EMPTY);
   const [loading,setLoading]=useState(true);
@@ -163,6 +162,19 @@ export default function IntegrationsPanel({workspaceId,onImported}:{workspaceId:
 
   return <div className="space-y-5">
     <div className={box}>
+      <h2 className="text-lg font-semibold text-[#f4efe5]">Your integrations</h2>
+      <p className="mt-2 text-sm text-[#b8c7d4]">Connected providers and optional setup live here. A saved preference is not proof of an authorized connection.</p>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-[#41556b] bg-[#0d1e30] p-4"><h3 className="font-semibold text-[#e7c37c]">Google Calendar / scheduling</h3><p className="mt-2 text-xs text-[#b8c7d4]">Manage appointments and direct-booking settings in Calendar.</p><button type="button" onClick={onOpenCalendar} className="mt-3 rounded-lg border border-[#bea16e] px-3 py-2 text-xs text-[#e8ca86]">Open Calendar</button></div>
+        <div className="rounded-xl border border-[#41556b] bg-[#0d1e30] p-4"><h3 className="font-semibold text-[#e7c37c]">Vapi AI Receptionist</h3><p className="mt-2 text-xs text-[#b8c7d4]">Review call history and AI receptionist activity in its dedicated module.</p><button type="button" onClick={onOpenReceptionist} className="mt-3 rounded-lg border border-[#bea16e] px-3 py-2 text-xs text-[#e8ca86]">Open AI Receptionist</button></div>
+        <div className="rounded-xl border border-[#41556b] bg-[#0d1e30] p-4"><h3 className="font-semibold text-[#e7c37c]">Gmail / Outlook</h3><p className="mt-2 text-xs text-[#b8c7d4]">Provider preference only. Sending requires future OAuth and explicit approval.</p></div>
+        <div className="rounded-xl border border-[#41556b] bg-[#0d1e30] p-4"><h3 className="font-semibold text-[#e7c37c]">CRM imports</h3><p className="mt-2 text-xs text-[#b8c7d4]">CSV contact import remains available below while the CRM module is upgraded.</p></div>
+      </div>
+    </div>
+    <details className="rounded-2xl border border-[#35485d] bg-[#142539] p-4">
+      <summary className="cursor-pointer text-sm font-semibold text-[#e7c37c]">Advanced integration preferences</summary>
+    <div className="mt-4 space-y-5">
+    <div className={box}>
       <h2 className="text-lg font-semibold text-[#f4efe5]">Connect your business tools</h2>
       <p className="mt-2 text-sm leading-6 text-[#b8c7d4]">Each company keeps its own integration preferences. Saving a provider name does not grant INTRIGUE access to your provider account. No outbound calls or emails are sent by this screen.</p>
       {loading?<p className="mt-4 text-sm text-[#a9b9ca]">Loading company integrations...</p>:
@@ -191,8 +203,12 @@ export default function IntegrationsPanel({workspaceId,onImported}:{workspaceId:
       {status&&<p role="status" className="mt-3 text-xs text-[#a9e8cc]">{status}</p>}
       {error&&<p role="alert" className="mt-3 text-xs text-[#ffc1b8]">{error}</p>}
     </div>
-    <CalendarConnections />
-    <VapiReceptionist workspaceId={workspaceId} />
+    </div>
+    </details>
+    <details className="rounded-2xl border border-[#35485d] bg-[#142539] p-4">
+      <summary className="cursor-pointer text-sm font-semibold text-[#e7c37c]">Vapi connection administration</summary>
+      <div className="mt-4"><VapiReceptionist workspaceId={workspaceId} /></div>
+    </details>
     <div className="grid gap-3 md:grid-cols-3">
       {[
         {title:"Scheduling",desc:"Booking-page link is available when saved. API availability and meeting sync need OAuth + webhooks."},

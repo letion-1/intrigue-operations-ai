@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { createClient } from "@/lib/supabase/client";
 import "./brand.css";
 import IntegrationsPanel from "./integrations-panel";
+import CalendarConnections from "./calendar-connections";
 import ReceptionistPanel from "./ai-receptionist/ReceptionistPanel";
 import {
   Activity,
@@ -50,6 +51,7 @@ type Section =
   | "Follow-ups"
   | "Knowledge Base"
   | "Integrations"
+  | "Calendar"
   | "Settings"
   | "Team"
   | "Service Catalog"
@@ -72,6 +74,7 @@ const NAV = [
   { label: "Follow-ups", icon: ListTodo },
   { label: "Knowledge Base", icon: BookOpen },
   { label: "Service Catalog", icon: FileText },
+  { label: "Calendar", icon: CalendarDays },
   { label: "Integrations", icon: Plug },
   { label: "Team", icon: UserPlus },
   { label: "Settings", icon: Settings },
@@ -127,7 +130,7 @@ type AiUsage = {
   chat_day_limit:number; chat_minute_limit:number; index_day_limit:number; index_minute_limit:number;
   reset_utc:string;
 };
-const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","AI Receptionist","Action Center","Automation Center","Integrations","Security & Usage","Plans & Billing","Pilot Application"];
+const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","AI Receptionist","Action Center","Automation Center","Integrations","Calendar","Security & Usage","Plans & Billing","Pilot Application"];
 
 type Customer = { id: string; full_name: string; email: string | null; vehicle: string | null; created_at: string };
 type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string };
@@ -993,22 +996,24 @@ export default function DashboardPage() {
         </div>
       </div>
       <div className="px-4">
-        <div className="mb-3 px-3 text-[10px] font-bold tracking-[0.2em] text-[#c4a86e]">WORKSPACE</div>
         <nav className="space-y-1">
           {NAV.filter(item => isOwner || !OWNER_ONLY_SECTIONS.includes(item.label)).map((item) => {
             const Icon = item.icon;
             const selected = section === item.label;
+            const sectionTitle = ({"Overview":"WORKSPACE","Customers":"BUSINESS","AI Receptionist":"AI & AUTOMATION","Integrations":"SYSTEM"} as Record<string,string>)[item.label];
             return (
+              <div key={item.label}>
+              {sectionTitle && <div className="mb-2 mt-5 px-3 text-[10px] font-bold tracking-[0.2em] text-[#c4a86e]">{sectionTitle}</div>}
               <button
-                key={item.label}
                 type="button"
                 onClick={() => navigate(item.label)}
                 className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] font-medium transition-colors ${selected ? "bg-[#d1ad60]/15 text-[#f1cb75] ring-1 ring-[#c7a250]/20" : "text-[#d5dfeb] hover:bg-[#e5c47c]/10 hover:text-[#f5f0e8]"}`}
               >
                 <Icon size={18} strokeWidth={selected ? 2.4 : 1.8} />
-                <span className="flex-1">{item.label}</span>
+                <span className="flex-1">{item.label === "Customers" ? "Customers & CRM" : item.label === "Quotations" ? "Quotations & Proposals" : item.label}</span>
                 {item.label === "AI Assistant" && !selected && <span className="h-1.5 w-1.5 rounded-full bg-[#d1ad60]"/>}
               </button>
+              </div>
             );
           })}
         </nav>
@@ -1045,7 +1050,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-3 md:gap-5">
             <span className="hidden items-center gap-1.5 rounded-full bg-[#654e24]/40 px-3 py-1.5 text-[11px] font-bold text-[#e7c37c] sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-[#ddb96d]"/>STAGING DATA</span>
-            <Bell size={19} className="text-[#9eacba]" aria-label="Notifications are not enabled"/>
+            <Bell size={19} className="text-[#9eacba]" aria-label="Notifications are not yet configured"/>
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#80642f] text-xs font-bold text-[#f5f0e8]">IS</div>
           </div>
         </header>
@@ -1319,7 +1324,16 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {section === "Integrations" && workspace && isOwner && <IntegrationsPanel workspaceId={workspace.id} onImported={() => { void refresh(); }} />}
+          {section === "Calendar" && workspace && isOwner && (
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-5">
+                <h2 className="text-lg font-semibold text-[#f4efe5]">Calendar & booking</h2>
+                <p className="mt-2 text-sm text-[#b8c7d4]">Review upcoming appointments, working hours and the booking connections for this company. Provider authorization remains owner-controlled.</p>
+              </div>
+              <CalendarConnections />
+            </div>
+          )}
+          {section === "Integrations" && workspace && isOwner && <IntegrationsPanel workspaceId={workspace.id} onImported={() => { void refresh(); }} onOpenCalendar={() => navigate("Calendar")} onOpenReceptionist={() => navigate("AI Receptionist")} />}
 
           {section === "Plans & Billing" && isOwner && (
             <div className="space-y-6">

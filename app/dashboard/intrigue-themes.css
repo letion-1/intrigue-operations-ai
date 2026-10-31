@@ -183,3 +183,226 @@
 @media (prefers-reduced-motion:reduce) {.intrigue-dashboard *{scroll-behavior:auto!important;}}
 
 /* INTRIGUE BAHARI STYLE END */
+
+/* INTRIGUE LIGHT THEME FULL FIX START */
+/* INTRIGUE V16.1 definitive light palette — component-level remediation.
+   Based on source Tailwind classes; applied after prior patches.
+   Light: WHITE / BEIGE / GOLD, no navy surface panels.
+   Dark theme remains untouched.
+*/
+.intrigue-dashboard[data-intrigue-theme="light"] {
+  --intrigue-bg: #ffffff;
+  --intrigue-side: #f8f4ee;
+  --intrigue-card: #ffffff;
+  --intrigue-beige: #edddc8;
+  --intrigue-ink: #14283f;
+  --intrigue-muted: #536276;
+  --intrigue-gold: #b58a43;
+  --intrigue-border: #e7dccc;
+  color: #14283f !important;
+  background: #ffffff !important;
+}
+.intrigue-dashboard[data-intrigue-theme="light"] aside {background: #f8f4ee !important; color: #14283f !important;}
+.intrigue-dashboard[data-intrigue-theme="light"] main,
+.intrigue-dashboard[data-intrigue-theme="light"] header {background: #ffffff !important; color:#14283f !important;}
+/* Convert all known navy component surfaces to white or beige, including chat and table panels. */
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#030810]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#0a1624]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#0b1827]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#0c1a2a]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#0d1c2b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#0d1e30]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#0d1f31]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#0d2032]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#0e2032]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#0e2235]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#0f1e2d]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#0f2032]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#101e31]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#102034]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#102234]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#13263b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#142539]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#152d3e]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#17293d]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#182b3e]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#182c41]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#192b3e]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#1b2b40]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#1b2c3f]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#1b2e42]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#263447]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#263751]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#26384d]"] { background-color: #ffffff !important; }
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#23463d]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#28394b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#2c3949]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#302a35]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#304153]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#30455b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#344358]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#34485c]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#383044]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#3d2a2e]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#554126]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#564024]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#654e24]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#80642f]"] { background-color: #f7f1e9 !important; }
+
+/* Convert light-on-dark text and dark borders inside those components. */
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#708093]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#71869b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#98a8b8]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#9daebb]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#9eacba]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#aab9c8]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#abb8c3]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#abbccd]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#aebdcb]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#aebed0]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#aebfcf]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#afbdcb]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#b1ead0]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#b3ead0]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#b4c1e6]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#b7c7d5]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#b8c7d4]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#bac9d6]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#bac9d7]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#bbcbd8]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#bccbd9]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#bdc8d4]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#bec9d2]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#c6d2df]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#c7d4df]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#c9d4df]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d0bc8f]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d0d8df]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d3d8dd]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d5dbe0]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d5dfeb]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d6bc80]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d6bc8e]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d8c18e]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d9c18b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d9c8a7]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d9e2eb]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#e1c27f]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#e6cc8d]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#e8d8b4]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#edd4a0]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#edd5a6]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#efcd85]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f0d18e]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f0e9dc]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f1cc7f]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f1d189]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f2d486]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f2eadb]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f2efe8]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f3c2b9]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f3d18e]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f4efe5]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f5dfb2]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f5f0e8]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#ffb3a7]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#ffc2b9]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#fff0da]"] { color: #536276 !important; }
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#c4a86e]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#c8a65f]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#cba75b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d4b469]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d5b46a]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#d9bd7d]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#dfbf7b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#e0bb72]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#e0bf76]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#e1bd72]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#e1c178]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#e4c47b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#e6c17b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#e7c37c]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#e9c577]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="text-[#f1cb75]"] { color: #14283f !important; }
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#2c3b4d]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#2d3b4f]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#304153]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#34475b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#35485d]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#37485b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#394b5f]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#3f3a2b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#3f5064]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#40566a]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#415064]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#45566b]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#45576a]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#46576a]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#46586a]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#506077]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#516071]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#51627a]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#526076]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#665632]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#6b5253]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#6f6250]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#795557]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#796440]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#806f46]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#8b764d]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#92723e]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#927b4e]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#93733c]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#937b48]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#967b48]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#997b45]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#9b7b35]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#9c8046]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#9f7b39]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#a18343]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#a97955]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#b18c46]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#b99a60]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#c9a552]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#caa961]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#d5b264]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="border-[#d9b467]"] { border-color: #e7dccc !important; }
+
+/* AI chat: no enormous navy rectangle in light mode. */
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#030810]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#0b1827]"] {
+  background-color: #ffffff !important; color: #14283f !important;
+}
+/* Tables, labels, tags and pills. */
+.intrigue-dashboard[data-intrigue-theme="light"] thead,
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#1b2e42]"] {background: #f4eadc !important; color:#14283f !important;}
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#26384d]"] {background:#eadbc4 !important;color:#684a20 !important;}
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#263751]"] {background:#e5ecf2 !important;color:#223f5a !important;}
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#23463d]"] {background:#e4f2e8 !important;color:#24633f !important;}
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#554126]"] {background:#f5e8d1 !important;color:#7a551d !important;}
+/* Retain navy typography, not navy panel backgrounds. */
+.intrigue-dashboard[data-intrigue-theme="light"] .brand-wordmark {color:#14283f !important;}
+/* Beige feature banner, following the Bahari OS light-mode reference. */
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-hero {
+  background:linear-gradient(120deg,#e4cfb4 0%,#f0dfc9 60%,#f8ede0 100%) !important;
+  color:#2c251e !important;
+  border:1px solid #d9c5ab !important;
+  box-shadow:0 14px 36px rgba(56,37,19,.08) !important;
+}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-hero h1,
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-hero h2,
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-hero p {color:#2c251e !important;}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-hero button {background:#493329 !important;color:#ffffff !important;}
+/* Gold CTA text remains readable, even when nested in converted panels. */
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#c9a552]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#d1ad60]"],
+.intrigue-dashboard[data-intrigue-theme="light"] [class~="bg-[#e5c47c]"] {
+  color:#14283f !important;
+}
+.intrigue-dashboard[data-intrigue-theme="light"] input,
+.intrigue-dashboard[data-intrigue-theme="light"] textarea,
+.intrigue-dashboard[data-intrigue-theme="light"] select {color:#14283f;}
+.intrigue-dashboard[data-intrigue-theme="light"] input::placeholder,
+.intrigue-dashboard[data-intrigue-theme="light"] textarea::placeholder {color:#65778a;}
+
+/* INTRIGUE LIGHT THEME FULL FIX END */

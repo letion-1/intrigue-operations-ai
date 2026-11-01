@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { FileDown, ImagePlus, Loader2, Save, Sparkles } from "lucide-react";
 import "./proposal-composer.css";
@@ -42,9 +42,12 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
   const [vatMode, setVatMode] = useState<"unset" | "inclusive" | "exclusive">("unset");
   const [vatRate, setVatRate] = useState(19);
   const [logo, setLogo] = useState<string | null>(null);
+  const [logoReading, setLogoReading] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
   const eligible = status === "draft" && lines.length > 0;
-  const displayed = figures(Number(subtotal), vatMode, vatRate);
+  const vatValid = Number.isFinite(vatRate) && vatRate >= 0 && vatRate <= 25 && Math.abs(Math.round(vatRate * 100) - vatRate * 100) < 1e-7;
+  const displayed = figures(Number(subtotal), vatMode, vatValid ? vatRate : 0);
   const stale = !!doc && (
     Math.abs(Number(doc.subtotal) - Number(subtotal)) > 0.009 ||
     !Array.isArray(doc.source_line_snapshot) ||
@@ -84,12 +87,19 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
   const change = (setter: (s: string) => void, value: string) => { setter(value); setDirty(true); setNotice(""); };
   const setTreatment = (next: "unset" | "inclusive" | "exclusive") => { setVatMode(next); setDirty(true); };
   const onLogo = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    // Do not let the file input interact with any surrounding dashboard click/form handler.
+    event.stopPropagation();
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
     if (!file) return;
     if (!["image/png", "image/jpeg"].includes(file.type) || file.size > 125000) {
-      setError("Use a small PNG/JPEG company logo (maximum 125 KB). SVG files are not accepted.");
-      event.target.value = ""; return;
+      setError("Choose a PNG or JPEG logo smaller than 125 KB. The logo was not changed.");
+      return;
     }
+    setLogoReading(true);
+    setError("");
+    setNotice("Reading company logo…");
     try {
       const data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -97,9 +107,18 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
         reader.onerror = () => reject(new Error("Logo file could not be read"));
         reader.readAsDataURL(file);
       });
-      setLogo(data); setDirty(true); setError("");
-    } catch (e) { setError(e instanceof Error ? e.message : "Logo upload failed."); }
-    event.target.value = "";
+      // The RPC enforces a 180,000-character data URL limit, including the prefix.
+      if (data.length > 180000) throw new Error("Logo is too large after encoding. Choose a smaller PNG/JPEG.");
+      setLogo(data);
+      setDirty(true);
+      setError("");
+      setNotice(`Logo ready: ${file.name}. Click Save proposal changes to keep it.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Logo upload failed.");
+      setNotice("");
+    } finally {
+      setLogoReading(false);
+    }
   };
 
   const suggest = async () => {
@@ -135,6 +154,8 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
     if (!heading.trim() || heading.length > 140 || introduction.length > 2500 || scope.length > 4000 || paymentTerms.length > 1400) {
       setError("Check the proposal title and text lengths."); return;
     }
+    if (!vatValid) { setError("Enter a VAT rate between 0 and 25%, with at most two decimal places."); return; }
+    if (logoReading) { setError("Finish loading the logo before saving."); return; }
     setBusy(true); setError(""); setNotice("");
     try {
       const { data, error: saveError } = await supabase.rpc("intrigue_proposal_save", {
@@ -157,7 +178,7 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
     finally { setBusy(false); }
   };
   const print = async () => {
-    if (!doc || dirty || stale || busy) return;
+    if (!doc || dirty || stale || busy || logoReading) return;
     setBusy(true); setError("");
     try {
       // Recheck live records before printing; a different tab/staff member may have changed the quote.
@@ -213,30 +234,38 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
             <option value="exclusive">Add VAT to catalog prices</option>
           </select>
         </label>
-        <label>VAT rate
-          <select disabled={!canWrite || !eligible || vatMode === "unset"} value={vatRate} onChange={e => { setVatRate(Number(e.target.value)); setDirty(true); }}>
-            <option value={0}>0% (verify exemption)</option><option value={7}>7%</option><option value={19}>19%</option>
-          </select>
+        <label>VAT rate (%)
+          <input type="number" inputMode="decimal" min={0} max={25} step={0.01}
+            aria-label="Custom VAT rate percentage" disabled={!canWrite || !eligible || vatMode === "unset"}
+            value={Number.isFinite(vatRate) ? vatRate : ""} onChange={e => { setVatRate(e.target.value === "" ? NaN : Number(e.target.value)); setDirty(true); setNotice(""); }}/>
+          <span className="pc-muted">Enter your verified rate, including decimals (0–25%).</span>
         </label>
       </div>
+      {!vatValid && <p role="alert" className="pc-error">Enter a VAT rate from 0 to 25% using no more than two decimal places.</p>}
       <p className="pc-muted">VAT is selected manually by an authorized user. The AI does not determine the legal tax rate. Verify the customer's jurisdiction and whether catalog prices include VAT.</p>
       <div className="pc-math"><div><span>Catalog subtotal</span><strong>{euro(Number(subtotal))}</strong></div>
         <div><span>{vatMode === "unset" ? "VAT not assessed" : vatMode === "inclusive" ? `VAT included (${vatRate}%)` : `VAT added (${vatRate}%)`}</span><strong>{vatMode === "unset" ? "Pending" : euro(displayed.vat)}</strong></div>
         <div className="pc-grand"><span>Draft total</span><strong>{euro(displayed.total)}</strong></div>
       </div>
       <label>Payment and commercial terms<textarea rows={2} maxLength={1400} disabled={!canWrite || !eligible} value={paymentTerms} onChange={e => change(setPaymentTerms,e.target.value)} placeholder="Enter your approved payment, return and delivery terms."/></label>
-      <div className="pc-logo"><div>{logo && <img src={logo} alt="Company logo preview"/>}<div><strong>Company logo</strong><p>Optional PNG/JPEG (max 125 KB), saved with this proposal draft. Company name is always shown.</p></div></div>
-        {canWrite && eligible && <label className="pc-upload"><ImagePlus size={15}/> Upload logo<input type="file" accept="image/png,image/jpeg" onChange={onLogo}/></label>}
-        {canWrite && eligible && logo && <button type="button" className="pc-secondary" onClick={() => {setLogo(null);setDirty(true);}}>Remove logo</button>}
+      <div className="pc-logo"><div>{logo && <img src={logo} alt="Company logo preview"/>}<div><strong>Company logo</strong><p>Optional PNG/JPEG (max 125 KB). Preview it, then save the proposal to keep it. Company name is always shown.</p></div></div>
+        <input ref={logoInputRef} type="file" accept="image/png,image/jpeg" hidden
+          aria-label="Choose company logo image" onClick={e => e.stopPropagation()} onChange={onLogo}/>
+        {canWrite && eligible && <button type="button" className="pc-upload" disabled={logoReading || busy}
+          onClick={e => { e.preventDefault(); e.stopPropagation(); logoInputRef.current?.click(); }}>
+          {logoReading ? <Loader2 size={15}/> : <ImagePlus size={15}/>}{logoReading ? "Loading logo…" : logo ? "Change logo" : "Upload logo"}
+        </button>}
+        {canWrite && eligible && logo && <button type="button" className="pc-secondary" disabled={logoReading || busy}
+          onClick={() => {setLogo(null);setDirty(true);setNotice("Logo removed locally. Save the proposal to keep this change.");}}>Remove logo</button>}
       </div>
       {canWrite && eligible && <div className="pc-actions">
         <button type="button" className="pc-secondary" disabled={generating || busy} onClick={suggest}><Sparkles size={15}/>{generating ? "Preparing AI suggestion…" : "Suggest wording with AI"}</button>
-        <button type="button" className="pc-primary" disabled={busy || generating || !dirty && !!doc} onClick={save}><Save size={15}/>{busy ? "Saving…" : doc ? "Save proposal changes" : "Save proposal draft"}</button>
+        <button type="button" className="pc-primary" disabled={busy || generating || logoReading || !vatValid || !dirty && !!doc} onClick={save}><Save size={15}/>{busy ? "Saving…" : doc ? "Save proposal changes" : "Save proposal draft"}</button>
       </div>}
       {suggestion && <div className="pc-ai-preview"><strong>AI suggestion (not saved)</strong><p><b>{suggestion.heading}</b></p><p>{suggestion.introduction}</p><p>{suggestion.scope}</p>
         <button type="button" className="pc-primary" onClick={applySuggestion}>Apply suggestion to editor</button>
         <button type="button" className="pc-secondary" onClick={() => setSuggestion(null)}>Discard</button></div>}
-      {doc && <div className="pc-actions"><button type="button" className="pc-secondary" disabled={dirty || stale || busy} onClick={() => { void print(); }}><FileDown size={15}/> Print / Save as PDF</button>
+      {doc && <div className="pc-actions"><button type="button" className="pc-secondary" disabled={dirty || stale || busy || logoReading} onClick={() => { void print(); }}><FileDown size={15}/> Print / Save as PDF</button>
         {(dirty || stale) && <span className="pc-muted">Save changes before printing.</span>}</div>}
       <p className="pc-muted">No email, payment, approval, or signature is triggered. AI sends limited catalog, company-policy and masked enquiry-summary text to your configured provider; use only where your privacy agreements permit.</p>
       {doc && <div className="pc-print" aria-hidden="true">

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { createClient } from "@/lib/supabase/client";
 import "./brand.css";
 import "./intrigue-themes.css";
+import CustomersCRMPanel from "./crm/CustomersCRMPanel";
+import IndustryIcon, { isAutomotiveIndustry } from "./crm/IndustryIcon";
 import "./intrigue-logout.css";
 import { LogOut } from "lucide-react";
 import AccountDeletionPanel from "./account/AccountDeletionPanel";
@@ -143,7 +145,7 @@ type AiUsage = {
 };
 const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","AI Receptionist","Action Center","Automation Center","Integrations","Calendar","Data Management","Security & Usage","Plans & Billing","Pilot Application"];
 
-type Customer = { id: string; full_name: string; email: string | null; vehicle: string | null; created_at: string };
+type Customer = { id: string; full_name: string; email: string | null; phone: string | null; vehicle: string | null; created_at: string };
 type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string };
 type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string };
 type FollowUp = { id: string; customer_id: string; title: string; due_at: string; status: string; priority: string };
@@ -396,7 +398,7 @@ export default function DashboardPage() {
       return;
     }
     const [c, e, q, t] = await Promise.all([
-      supabase.from("customers").select("id,full_name,email,vehicle,created_at").eq("workspace_id", found.id).order("created_at", { ascending: false }),
+      supabase.from("customers").select("id,full_name,email,phone,vehicle,created_at").eq("workspace_id", found.id).order("created_at", { ascending: false }),
       supabase.from("enquiries").select("id,customer_id,subject,status,created_at").eq("workspace_id", found.id).order("created_at", { ascending: false }),
       supabase.from("quotations").select("id,customer_id,description,amount,status,created_at").eq("workspace_id", found.id).order("created_at", { ascending: false }),
       supabase.from("follow_ups").select("id,customer_id,title,due_at,status,priority").eq("workspace_id", found.id).order("due_at", { ascending: true }),
@@ -958,7 +960,12 @@ export default function DashboardPage() {
   }
 
   const customerName = (id:string) => customers.find((c) => c.id === id)?.full_name || "Unknown customer";
-  const customerVehicle = (id:string) => customers.find((c) => c.id === id)?.vehicle || "Not specified";
+  const customerContext = (id:string) => {
+    const customer = customers.find((c) => c.id === id);
+    return isAutomotiveIndustry(settings.industry)
+      ? (customer?.vehicle || "Vehicle not provided")
+      : (customer?.email || customer?.phone || "Contact not provided");
+  };
   const activeEnquiries = enquiries.filter((e) => e.status !== "closed");
   const pendingTasks = tasks.filter((t) => t.status === "pending");
   const pendingQuotes = quotes.filter((q) => q.status !== "approved");
@@ -1063,7 +1070,7 @@ export default function DashboardPage() {
       </div>
       <div className="mx-4 mb-7 rounded-xl border border-[#d9b467]/20 bg-[#ffffff]/[0.035] px-3.5 py-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#bd9955]/20 text-[#e1c27f]"><CarFront size={19}/></div>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#bd9955]/20 text-[#e1c27f]"><IndustryIcon industry={settings.industry} size={19}/></div>
           <div className="min-w-0">
             <div className="truncate text-[13px] font-semibold text-[#f5f0e8]">{workspace?.name ?? "Your company"}</div>
             <div className="text-[11px] text-[#9eacba]">Private staging workspace</div>
@@ -1085,7 +1092,7 @@ export default function DashboardPage() {
                 className={`intrigue-nav-item flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] font-medium transition-colors ${selected ? "intrigue-nav-item-active" : ""}`}
               >
                 <Icon size={18} strokeWidth={selected ? 2.4 : 1.8} />
-                <span className="flex-1">{item.label === "Customers" ? "Customers & CRM" : item.label === "Quotations" ? "Quotations & Proposals" : item.label}</span>
+                <span className="flex-1">{item.label === "Customers" ? "Customers & CRM" : item.label === "Quotations" ? "Quotations & Proposals" : item.label === "Service Catalog" && /retail|fashion|commerce/i.test(settings.industry) ? "Product Catalog" : item.label}</span>
                 {item.label === "AI Assistant" && !selected && <span className="h-1.5 w-1.5 rounded-full bg-[#d1ad60]"/>}
               </button>
               </div>
@@ -1122,7 +1129,7 @@ export default function DashboardPage() {
             <button type="button" className="rounded-lg p-2 hover:bg-[#26384d] lg:hidden" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={22}/></button>
             <span className="hidden text-[13px] text-[#9eacba] sm:block">Workspace</span>
             <ChevronRight className="hidden text-[#d5dfeb] sm:block" size={15}/>
-            <span className="text-sm font-semibold">{section}</span>
+            <span className="text-sm font-semibold">{section === "Service Catalog" && /retail|fashion|commerce/i.test(settings.industry) ? "Product Catalog" : section}</span>
           </div>
           <div className="flex items-center gap-3 md:gap-5">
             <span className="hidden items-center gap-1.5 rounded-full bg-[#654e24]/40 px-3 py-1.5 text-[11px] font-bold text-[#e7c37c] sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-[#ddb96d]"/>STAGING DATA</span>
@@ -1150,7 +1157,7 @@ export default function DashboardPage() {
           <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.26em] text-[#d4b469]">{workspace?.name.toUpperCase() ?? "NEW COMPANY"}  /  PRIVATE STAGING</div>
-              <h1 className="brand-display text-[34px] font-medium leading-none tracking-[-0.04em] md:text-[46px]">{section === "Overview" ? "Your operations, in focus." : section}</h1>
+              <h1 className="brand-display text-[34px] font-medium leading-none tracking-[-0.04em] md:text-[46px]">{section === "Overview" ? "Your operations, in focus." : (section === "Service Catalog" && /retail|fashion|commerce/i.test(settings.industry) ? "Product Catalog" : section)}</h1>
               <p className="mt-1.5 text-sm text-[#afbdcb]">{section === "Overview" ? "An intelligent view of everything moving your business forward." : "Saved records from your private staging workspace."}</p>
             </div>
             <div className="flex gap-2">
@@ -1213,7 +1220,7 @@ export default function DashboardPage() {
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(310px,1fr)]">
                 <div className="rounded-2xl border border-[#304153] bg-[#142539] shadow-sm">
                   <div className="flex items-center justify-between border-b border-[#2d3b4f] px-5 py-5 md:px-6"><div><h3 className="text-[15px] font-bold">Recent inquiries</h3><p className="mt-1 text-xs text-[#9eacba]">Customers that need your attention</p></div><button type="button" onClick={() => navigate("Customers")} className="flex items-center gap-1 text-xs font-semibold text-[#e0bf76] hover:underline">View all <ArrowUpRight size={15}/></button></div>
-                  <div className="intrigue-inquiries-overview min-w-0"><table className="w-full table-fixed text-left"><thead><tr className="border-b border-[#2d3b4f] bg-[#192b3e]/70 text-[11px] uppercase tracking-[0.04em] text-[#9eacba]"><th className="px-6 py-3 font-semibold">Customer</th><th className="px-3 py-3 font-semibold">Request</th><th className="px-3 py-3 font-semibold">Status</th><th className="px-4 py-3 font-semibold">Received</th></tr></thead><tbody>{enquiries.slice(0, 5).map((row) => <tr key={row.id} className="border-b border-[#2d3b4f] last:border-0"><td className="px-6 py-4"><div className="text-xs font-bold text-[#f5f0e8]">{customerName(row.customer_id)}</div><div className="mt-1 text-[11px] text-[#9eacba]">{customerVehicle(row.customer_id)}</div></td><td className="px-3 py-4 text-xs text-[#d5dbe0]">{row.subject}</td><td className="px-3 py-4"><Tag variant={row.status === "follow_up" ? "amber" : row.status === "scheduled" ? "emerald" : row.status === "new" ? "blue" : "slate"}>{statusText(row.status)}</Tag></td><td className="px-4 py-4 text-[11px] text-[#9eacba]">{niceDate(row.created_at)}</td></tr>)}</tbody></table></div>
+                  <div className="intrigue-inquiries-overview min-w-0"><table className="w-full table-fixed text-left"><thead><tr className="border-b border-[#2d3b4f] bg-[#192b3e]/70 text-[11px] uppercase tracking-[0.04em] text-[#9eacba]"><th className="px-6 py-3 font-semibold">Customer</th><th className="px-3 py-3 font-semibold">Request</th><th className="px-3 py-3 font-semibold">Status</th><th className="px-4 py-3 font-semibold">Received</th></tr></thead><tbody>{enquiries.slice(0, 5).map((row) => <tr key={row.id} className="border-b border-[#2d3b4f] last:border-0"><td className="px-6 py-4"><div className="text-xs font-bold text-[#f5f0e8]">{customerName(row.customer_id)}</div><div className="mt-1 text-[11px] text-[#9eacba]">{customerContext(row.customer_id)}</div></td><td className="px-3 py-4 text-xs text-[#d5dbe0]">{row.subject}</td><td className="px-3 py-4"><Tag variant={row.status === "follow_up" ? "amber" : row.status === "scheduled" ? "emerald" : row.status === "new" ? "blue" : "slate"}>{statusText(row.status)}</Tag></td><td className="px-4 py-4 text-[11px] text-[#9eacba]">{niceDate(row.created_at)}</td></tr>)}</tbody></table></div>
                 </div>
                 <div className="rounded-2xl border border-[#304153] bg-[#142539] p-5 shadow-sm md:p-6">
                   <div className="mb-1 flex items-center gap-2"><Sparkles size={19} className="text-[#e0bb72]"/><h3 className="text-[15px] font-bold">Ask your business</h3></div>
@@ -1319,11 +1326,11 @@ export default function DashboardPage() {
           </div>}
 
           {section === "Service Catalog" && <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#35485d] bg-[#142539] p-6"><div><h2 className="text-lg font-semibold">Your services & prices</h2><p className="mt-1 text-xs text-[#afbdcb]">Workspace-specific catalog. Your AI can look up active services; quotations still require the existing approval flow.</p></div>
-              {canManageCatalog && <button type="button" className={newButtonClass} onClick={()=>{setShowServiceForm(v=>!v);setServiceForm({id:"",name:"",description:"",price:"",currency:settings.currency,is_active:true});}}><Plus size={14} className="mr-1 inline"/>New service</button>}</div>
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#35485d] bg-[#142539] p-6"><div><h2 className="text-lg font-semibold">{/retail|fashion|commerce/i.test(settings.industry) ? "Your products & prices" : "Your services & prices"}</h2><p className="mt-1 text-xs text-[#afbdcb]">Workspace-specific catalog. Your AI can look up active services; quotations still require the existing approval flow.</p></div>
+              {canManageCatalog && <button type="button" className={newButtonClass} onClick={()=>{setShowServiceForm(v=>!v);setServiceForm({id:"",name:"",description:"",price:"",currency:settings.currency,is_active:true});}}><Plus size={14} className="mr-1 inline"/>{/retail|fashion|commerce/i.test(settings.industry) ? "New product" : "New service"}</button>}</div>
             {serviceError && <p role="alert" className="rounded-lg border border-red-400/40 p-3 text-sm text-[#ffb3a7]">{serviceError}</p>}
             {canManageCatalog && showServiceForm && <form onSubmit={saveService} className="grid gap-3 rounded-2xl border border-[#927b4e] bg-[#142539] p-5 md:grid-cols-2">
-              <label className="text-xs text-[#e7c37c]">Service name<input required minLength={2} maxLength={120} className={`${inputClass} mt-2`} value={serviceForm.name} onChange={e=>setServiceForm({...serviceForm,name:e.target.value})}/></label>
+              <label className="text-xs text-[#e7c37c]">{/retail|fashion|commerce/i.test(settings.industry) ? "Product name" : "Service name"}<input required minLength={2} maxLength={120} className={`${inputClass} mt-2`} value={serviceForm.name} onChange={e=>setServiceForm({...serviceForm,name:e.target.value})}/></label>
               <label className="text-xs text-[#e7c37c]">Price<input type="number" min="0" max="999999999" step="0.01" required className={`${inputClass} mt-2`} value={serviceForm.price} onChange={e=>setServiceForm({...serviceForm,price:e.target.value})}/></label>
               <label className="text-xs text-[#e7c37c]">Currency<select className={`${inputClass} mt-2`} value={serviceForm.currency} onChange={e=>setServiceForm({...serviceForm,currency:e.target.value})}>{["EUR","USD","GBP","KES"].map(x=><option key={x}>{x}</option>)}</select></label>
               <label className="flex items-center gap-2 text-xs text-[#e7c37c]"><input type="checkbox" checked={serviceForm.is_active} onChange={e=>setServiceForm({...serviceForm,is_active:e.target.checked})}/>Active service</label>
@@ -1333,11 +1340,15 @@ export default function DashboardPage() {
             <div className="grid gap-3 md:grid-cols-2">{services.map(item=><article key={item.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-5"><div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold">{item.name}</h3><Tag variant={item.is_active?"emerald":"slate"}>{item.is_active?"Active":"Inactive"}</Tag></div><p className="mt-2 text-lg font-semibold text-[#e4c47b]">{new Intl.NumberFormat("en-GB",{style:"currency",currency:item.currency}).format(Number(item.price))}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">{item.description||"No description yet"}</p>{canManageCatalog && <div className="mt-4 flex gap-2"><button type="button" className="rounded-lg border border-[#8b764d] px-3 py-2 text-xs" onClick={()=>{setServiceForm({id:item.id,name:item.name,description:item.description,price:String(item.price),currency:item.currency,is_active:item.is_active});setShowServiceForm(true);}}>Edit</button><button type="button" disabled={serviceBusy} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]" onClick={()=>void removeService(item.id)}>Delete</button></div>}</article>)}{services.length===0 && <p className="rounded-2xl border border-[#35485d] bg-[#142539] p-7 text-sm text-[#afbdcb]">No services yet. {canManageCatalog?"Add the first service to begin.":"Ask your owner or admin to add services."}</p>}</div>
           </div>}
 
-          {section === "Customers" && <div className="overflow-hidden rounded-2xl border border-[#304153] bg-[#142539] shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2d3b4f] p-6"><div><h2 className="text-base font-bold">Customers & inquiries</h2><p className="mt-1 text-xs text-[#afbdcb]">Stored fictional records Â· Supabase</p></div>{canWriteOps && <button type="button" onClick={()=>setShowCustomerForm(!showCustomerForm)} className={newButtonClass}><Plus size={14} className="mr-1 inline"/>New inquiry</button>}</div>
-            {canWriteOps && showCustomerForm && <form onSubmit={addCustomer} className="grid gap-3 border-b border-[#2d3b4f] p-5 md:grid-cols-3"><input className={inputClass} placeholder="Customer name" aria-label="Customer name" required maxLength={150} value={customerForm.name} onChange={e=>setCustomerForm({...customerForm,name:e.target.value})}/><input className={inputClass} placeholder="Vehicle (optional)" aria-label="Vehicle" maxLength={120} value={customerForm.vehicle} onChange={e=>setCustomerForm({...customerForm,vehicle:e.target.value})}/><input className={inputClass} placeholder="Service request" aria-label="Service request" required maxLength={300} value={customerForm.service} onChange={e=>setCustomerForm({...customerForm,service:e.target.value})}/><button type="submit" disabled={busy} className={`${newButtonClass} md:col-span-3`}>Save customer & inquiry</button></form>}
-            <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead><tr className="bg-[#1b2e42] text-xs text-[#afbdcb]"><th className="px-6 py-3">Name</th><th className="px-6 py-3">Vehicle</th><th className="px-6 py-3">Service request</th><th className="px-6 py-3">Status</th></tr></thead><tbody>{enquiries.map((row) => <tr className="border-t border-[#2d3b4f]" key={row.id}><td className="px-6 py-4 font-semibold">{customerName(row.customer_id)}</td><td className="px-6 py-4">{customerVehicle(row.customer_id)}</td><td className="px-6 py-4">{row.subject}</td><td className="px-6 py-4"><Tag>{statusText(row.status)}</Tag></td></tr>)}</tbody></table>{enquiries.length===0 && <p className="p-6 text-sm text-[#afbdcb]">No customer inquiries yet. Add one to get started.</p>}</div>
-          </div>}
+          {section === "Customers" && <CustomersCRMPanel
+            workspaceId={workspace?.id ?? ""}
+            companyName={workspace?.name ?? ""}
+            industry={settings.industry}
+            customers={customers}
+            enquiries={enquiries}
+            canWrite={canWriteOps}
+            refresh={refresh}
+          />}
 
           {section === "Quotations" && <div className="overflow-hidden rounded-2xl border border-[#304153] bg-[#142539] shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2d3b4f] p-6"><div><h2 className="text-base font-bold">Draft quotations</h2><p className="mt-1 text-xs text-[#afbdcb]">Saved drafts only. Nothing is sent automatically.</p></div>{isOwner && <button type="button" className={newButtonClass} onClick={()=>setShowQuoteForm(!showQuoteForm)}><Plus size={14} className="mr-1 inline"/>New quote</button>}</div>
@@ -1348,7 +1359,7 @@ export default function DashboardPage() {
           {section === "Follow-ups" && <div className="space-y-4">
             {canWriteOps && <div className="flex justify-end"><button type="button" className={newButtonClass} onClick={()=>setShowFollowForm(!showFollowForm)}><Plus size={14} className="mr-1 inline"/>New follow-up</button></div>}
             {canWriteOps && showFollowForm && <form onSubmit={addFollowUp} className="grid gap-3 rounded-2xl border border-[#35485d] bg-[#142539] p-5 md:grid-cols-3"><select className={inputClass} required value={followForm.customerId} onChange={e=>setFollowForm({...followForm,customerId:e.target.value})} aria-label="Select customer"><option value="">Select customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select><input className={inputClass} required maxLength={300} placeholder="Follow-up task" aria-label="Follow-up task" value={followForm.title} onChange={e=>setFollowForm({...followForm,title:e.target.value})}/><input className={inputClass} required type="date" aria-label="Due date" value={followForm.date} onChange={e=>setFollowForm({...followForm,date:e.target.value})}/><button disabled={busy || !customers.length} className={`${newButtonClass} md:col-span-3`}>Save follow-up</button></form>}
-            <div className="grid gap-4 md:grid-cols-2">{tasks.map(task=><div key={task.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 shadow-sm"><div className="mb-4 flex items-start justify-between gap-3"><div className="text-base font-bold">{customerName(task.customer_id)}</div><Tag variant={task.status==="done"?"emerald":"amber"}>{task.status==="done"?"Completed":task.priority==="high"?"High priority":"Pending"}</Tag></div><p className="text-sm font-medium text-[#f0e9dc]">{task.title}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">Due {niceDate(task.due_at)} Â· {customerVehicle(task.customer_id)}</p>{canWriteOps && task.status==="pending" && <button type="button" disabled={busy} onClick={()=>completeFollowUp(task.id)} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#9f7b39] px-3 py-2 text-xs text-[#e1c178] hover:bg-[#304153]"><CheckCircle2 size={15}/>Mark complete</button>}</div>)}</div>
+            <div className="grid gap-4 md:grid-cols-2">{tasks.map(task=><div key={task.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 shadow-sm"><div className="mb-4 flex items-start justify-between gap-3"><div className="text-base font-bold">{customerName(task.customer_id)}</div><Tag variant={task.status==="done"?"emerald":"amber"}>{task.status==="done"?"Completed":task.priority==="high"?"High priority":"Pending"}</Tag></div><p className="text-sm font-medium text-[#f0e9dc]">{task.title}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">Due {niceDate(task.due_at)} Â· {customerContext(task.customer_id)}</p>{canWriteOps && task.status==="pending" && <button type="button" disabled={busy} onClick={()=>completeFollowUp(task.id)} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#9f7b39] px-3 py-2 text-xs text-[#e1c178] hover:bg-[#304153]"><CheckCircle2 size={15}/>Mark complete</button>}</div>)}</div>
             {tasks.length===0 && <p className="rounded-xl border border-[#35485d] p-6 text-sm text-[#afbdcb]">No follow-up tasks yet.</p>}
           </div>}
 

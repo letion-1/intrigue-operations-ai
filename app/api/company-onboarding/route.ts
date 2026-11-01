@@ -140,9 +140,21 @@ function merge(a:Dataset,b:Dataset){
 }
 export async function POST(request:NextRequest){
   try{
-    const publicUrl=process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anon=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if(!publicUrl||!anon)return err('Supabase public configuration is missing.',500);
+    // Supabase recently introduced publishable keys. Existing INTRIGUE
+    // workspaces may use either the legacy anon key or the newer publishable key.
+    // These are PUBLIC client keys; never fall back to a service-role/secret key.
+    const publicUrl=(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '').trim();
+    const anon=(
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_PUBLISHABLE_KEY ||
+      process.env.SUPABASE_ANON_KEY || ''
+    ).trim();
+    if(!publicUrl || !anon){
+      const missing=[!publicUrl?'Supabase project URL':'',!anon?'Supabase publishable/anon key':''].filter(Boolean).join(' and ');
+      return err(`Onboarding API missing ${missing} in this deployment. Configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY), then redeploy.`,500);
+    }
     const token=request.headers.get('authorization')?.replace(/^Bearer\s+/i,'').trim();
     if(!token)return err('Sign in required.',401);
     const client=createClient(publicUrl,anon,{global:{headers:{Authorization:`Bearer ${token}`}},auth:{persistSession:false,autoRefreshToken:false}});

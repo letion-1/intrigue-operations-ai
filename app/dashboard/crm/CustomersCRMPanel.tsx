@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Mail, Pencil, Phone, Plus, Search, Users, X } from "lucide-react";
+import { ClipboardList, Mail, Pencil, Phone, Plus, Search, Users, X } from "lucide-react";
 import { isAutomotiveIndustry } from "./IndustryIcon";
 import "./customers-crm.css";
 
@@ -46,7 +46,11 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
 }) {
   const supabase = useMemo(() => createClient(), []);
   const automotive = isAutomotiveIndustry(industry);
+  const [activeTab, setActiveTab] = useState<"customers" | "enquiries">("customers");
   const [search, setSearch] = useState("");
+  const [showEnquiryForm, setShowEnquiryForm] = useState(false);
+  const [enquiryCustomerId, setEnquiryCustomerId] = useState("");
+  const [enquirySubject, setEnquirySubject] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -64,13 +68,45 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
 
   const updateField = (key: keyof Draft, value: string) => setDraft(current => ({ ...current, [key]: value }));
   const openCreate = () => {
+    setActiveTab("customers"); setShowEnquiryForm(false);
     setEditingId(null); setDraft(emptyDraft); setError(""); setSuccess(""); setShowCreate(true);
+  };
+  const openNewEnquiry = () => {
+    setActiveTab("enquiries"); setShowCreate(false); setError(""); setSuccess("");
+    setEnquiryCustomerId(""); setEnquirySubject(""); setShowEnquiryForm(true);
+  };
+  const switchTab = (tab: "customers" | "enquiries") => {
+    setActiveTab(tab); setShowCreate(false); setShowEnquiryForm(false); setError(""); setSuccess("");
   };
   const openEdit = (c: Customer) => {
     setEditingId(c.id);
     setDraft({ full_name: c.full_name, email: c.email || "", phone: c.phone || "", vehicle: c.vehicle || "", enquiry: "" });
     setError(""); setSuccess(""); setShowCreate(true);
   };
+  async function saveEnquiry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!workspaceId || !canWrite || saving) return;
+    if (!customers.some(c => c.id === enquiryCustomerId)) {
+      setError("Select a customer from this company."); return;
+    }
+    const subject = enquirySubject.trim();
+    if (subject.length < 3 || subject.length > 300) {
+      setError("Enter an enquiry of 3–300 characters."); return;
+    }
+    setSaving(true); setError(""); setSuccess("");
+    try {
+      const { error: dbError } = await supabase.from("enquiries").insert({
+        workspace_id: workspaceId, customer_id: enquiryCustomerId,
+        subject, status: "new",
+      });
+      if (dbError) throw new Error(dbError.message);
+      await refresh();
+      setShowEnquiryForm(false); setEnquiryCustomerId(""); setEnquirySubject("");
+      setSuccess("New enquiry saved to this company workspace.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save enquiry.");
+    } finally { setSaving(false); }
+  }
   async function saveCustomer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!workspaceId || !canWrite || saving) return;
@@ -117,18 +153,41 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
         <h2><Users size={19} /> Customers & CRM</h2>
         <p>Customers and enquiries belonging to <strong>{companyName || "this workspace"}</strong>.</p>
       </div>
-      {canWrite && <button className="crm-primary" type="button" onClick={openCreate}><Plus size={16} /> Add customer</button>}
+      {canWrite && <div className="crm-toolbar-actions">
+        <button className="crm-secondary" type="button" onClick={openNewEnquiry}><Plus size={16} /> New enquiry</button>
+        <button className="crm-primary" type="button" onClick={openCreate}><Plus size={16} /> Add customer</button>
+      </div>}
     </div>
     <div className="crm-stats">
       <div><strong>{customers.length}</strong><span>Customers</span></div>
-      <div><strong>{enquiries.length}</strong><span>Enquiries</span></div>
+      <button type="button" onClick={() => switchTab("enquiries")} aria-label={`View ${enquiries.length} enquiries`}><strong>{enquiries.length}</strong><span>Enquiries <span aria-hidden="true">↗</span></span></button>
       <div><strong>{customers.filter(c => !!c.email).length}</strong><span>With email</span></div>
       <div><strong>{customers.filter(c => !!c.phone).length}</strong><span>With phone</span></div>
     </div>
-    <label className="crm-search"><Search size={16} /><span className="sr-only">Search customers and enquiries</span><input type="search" placeholder="Search names, email addresses, phone numbers or enquiries" value={search} onChange={e => setSearch(e.target.value)} /></label>
+    <div className="crm-tabs" role="tablist" aria-label="CRM views">
+      <button type="button" role="tab" id="crm-customers-tab" aria-selected={activeTab === "customers"} aria-controls="crm-customers-panel" className={activeTab === "customers" ? "crm-tab-active" : ""} onClick={() => switchTab("customers")}><Users size={16} /> Customers <span>({customers.length})</span></button>
+      <button type="button" role="tab" id="crm-enquiries-tab" aria-selected={activeTab === "enquiries"} aria-controls="crm-enquiries-panel" className={activeTab === "enquiries" ? "crm-tab-active" : ""} onClick={() => switchTab("enquiries")}><ClipboardList size={16} /> Enquiries <span>({enquiries.length})</span></button>
+    </div>
+    <label className="crm-search"><Search size={16} /><span className="sr-only">Search {activeTab}</span><input type="search" placeholder={activeTab === "customers" ? "Search customer names, email addresses or phone numbers" : "Search enquiries and customer names"} value={search} onChange={e => setSearch(e.target.value)} /></label>
     {error && <div className="crm-alert" role="alert">{error}</div>}
     {success && <div className="crm-success" role="status">{success}</div>}
-    {canWrite && showCreate && <form className="crm-form" onSubmit={saveCustomer}>
+    {canWrite && activeTab === "enquiries" && showEnquiryForm && <form className="crm-form" onSubmit={saveEnquiry}>
+      <div className="crm-form-heading"><strong>New enquiry</strong><button type="button" aria-label="Close enquiry form" onClick={() => {setShowEnquiryForm(false);setError("");}}><X size={18}/></button></div>
+      <p className="crm-form-help">Link a new request to an existing customer. To record a request from somebody new, select Add customer first.</p>
+      <div className="crm-form-grid">
+        <label>Customer *
+          <select required value={enquiryCustomerId} onChange={e => setEnquiryCustomerId(e.target.value)}>
+            <option value="">Select an existing customer</option>
+            {[...customers].sort((a,b) => a.full_name.localeCompare(b.full_name)).map(c => <option key={c.id} value={c.id}>{c.full_name}{c.email ? ` (${c.email})` : ""}</option>)}
+          </select>
+        </label>
+        <label className="crm-wide">Enquiry / customer request *
+          <textarea required minLength={3} maxLength={300} rows={3} value={enquirySubject} onChange={e => setEnquirySubject(e.target.value)} placeholder={automotive ? "e.g. Request for carbon-fiber body kit quotation" : "e.g. Question about order delivery or product availability"} />
+        </label>
+      </div>
+      <div className="crm-form-actions"><button className="crm-primary" type="submit" disabled={saving || !customers.length}>{saving ? "Saving…" : "Save enquiry"}</button><button className="crm-secondary" type="button" onClick={() => setShowEnquiryForm(false)}>Cancel</button></div>
+    </form>}
+    {canWrite && activeTab === "customers" && showCreate && <form className="crm-form" onSubmit={saveCustomer}>
       <div className="crm-form-heading"><strong>{editingId ? "Edit customer contact" : "Add customer"}</strong><button type="button" aria-label="Close form" onClick={() => {setShowCreate(false);setError("");}}><X size={18}/></button></div>
       <div className="crm-form-grid">
         <label>Customer name *<input required maxLength={150} value={draft.full_name} onChange={e => updateField("full_name", e.target.value)} /></label>
@@ -139,7 +198,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       </div>
       <div className="crm-form-actions"><button className="crm-primary" type="submit" disabled={saving}>{saving ? "Saving…" : editingId ? "Save contact changes" : "Save customer"}</button><button className="crm-secondary" type="button" onClick={() => setShowCreate(false)}>Cancel</button></div>
     </form>}
-    <div className="crm-panel">
+    {activeTab === "customers" && <div id="crm-customers-panel" role="tabpanel" aria-labelledby="crm-customers-tab" className="crm-panel">
       <div className="crm-heading"><h3>Customer directory <span>({visibleCustomers.length})</span></h3><p>Contact information stays inside this company workspace.</p></div>
       <div className="crm-table-scroll"><table>
         <thead><tr><th>Name</th><th>Email</th><th>Phone</th>{automotive && <th>Vehicle</th>}{canWrite && <th>Actions</th>}</tr></thead>
@@ -152,9 +211,9 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
         </tr>)}</tbody>
       </table></div>
       {!visibleCustomers.length && <div className="crm-empty-state">{customers.length ? "No customers match your search." : "No customers yet. Add one or import company records."}</div>}
-    </div>
-    <div className="crm-panel">
-      <div className="crm-heading"><h3>Enquiries <span>({visibleEnquiries.length})</span></h3><p>{automotive ? "Repair and upgrade requests" : "Customer questions and business requests"}</p></div>
+    </div>}
+    {activeTab === "enquiries" && <div id="crm-enquiries-panel" role="tabpanel" aria-labelledby="crm-enquiries-tab" className="crm-panel">
+      <div className="crm-heading crm-enquiries-heading"><div><h3>Enquiries <span>({visibleEnquiries.length})</span></h3><p>{automotive ? "Repair and upgrade requests" : "Customer questions and business requests"}</p></div>{canWrite && <button type="button" className="crm-primary" onClick={openNewEnquiry}><Plus size={15}/> New enquiry</button>}</div>
       <div className="crm-table-scroll"><table>
         <thead><tr><th>Customer</th><th>{automotive ? "Service request" : "Enquiry / request"}</th><th>Status</th><th>Received</th></tr></thead>
         <tbody>{visibleEnquiries.map(row => {
@@ -162,7 +221,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
           return <tr key={row.id}><td><strong>{customer?.full_name || "Unknown customer"}</strong><span className="crm-subtext">{customer?.email || customer?.phone || "Contact not provided"}</span></td><td>{row.subject}</td><td><span className="crm-status">{row.status.replace(/_/g, " ")}</span></td><td>{new Date(row.created_at).toLocaleDateString()}</td></tr>;
         })}</tbody>
       </table></div>
-      {!visibleEnquiries.length && <div className="crm-empty-state">No matching enquiries.</div>}
-    </div>
+      {!visibleEnquiries.length && <div className="crm-empty-state">{enquiries.length ? "No enquiries match your search." : "No enquiries yet. Use New enquiry to record the first request."}</div>}
+    </div>}
   </section>;
 }

@@ -20,7 +20,7 @@
 .intrigue-crm .crm-secondary,.intrigue-crm .crm-small { border:1px solid var(--crm-border); border-radius:9px; background:transparent; color:var(--crm-text); padding:9px 12px; font-size:12px; }
 .intrigue-crm .crm-small { display:inline-flex; align-items:center; gap:6px; padding:6px 8px; }
 .intrigue-crm .crm-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
-.intrigue-crm .crm-stats>div { border:1px solid var(--crm-border); border-radius:13px; background:var(--crm-bg); padding:15px; display:flex; flex-direction:column; gap:5px; }
+.intrigue-crm .crm-stats>div,.intrigue-crm .crm-stats>button { border:1px solid var(--crm-border); border-radius:13px; background:var(--crm-bg); padding:15px; display:flex; flex-direction:column; gap:5px; }
 .intrigue-crm .crm-stats strong { font-size:24px; color:var(--crm-accent); line-height:1.1; }
 .intrigue-dashboard[data-intrigue-theme="light"] .intrigue-crm .crm-stats strong { color:#9b6b22; }
 .intrigue-crm .crm-stats span { color:var(--crm-sub); font-size:12px; }
@@ -59,3 +59,21 @@
   .intrigue-crm .crm-form-grid { grid-template-columns:1fr; }
   .intrigue-crm .crm-toolbar { align-items:flex-start; }
 }
+
+/* V16.4.3: prominent CRM navigation and first-class enquiry creation. */
+.intrigue-crm .crm-toolbar-actions { display:flex; gap:9px; align-items:center; flex-wrap:wrap; }
+.intrigue-crm .crm-toolbar-actions .crm-secondary { display:inline-flex; align-items:center; gap:7px; }
+.intrigue-crm .crm-stats>button { color:var(--crm-text); text-align:left; cursor:pointer; font-family:inherit; }
+.intrigue-crm .crm-stats>button:hover { border-color:var(--crm-accent); }
+.intrigue-crm .crm-stats>button:focus-visible { outline:2px solid var(--crm-accent); outline-offset:2px; }
+.intrigue-crm .crm-tabs { display:flex; gap:6px; padding:5px; background:var(--crm-head); border:1px solid var(--crm-border); border-radius:12px; width:fit-content; max-width:100%; }
+.intrigue-crm .crm-tabs button { display:flex; align-items:center; gap:8px; background:transparent; color:var(--crm-sub); border:1px solid transparent; border-radius:9px; padding:10px 17px; font-size:13px; font-weight:700; }
+.intrigue-crm .crm-tabs button.crm-tab-active { background:var(--crm-bg); color:var(--crm-text); border-color:var(--crm-border); box-shadow:0 1px 3px #00000012; }
+.intrigue-crm .crm-tabs button:not(.crm-tab-active):hover { color:var(--crm-text); }
+.intrigue-crm .crm-tabs button:focus-visible { outline:2px solid var(--crm-accent); outline-offset:2px; }
+.intrigue-crm .crm-enquiries-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+.intrigue-crm .crm-form-help { color:var(--crm-sub); font-size:12px; margin:0 0 14px; }
+.intrigue-crm .crm-form-grid textarea,.intrigue-crm .crm-form-grid select { width:100%; background:var(--crm-input); color:var(--crm-text); border:1px solid var(--crm-border); border-radius:9px; padding:11px; outline:none; font:inherit; }
+.intrigue-crm .crm-form-grid textarea { resize:vertical; min-height:88px; }
+.intrigue-crm .crm-form-grid textarea:focus-visible,.intrigue-crm .crm-form-grid select:focus-visible { border-color:var(--crm-accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--crm-accent) 25%,transparent); }
+@media(max-width:700px) { .intrigue-crm .crm-tabs { width:100%; } .intrigue-crm .crm-tabs button { flex:1; justify-content:center; padding:9px 7px; } }

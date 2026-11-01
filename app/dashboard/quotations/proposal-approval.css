@@ -1,0 +1,22 @@
+.pa-panel{margin:20px 0;padding:20px;border:1px solid var(--qs-border);border-radius:16px;background:var(--qs-bg);color:var(--qs-ink)}
+.pa-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.pa-head h3{font-size:1.1rem;font-weight:700;margin:0;display:flex;align-items:center;gap:8px}
+.pa-head p,.pa-muted{font-size:.8rem;line-height:1.6;opacity:.78;margin:7px 0}
+.pa-muted svg{vertical-align:middle;margin-right:4px}
+.pa-status{font-size:.76rem;border-radius:999px;padding:6px 10px;border:1px solid currentColor;white-space:nowrap}
+.pa-status-approved{color:#23a77a}.pa-status-rejected{color:#db7772}.pa-status-requested{color:#c6a262}
+.pa-note{display:block;margin:12px 0;font-size:.82rem;font-weight:600}
+.pa-note textarea,.pa-email textarea{display:block;width:100%;box-sizing:border-box;margin-top:7px;padding:11px;border-radius:10px;border:1px solid var(--qs-border);background:var(--qs-field);color:var(--qs-ink);font:inherit;resize:vertical}
+.pa-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
+.pa-button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 13px;border-radius:10px;font-size:.82rem;font-weight:650;cursor:pointer;border:1px solid #bc9552;background:transparent;color:inherit;text-decoration:none}
+.pa-button:hover{background:rgba(187,146,76,.14)}.pa-button:disabled{opacity:.45;cursor:not-allowed}
+.pa-approve{background:#b89147;color:#101d2c;border-color:#b89147}.pa-approve:hover{background:#d4aa58}
+.pa-reject{border-color:#c46c66}.pa-link{background:rgba(187,146,76,.13)}
+.pa-error,.pa-warning,.pa-notice{padding:11px 13px;border-radius:10px;margin:12px 0;font-size:.82rem;line-height:1.5}
+.pa-error{border:1px solid #d97878;background:rgba(194,76,76,.13)}
+.pa-warning{border:1px solid #b99b53;background:rgba(188,151,68,.12)}
+.pa-notice{border:1px solid #68ae8e;background:rgba(70,170,123,.11)}
+.pa-email{margin:16px 0;padding:15px;border:1px solid var(--qs-border);border-radius:12px}
+.pa-email h4{margin:0 0 8px;font-weight:700}.pa-email>div:not(.pa-actions){display:flex;gap:16px;padding:6px 0;font-size:.85rem}.pa-email>div strong{min-width:62px}.pa-email span{overflow-wrap:anywhere}
+.pa-email label{font-size:.82rem}.pa-history{margin:16px 0;font-size:.82rem}.pa-history summary{cursor:pointer;font-weight:650}.pa-history ul{padding-left:20px;line-height:1.8}
+@media(max-width:620px){.pa-head{display:block}.pa-head .pa-status{display:inline-block;margin-top:10px}}

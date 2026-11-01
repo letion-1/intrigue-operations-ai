@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { FileDown, Loader2, Save, Sparkles } from "lucide-react";
 import "./proposal-composer.css";
+import ProposalApproval from "./ProposalApproval";
 
 type ProposalLine = { id: string; item_name: string; quantity: number; unit_price: number; line_total: number };
 type ProposalDocument = {
@@ -316,6 +317,7 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
       {suggestion && <div className="pc-ai-preview"><strong>AI suggestion (not saved)</strong><p><b>{suggestion.heading}</b></p><p>{suggestion.introduction}</p><p>{suggestion.scope}</p>
         <button type="button" className="pc-primary" onClick={applySuggestion}>Apply suggestion to editor</button>
         <button type="button" className="pc-secondary" onClick={() => setSuggestion(null)}>Discard</button></div>}
+      {doc && <ProposalApproval key={`${doc.id}:${doc.updated_at}`} workspaceId={workspaceId} quotationId={quoteId} proposalId={doc.id} canWrite={canWrite} pendingChanges={dirty || stale || busy || logoReading} />}
       {doc && <div className="pc-actions"><button type="button" className="pc-secondary" disabled={dirty || stale || busy || logoReading} onClick={() => { void print(); }}><FileDown size={15}/> Print / Save as PDF</button>
         {(dirty || stale) && <span className="pc-muted">Save changes before printing.</span>}</div>}
       <p className="pc-muted">No email, payment, approval, or signature is triggered. AI sends limited catalog, company-policy and masked enquiry-summary text to your configured provider; use only where your privacy agreements permit.</p>

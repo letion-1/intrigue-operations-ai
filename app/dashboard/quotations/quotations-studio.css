@@ -1,0 +1,86 @@
+/* INTRIGUE V16.5 Quote Studio: strictly scoped, no global theme or sidebar rules. */
+.intrigue-quote-studio {
+  --qs-bg:#142539; --qs-field:#1b3047; --qs-head:#20354a;
+  --qs-ink:#f5f0e8; --qs-muted:#b8c7d4; --qs-border:#38506a;
+  --qs-gold:#d4ad62; --qs-on-gold:#102037;
+  color:var(--qs-ink); display:grid; gap:16px; min-width:0;
+}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-quote-studio {
+  --qs-bg:#ffffff; --qs-field:#fffdfa; --qs-head:#f1e6d6;
+  --qs-ink:#14253a; --qs-muted:#57667a; --qs-border:#e2ccb4;
+  --qs-gold:#d2a758; --qs-on-gold:#14253a;
+}
+.intrigue-quote-studio * { box-sizing:border-box; }
+.intrigue-quote-studio .qs-panel { min-width:0; background:var(--qs-bg); border:1px solid var(--qs-border); border-radius:15px; padding:22px; }
+.intrigue-quote-studio .qs-main-head,.intrigue-quote-studio .qs-topline { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+.intrigue-quote-studio .qs-eyebrow { display:block; font-size:11px; color:var(--qs-gold); font-weight:700; letter-spacing:.09em; text-transform:uppercase; }
+.intrigue-quote-studio h2 { font-family:inherit; font-size:23px; font-weight:750; line-height:1.25; margin:6px 0; }
+.intrigue-quote-studio h3 { font-size:17px; font-weight:700; margin:0; }
+.intrigue-quote-studio h4 { font-size:14px; font-weight:700; margin:0; }
+.intrigue-quote-studio p { color:var(--qs-muted); font-size:12px; line-height:1.6; margin:6px 0; }
+.intrigue-quote-studio .qs-primary,.intrigue-quote-studio .qs-secondary,.intrigue-quote-studio .qs-icon { appearance:none; cursor:pointer; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; gap:7px; font-weight:700; font-size:12px; white-space:nowrap; }
+.intrigue-quote-studio .qs-primary { color:var(--qs-on-gold); background:var(--qs-gold); padding:11px 16px; border:1px solid var(--qs-gold); }
+.intrigue-quote-studio .qs-secondary { color:var(--qs-ink); border:1px solid var(--qs-border); background:var(--qs-bg); padding:9px 13px; }
+.intrigue-quote-studio .qs-icon { color:var(--qs-ink); border:1px solid var(--qs-border); background:transparent; padding:9px; }
+.intrigue-quote-studio button:hover:not(:disabled) { filter:brightness(.94); }
+.intrigue-quote-studio button:focus-visible,.intrigue-quote-studio :is(input,select,textarea):focus-visible { outline:2px solid var(--qs-gold); outline-offset:2px; }
+.intrigue-quote-studio button:disabled { opacity:.45; cursor:not-allowed; }
+.intrigue-quote-studio .qs-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.intrigue-quote-studio .qs-stats>div { display:grid; gap:6px; padding:16px; background:var(--qs-bg); border:1px solid var(--qs-border); border-radius:13px; }
+.intrigue-quote-studio .qs-stats strong { font-size:25px; font-weight:700; color:var(--qs-ink); }
+.intrigue-quote-studio .qs-stats span { color:var(--qs-muted); font-size:11px; }
+.intrigue-quote-studio .qs-form { display:grid; gap:17px; }
+.intrigue-quote-studio .qs-label { display:flex; flex-direction:column; gap:7px; color:var(--qs-ink); font-size:12px; font-weight:600; min-width:0; }
+.intrigue-quote-studio :is(select,input,textarea) { font:inherit; padding:11px 12px; color:var(--qs-ink); background:var(--qs-field); border:1px solid var(--qs-border); border-radius:10px; width:100%; min-width:0; }
+.intrigue-quote-studio .qs-items { display:grid; gap:10px; }
+.intrigue-quote-studio .qs-item { display:grid; grid-template-columns:minmax(0,1fr) 94px 115px 42px; align-items:end; gap:10px; }
+.intrigue-quote-studio .qs-unit { color:var(--qs-ink); font-size:12px; font-weight:700; min-height:43px; display:flex; align-items:center; justify-content:center; text-align:center; }
+.intrigue-quote-studio .qs-total { background:var(--qs-head); border:1px solid var(--qs-border); border-radius:12px; padding:16px; }
+.intrigue-quote-studio .qs-total>div { display:flex; justify-content:space-between; gap:12px; align-items:center; font-size:13px; }
+.intrigue-quote-studio .qs-total strong { font-size:22px; }
+.intrigue-quote-studio .qs-total small { display:block; margin-top:10px; line-height:1.5; font-size:11px; color:var(--qs-muted); }
+.intrigue-quote-studio .qs-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.intrigue-quote-studio .qs-notice,.intrigue-quote-studio .qs-error { border-radius:10px; padding:12px 14px; font-size:12px; line-height:1.5; }
+.intrigue-quote-studio .qs-notice { border:1px solid #72aa88; background:#e8f4ea; color:#1b5632; }
+.intrigue-quote-studio .qs-error { border:1px solid #da8585; background:#fbeaea; color:#862e2e; }
+.intrigue-quote-studio .qs-switch { display:flex; padding:4px; border:1px solid var(--qs-border); background:var(--qs-head); border-radius:11px; }
+.intrigue-quote-studio .qs-switch button { color:var(--qs-muted); padding:7px 13px; border:0; border-radius:8px; background:transparent; font-size:12px; }
+.intrigue-quote-studio .qs-switch button.active { color:var(--qs-ink); background:var(--qs-bg); box-shadow:0 1px 4px #00000018; font-weight:700; }
+.intrigue-quote-studio .qs-search { display:flex; align-items:center; gap:10px; border:1px solid var(--qs-border); border-radius:10px; background:var(--qs-field); padding:0 10px; color:var(--qs-muted); margin:16px 0; }
+.intrigue-quote-studio .qs-search input { background:transparent; border:0; outline:none; box-shadow:none; }
+.intrigue-quote-studio .qs-table-wrap { overflow-x:auto; max-width:100%; scrollbar-width:thin; }
+.intrigue-quote-studio table { width:100%; border-collapse:collapse; text-align:left; font-size:12px; }
+.intrigue-quote-studio th { background:var(--qs-head); color:var(--qs-ink); text-align:left; font-size:11px; font-weight:700; padding:12px; white-space:nowrap; }
+.intrigue-quote-studio td { padding:13px 12px; border-bottom:1px solid var(--qs-border); color:var(--qs-ink); }
+.intrigue-quote-studio .qs-reference { font-weight:700; white-space:nowrap; }
+.intrigue-quote-studio .qs-summary { max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.intrigue-quote-studio .qs-pill { display:inline-block; padding:5px 10px; border-radius:99px; font-size:11px; text-transform:capitalize; background:var(--qs-head); color:var(--qs-ink); }
+.intrigue-quote-studio .qs-amount { font-size:24px; }
+.intrigue-quote-studio .qs-muted { color:var(--qs-muted); font-size:12px; }
+.intrigue-quote-studio .qs-empty { padding:20px 0; }
+.intrigue-quote-studio .qs-legacy { padding:14px; border:1px dashed var(--qs-border); border-radius:10px; background:var(--qs-head); font-size:12px; }
+.intrigue-quote-studio .qs-description { white-space:pre-wrap; overflow-wrap:anywhere; border:1px solid var(--qs-border); padding:14px; border-radius:10px; }
+.intrigue-quote-studio .qs-detail { display:grid; gap:15px; }
+.intrigue-quote-studio .qs-print { display:none; }
+@media (max-width:750px) {
+  .intrigue-quote-studio .qs-item { grid-template-columns:minmax(0,1fr) 80px 40px; }
+  .intrigue-quote-studio .qs-item .qs-unit { grid-column:1/-1; justify-content:flex-start; min-height:0; }
+  .intrigue-quote-studio .qs-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .intrigue-quote-studio .qs-panel { padding:15px; }
+}
+@media print {
+  @page { size:A4; margin:15mm; }
+  body * { visibility:hidden!important; }
+  .intrigue-quote-studio .qs-print,.intrigue-quote-studio .qs-print * { visibility:visible!important; }
+  .intrigue-quote-studio .qs-print {
+    display:block!important; position:absolute; top:0; left:0; width:100%;
+    background:#fff!important; color:#111!important; padding:16px; font:12pt/1.5 Arial,sans-serif;
+  }
+  .intrigue-quote-studio .qs-print-brand { font-size:14pt; font-weight:700; letter-spacing:.08em; }
+  .intrigue-quote-studio .qs-print h1 { margin:15px 0 10px; font-size:24pt; color:#111!important; }
+  .intrigue-quote-studio .qs-print p { color:#333!important; margin:4px 0; }
+  .intrigue-quote-studio .qs-print table { width:100%; margin-top:20px; border-collapse:collapse; }
+  .intrigue-quote-studio .qs-print :is(th,td) { padding:10px; border:1px solid #ddd; background:#fff!important; color:#111!important; }
+  .intrigue-quote-studio .qs-print-total { margin-top:18px; text-align:right; font-size:16pt; font-weight:700; }
+  .intrigue-quote-studio .qs-print-footer { margin-top:40px!important; font-size:10pt!important; }
+}

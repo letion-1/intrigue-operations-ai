@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import "./brand.css";
 import "./intrigue-themes.css";
 import CustomersCRMPanel from "./crm/CustomersCRMPanel";
+import QuotationsStudio from "./quotations/QuotationsStudio";
 import IndustryIcon, { isAutomotiveIndustry } from "./crm/IndustryIcon";
 import "./intrigue-logout.css";
 import { LogOut } from "lucide-react";
@@ -147,7 +148,7 @@ const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","AI Receptionist","Action
 
 type Customer = { id: string; full_name: string; email: string | null; phone: string | null; vehicle: string | null; created_at: string };
 type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string };
-type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string };
+type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string; quote_note?: string | null; currency?: string | null };
 type FollowUp = { id: string; customer_id: string; title: string; due_at: string; status: string; priority: string };
 type KnowledgeEntry = { id: string; title: string; category: string; content: string; created_at: string };
 type KnowledgeDocument = { id: string; filename: string; file_type: string; page_count: number; characters: number; created_at: string };
@@ -400,7 +401,7 @@ export default function DashboardPage() {
     const [c, e, q, t] = await Promise.all([
       supabase.from("customers").select("id,full_name,email,phone,vehicle,created_at").eq("workspace_id", found.id).order("created_at", { ascending: false }),
       supabase.from("enquiries").select("id,customer_id,subject,status,created_at").eq("workspace_id", found.id).order("created_at", { ascending: false }),
-      supabase.from("quotations").select("id,customer_id,description,amount,status,created_at").eq("workspace_id", found.id).order("created_at", { ascending: false }),
+      supabase.from("quotations").select("id,customer_id,description,amount,status,created_at,quote_note,currency").eq("workspace_id", found.id).order("created_at", { ascending: false }),
       supabase.from("follow_ups").select("id,customer_id,title,due_at,status,priority").eq("workspace_id", found.id).order("due_at", { ascending: true }),
     ]);
     const error = c.error || e.error || q.error || t.error;
@@ -1350,11 +1351,15 @@ export default function DashboardPage() {
             refresh={refresh}
           />}
 
-          {section === "Quotations" && <div className="overflow-hidden rounded-2xl border border-[#304153] bg-[#142539] shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2d3b4f] p-6"><div><h2 className="text-base font-bold">Draft quotations</h2><p className="mt-1 text-xs text-[#afbdcb]">Saved drafts only. Nothing is sent automatically.</p></div>{isOwner && <button type="button" className={newButtonClass} onClick={()=>setShowQuoteForm(!showQuoteForm)}><Plus size={14} className="mr-1 inline"/>New quote</button>}</div>
-            {isOwner && showQuoteForm && <form onSubmit={addQuote} className="grid gap-3 border-b border-[#2d3b4f] p-5 md:grid-cols-3"><select className={inputClass} required value={quoteForm.customerId} onChange={e=>setQuoteForm({...quoteForm,customerId:e.target.value})} aria-label="Select customer"><option value="">Select customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select><input className={inputClass} placeholder="Service description" aria-label="Service description" required maxLength={300} value={quoteForm.description} onChange={e=>setQuoteForm({...quoteForm,description:e.target.value})}/><input className={inputClass} type="number" min="0.01" step="0.01" placeholder="Amount in EUR" aria-label="Amount in EUR" required value={quoteForm.amount} onChange={e=>setQuoteForm({...quoteForm,amount:e.target.value})}/><button type="submit" disabled={busy || !customers.length} className={`${newButtonClass} md:col-span-3`}>Save draft quote</button></form>}
-            <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead><tr className="bg-[#1b2e42] text-xs text-[#afbdcb]"><th className="px-6 py-3">Quote</th><th className="px-6 py-3">Customer</th><th className="px-6 py-3">Service</th><th className="px-6 py-3">Amount</th><th className="px-6 py-3">Status</th></tr></thead><tbody>{quotes.map((row) => <tr className="border-t border-[#2d3b4f]" key={row.id}><td className="px-6 py-4 font-semibold">QT-{row.id.slice(0,6).toUpperCase()}</td><td className="px-6 py-4">{customerName(row.customer_id)}</td><td className="px-6 py-4">{row.description}</td><td className="px-6 py-4 font-semibold">{money(Number(row.amount))}</td><td className="px-6 py-4"><Tag variant="amber">{statusText(row.status)}</Tag></td></tr>)}</tbody></table>{quotes.length===0 && <p className="p-6 text-sm text-[#afbdcb]">No quotations yet.</p>}</div>
-          </div>}
+          {section === "Quotations" && <QuotationsStudio
+            workspaceId={workspace?.id ?? ""}
+            companyName={workspace?.name ?? ""}
+            customers={customers}
+            services={services}
+            quotes={quotes}
+            canWrite={canWriteOps}
+            refresh={refresh}
+          />}
 
           {section === "Follow-ups" && <div className="space-y-4">
             {canWriteOps && <div className="flex justify-end"><button type="button" className={newButtonClass} onClick={()=>setShowFollowForm(!showFollowForm)}><Plus size={14} className="mr-1 inline"/>New follow-up</button></div>}

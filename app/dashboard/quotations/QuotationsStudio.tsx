@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ArrowLeft, FileText, Pencil, Plus, Printer, Search, Trash2, X } from "lucide-react";
 import { euro, quoteSubtotal, type DraftItem, type CatalogPrice } from "./quote-math";
 import "./quotations-studio.css";
+import ProposalComposer from "./ProposalComposer";
 
 type Customer = { id: string; full_name: string; email: string | null };
 type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string; quote_note?: string | null; currency?: string | null };
@@ -177,11 +178,23 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
       <div className="qs-topline"><button type="button" className="qs-secondary" onClick={() => setSelectedId(null)}><ArrowLeft size={15}/> All quotations</button><span className="qs-pill">{selected.status}</span></div>
       <div className="qs-topline"><div><span className="qs-eyebrow">QT-{selected.id.slice(0, 8).toUpperCase()}</span><h3>{customer?.full_name ?? "Customer unavailable"}</h3><p>{customer?.email ?? "No email provided"}</p></div><strong className="qs-amount">{euro(Number(selected.amount))}</strong></div>
       {detailLoading ? <p className="qs-muted">Loading draft lines…</p> : detailError ? <p role="alert" className="qs-error">{detailError}</p> : lines.length ? <div className="qs-table-wrap"><table><thead><tr><th>Catalog item</th><th>Qty</th><th>Unit price</th><th>Total</th></tr></thead><tbody>{lines.map(l => <tr key={l.id}><td>{l.item_name}</td><td>{l.quantity}</td><td>{euro(Number(l.unit_price))}</td><td>{euro(Number(l.line_total))}</td></tr>)}</tbody></table></div> : <div className="qs-legacy"><strong>Imported or legacy quotation</strong><p>This quote was saved before structured line items existed. It remains readable but its catalog-price sources cannot be reconstructed.</p></div>}
+      {lines.length > 0 && !detailLoading && !detailError && <ProposalComposer
+        key={workspaceId + ":" + selected.id}
+        workspaceId={workspaceId}
+        quoteId={selected.id}
+        companyName={companyName}
+        customerName={customer?.full_name ?? "Unspecified customer"}
+        customerEmail={customer?.email ?? null}
+        status={selected.status}
+        subtotal={Number(selected.amount)}
+        lines={lines}
+        canWrite={canWrite}
+      />}
       <p className="qs-description">{selected.description}</p>
       {selected.quote_note && <p className="qs-muted">Internal note: {selected.quote_note}</p>}
       <div className="qs-actions">
         {canWrite && selected.status === "draft" && lines.length > 0 && <button className="qs-primary" type="button" onClick={editQuote}><Pencil size={15}/> Edit draft</button>}
-        <button type="button" className="qs-secondary" onClick={() => window.print()}><Printer size={15}/> Print / Save as PDF</button>
+        {lines.length === 0 && <button type="button" className="qs-secondary" onClick={() => window.print()}><Printer size={15}/> Print / Save as PDF</button>}
       </div>
       <p className="qs-muted">Internal preview only. Printing does not approve, send, charge or sign this quotation.</p>
       <div className="qs-print">

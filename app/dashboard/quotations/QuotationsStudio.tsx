@@ -96,9 +96,12 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
     setDetailLoading(false);
   }, [supabase, workspaceId]);
 
+  // Refreshing the dashboard returns a NEW quotes array. Do not treat that as
+  // a new selection: clearing `lines` unmounts ProposalComposer and destroys
+  // in-progress image uploads / AI requests. Fetch only on selection change.
   useEffect(() => {
-    if (selectedId && quotes.some(q => q.id === selectedId)) void loadLines(selectedId);
-  }, [selectedId, quotes, loadLines]);
+    if (selectedId) void loadLines(selectedId);
+  }, [selectedId, loadLines]);
 
   const startNew = () => {
     selectQuote(null); setEditingId(null); setCustomerId(""); setRows(emptyRows());
@@ -146,6 +149,9 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
       setFormOpen(false); setEditingId(null);
       setNotice(`Draft saved: ${euro(Number(created.amount ?? 0))}. Nothing was sent to the customer.`);
       await refresh();
+      // Existing drafts keep the same selectedId; explicitly refresh their
+      // catalog lines after an authorized edit instead of on every focus event.
+      if (selectedId === created.quotation_id) await loadLines(created.quotation_id);
       selectQuote(created.quotation_id);
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to save this quotation."); }
     finally { setSaving(false); }

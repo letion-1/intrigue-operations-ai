@@ -353,12 +353,14 @@ export default function DashboardPage() {
     if (token && /^[0-9a-f]{64}$/.test(token)) setJoinToken(token);
   }, []);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     setDbError("");
     setAccessNotice(null);
     const { data: authData, error: authError } = await supabase.auth.getUser();
     if (authError || !authData.user) {
+      setWorkspace(null); setRole("viewer");
+      setCustomers([]); setEnquiries([]); setQuotes([]); setTasks([]);
       setDbError("Your session has expired. Sign in again, then refresh this page.");
       setLoading(false);
       return;
@@ -370,18 +372,21 @@ export default function DashboardPage() {
       return;
     }
     const found = (result.data?.[0] as Workspace | undefined) ?? null;
-    setWorkspace(found);
     if (found) {
       const member = await supabase.from("workspace_memberships").select("role")
         .eq("workspace_id",found.id).eq("user_id",authData.user.id).maybeSingle();
       if (member.error || !member.data || !["owner","admin","staff","viewer","member"].includes(member.data.role)) {
+        setWorkspace(null); setRole("viewer");
+        setCustomers([]); setEnquiries([]); setQuotes([]); setTasks([]);
         setDbError("This account has no verified membership for its workspace.");
         setLoading(false); return;
       }
       setRole(member.data.role as MemberRole);
-      setCompanyEditName(found.name);
+      setWorkspace(previous => previous?.id === found.id && previous.name === found.name && previous.owner_id === found.owner_id ? previous : found);
+      if (showLoading) setCompanyEditName(found.name);
     }
     if (!found) {
+      setWorkspace(null); setRole("viewer");
       // An accepted historical invitation distinguishes a removed member from a new signup.
       // The RPC returns only the current authenticated user's former company, if any.
       const { data: previousAccess, error: accessError } = await supabase.rpc("get_intrigue_access_notice");
@@ -415,7 +420,7 @@ export default function DashboardPage() {
     setLoading(false);
   }, [supabase]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(true); }, [refresh]);
 
   // Re-validate when the tab becomes active again. A removed or demoted member
   // should not continue looking at a stale cached dashboard after role changes.

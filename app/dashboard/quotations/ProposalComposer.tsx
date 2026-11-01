@@ -88,8 +88,11 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
   // Decode and resize on-device. Supabase stores a small PNG/JPEG data URL with
   // the proposal; raw images never leave the browser until the user saves.
   async function encodeLogo(file: File): Promise<string> {
-    if (!["image/png", "image/jpeg"].includes(file.type)) throw new Error("Choose a PNG or JPEG logo.");
-    if (file.size > 6 * 1024 * 1024) throw new Error("Choose a logo smaller than 6 MB.");
+    // Some Windows browsers leave File.type empty. Fall back to the extension,
+    // and accept WebP input by converting it to a SQL-compatible PNG/JPEG data URL.
+    const fileKind = file.type || (/\.png$/i.test(file.name) ? "image/png" : /\.jpe?g$/i.test(file.name) ? "image/jpeg" : /\.webp$/i.test(file.name) ? "image/webp" : "");
+    if (!["image/png", "image/jpeg", "image/webp"].includes(fileKind)) throw new Error("Choose a PNG, JPEG or WebP company logo.");
+    if (file.size > 12 * 1024 * 1024) throw new Error("Choose a logo smaller than 12 MB.");
     const url = URL.createObjectURL(file);
     try {
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -110,7 +113,7 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
         if (!context) throw new Error("Your browser could not process the logo image.");
         context.drawImage(img, 0, 0, canvas.width, canvas.height);
         // Preserve transparency if possible. The SQL data-URL limit is 180K.
-        if (file.type === "image/png") {
+        if (fileKind === "image/png" || fileKind === "image/webp") {
           const png = canvas.toDataURL("image/png");
           if (png.length <= 175_000) return png;
         }
@@ -141,7 +144,8 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
       setNotice(`Logo optimized: ${file.name}. Saving it to this quotation…`);
       // Save immediately so a dashboard tab switch cannot discard the chosen file.
       // This remains an UNSENT draft; the current form fields are saved together.
-      await commitProposal(data);
+      const saved = await commitProposal(data);
+      if (!saved) setNotice("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "The logo could not be loaded.");
       setNotice("");
@@ -181,13 +185,13 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
     setScope(suggestion.scope); setDirty(true); setSuggestion(null);
     setNotice("AI wording applied locally. Review and save it before printing.");
   };
-  async function commitProposal(logoOverride?: string | null) {
-    if (!canWrite || !eligible || busy) return;
+  async function commitProposal(logoOverride?: string | null): Promise<boolean> {
+    if (!canWrite || !eligible || busy) return false;
     if (!heading.trim() || heading.length > 140 || introduction.length > 2500 || scope.length > 4000 || paymentTerms.length > 1400) {
-      setError("Check the proposal title and text lengths."); return;
+      setError("Check the proposal title and text lengths."); return false;
     }
-    if (!vatValid) { setError("Enter a VAT rate between 0 and 25%, with at most two decimal places."); return; }
-    if (logoReading && logoOverride === undefined) { setError("Finish loading the logo before saving."); return; }
+    if (!vatValid) { setError("Enter a VAT rate between 0 and 25%, with at most two decimal places."); return false; }
+    if (logoReading && logoOverride === undefined) { setError("Finish loading the logo before saving."); return false; }
     const selectedLogo = logoOverride === undefined ? logo : logoOverride;
     setBusy(true); setError(""); setNotice("");
     try {
@@ -200,6 +204,15 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
       if (saveError) throw new Error(saveError.message);
       const result = data as { document_id?: string; subtotal?: number; vat_amount?: number; total_amount?: number; updated_at?: string; source_line_snapshot?: ProposalDocument["source_line_snapshot"] } | null;
       if (!result?.document_id) throw new Error("The database did not return a saved proposal.");
+      if (logoOverride !== undefined) {
+        // Verify persistence rather than claiming success from an optimistic preview.
+        const verify = await supabase.from("intrigue_proposal_documents")
+          .select("brand_logo_data")
+          .eq("workspace_id", workspaceId).eq("quotation_id", quoteId).maybeSingle();
+        if (verify.error || verify.data?.brand_logo_data !== selectedLogo) {
+          throw new Error("The draft save completed, but logo persistence could not be verified. Refresh the quotation before retrying; do not upload repeatedly.");
+        }
+      }
       setDoc({ id: result.document_id, updated_at: result.updated_at ?? new Date().toISOString(), heading, introduction, scope, payment_terms: paymentTerms,
         validity_days: validityDays, vat_mode: vatMode, vat_rate: vatRate,
         subtotal: Number(result.subtotal), vat_amount: Number(result.vat_amount),
@@ -208,8 +221,9 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
       setLogo(selectedLogo); setDirty(false);
       setNotice(logoOverride === undefined
         ? "Proposal draft saved in this workspace. Nothing was approved or sent."
-        : "Company logo uploaded and draft saved in this workspace. Nothing was sent.");
-    } catch (e) { setError(e instanceof Error ? e.message : "Unable to save the proposal."); }
+        : "Company logo uploaded, verified and saved with this unsent draft.");
+      return true;
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to save the proposal."); return false; }
     finally { setBusy(false); }
   }
   const print = async () => {
@@ -286,10 +300,10 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
         <div className="pc-grand"><span>Draft total</span><strong>{euro(displayed.total)}</strong></div>
       </div>
       <label>Payment and commercial terms<textarea rows={2} maxLength={1400} disabled={!canWrite || !eligible} value={paymentTerms} onChange={e => change(setPaymentTerms,e.target.value)} placeholder="Enter your approved payment, return and delivery terms."/></label>
-      <div className="pc-logo"><div>{logo && <img src={logo} alt="Company logo preview"/>}<div><strong>Company logo</strong><p>PNG/JPEG up to 6 MB. Optimized locally and automatically saved to this unsent proposal draft, together with current form edits.</p></div></div>
+      <div className="pc-logo"><div>{logo && <img src={logo} alt="Company logo preview"/>}<div><strong>Company logo</strong><p>PNG, JPEG or WebP up to 12 MB. Resized in the browser, then saved and verified for this unsent proposal. Selecting a file does not send anything.</p></div></div>
         {canWrite && eligible && <div className="pc-logo-controls">
           <span className="pc-logo-picker-label">Choose company logo</span>
-          <input type="file" className="pc-logo-picker" accept="image/png,image/jpeg"
+          <input type="file" className="pc-logo-picker" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
             aria-label="Choose company logo image" disabled={logoReading || busy} onClick={e => e.stopPropagation()} onChange={onLogo}/>
         </div>}
         {canWrite && eligible && logo && <button type="button" className="pc-secondary" disabled={logoReading || busy}

@@ -93,51 +93,96 @@ export async function POST(request: NextRequest) {
       topic: limit(entry.title, 120), note: maskContacts(entry.content, 550),
     })),
   };
+  // This endpoint uses its own drafting model. Do not inherit a general-purpose
+  // OPENROUTER_MODEL that might return reasoning/tool calls but no final text.
+  const defaultModel = 'openai/gpt-4o-mini';
+  const preferredModel = process.env.OPENROUTER_PROPOSAL_MODEL?.trim() || defaultModel;
+  const models = preferredModel === defaultModel ? [defaultModel] : [preferredModel, defaultModel];
+  let diagnostic = 'Provider did not supply a completed text response.';
   try {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      signal: AbortSignal.timeout(29000),
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: process.env.OPENROUTER_PROPOSAL_MODEL || process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
-        temperature: 0.2, max_tokens: 700,
-        messages: [
-          { role: 'system', content: 'You draft short, factual commercial proposal language for a business. Return ONLY JSON {"heading":"...","introduction":"...","scope":"..."}. Use ONLY supplied business data and products. No price, VAT, discounts, shipping promises, deadlines, guarantees, legal claims, personal details, or invented features. Clearly keep language nonbinding and subject to client review. English. Heading <= 100 characters, introduction <= 900, scope <= 1800. Do not include Markdown.' },
-          { role: 'user', content: JSON.stringify(payload) },
-        ],
-      }),
-    });
-    if (!response.ok) {
-      // Avoid logging or exposing keys, prompt text or untrusted provider output.
-      const guidance = response.status === 401 || response.status === 403
-        ? 'OpenRouter rejected the API key. Verify OPENROUTER_API_KEY in Vercel and redeploy.'
-        : response.status === 402 ? 'OpenRouter credits are insufficient. Check your provider balance.'
-        : response.status === 404 ? 'The configured OpenRouter model is unavailable. Check OPENROUTER_MODEL.'
-        : response.status === 429 ? 'OpenRouter rate limit reached. Retry later.'
-        : `OpenRouter is unavailable (HTTP ${response.status}). Retry later or write manually.`;
-      return failure(`${guidance} Nothing was saved.`, response.status === 429 ? 429 : 502, 'provider');
+    for (let attempt = 0; attempt < models.length; attempt++) {
+      const model = models[attempt];
+      let response: Response;
+      try {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          signal: AbortSignal.timeout(23000),
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://intriguestudios.de',
+            'X-Title': 'INTRIGUE Operations AI',
+          },
+          body: JSON.stringify({
+            model,
+            temperature: 0.2,
+            max_tokens: 1800,
+            ...(model === defaultModel ? { response_format: { type: 'json_object' } } : {}),
+            messages: [
+              { role: 'system', content: 'You write concise commercial proposal wording. Return a JSON object with exactly these keys: heading, introduction, scope. Each value MUST be a nonempty string. Only refer to the supplied business, item names and factual business guidance. Do not invent prices, VAT, delivery promises, discounts, guarantees or personal details. This is an unsent draft subject to company review. Heading max 100 chars; introduction max 900; scope max 1800. Output JSON only.' },
+              { role: 'user', content: JSON.stringify(payload) },
+            ],
+          }),
+        });
+      } catch (requestError) {
+        if (requestError instanceof Error && (requestError.name === 'TimeoutError' || requestError.name === 'AbortError')) {
+          diagnostic = `OpenRouter model ${model} timed out while preparing the wording.`;
+          if (attempt < models.length - 1) continue;
+          return failure(`${diagnostic} Try a faster proposal model or write the wording manually.`, 504, 'timeout');
+        }
+        return failure('The proposal AI provider could not be reached. Check deployment logs and network settings.', 502, 'provider');
+      }
+      if (!response.ok) {
+        // Do not expose the provider's raw body or API credentials to clients.
+        const guidance = response.status === 401 || response.status === 403
+          ? 'OpenRouter rejected the API key. Check OPENROUTER_API_KEY in Vercel.'
+          : response.status === 402 ? 'OpenRouter credits are insufficient.'
+          : response.status === 404 ? `OpenRouter cannot find the proposal model ${model}.`
+          : response.status === 429 ? 'OpenRouter rate limit reached.'
+          : `OpenRouter returned HTTP ${response.status} for ${model}.`;
+        return failure(`${guidance} No content was saved or sent.`, response.status === 429 ? 429 : 502, 'provider');
+      }
+      const reply: unknown = await response.json().catch(() => null);
+      const provider = reply && typeof reply === 'object' ? reply as {
+        error?: { message?: string };
+        choices?: Array<{ finish_reason?: string; text?: string; message?: { content?: string | Array<{ text?: string; type?: string }>; parsed?: unknown; refusal?: string } }>;
+        output_text?: string;
+        usage?: { completion_tokens?: number };
+      } : null;
+      if (provider?.error) {
+        return failure(`OpenRouter returned a provider error for ${model}. Check its model availability and your OpenRouter account.`, 502, 'provider');
+      }
+      const choice = provider?.choices?.[0];
+      const rawContent = choice?.message?.content;
+      const content = typeof rawContent === 'string' ? rawContent
+        : Array.isArray(rawContent) ? rawContent.map(part => part?.text || '').join('\n')
+        : choice?.text || provider?.output_text || '';
+      const parsedProvider = choice?.message?.parsed;
+      let parsed: Record<string, unknown> | null = null;
+      if (parsedProvider && typeof parsedProvider === 'object' && !Array.isArray(parsedProvider)) {
+        parsed = parsedProvider as Record<string, unknown>;
+      } else if (content.trim()) {
+        try { parsed = jsonObject(content); } catch { /* A different model may return valid structured output. */ }
+      }
+      if (parsed) {
+        const result: DraftOutput = {
+          heading: limit(parsed.heading, 100),
+          introduction: limit(parsed.introduction, 900),
+          scope: limit(parsed.scope, 1800),
+        };
+        if (result.heading && result.introduction && result.scope) {
+          return NextResponse.json({ suggestion: result, saved: false, sent: false, model_used: model }, { headers: noStore });
+        }
+      }
+      const finishReason = choice?.finish_reason || 'missing';
+      const tokens = provider?.usage?.completion_tokens;
+      diagnostic = `${model} returned no valid wording (finish_reason=${finishReason}${typeof tokens === 'number' ? `, completion_tokens=${tokens}` : ''}).`;
+      console.warn('INTRIGUE proposal AI: no valid text', { model, finishReason, completionTokens: tokens ?? null });
+      // A reasoning/tool-only model can produce a successful HTTP 200 with no
+      // final content. Retry ONCE using a dedicated non-reasoning JSON model.
     }
-    const reply: unknown = await response.json().catch(() => null);
-    const message = reply && typeof reply === 'object'
-      ? (reply as { choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }> })?.choices?.[0]?.message
-      : undefined;
-    const content = typeof message?.content === 'string' ? message.content
-      : Array.isArray(message?.content) ? message.content.map(part => part.text || '').join('\n') : '';
-    if (!content.trim()) return failure('OpenRouter returned no draft text. Check the configured model, then retry.', 502, 'response');
-    let parsed: Record<string, unknown>;
-    try { parsed = jsonObject(content); }
-    catch { return failure('OpenRouter returned an invalid JSON draft. Retry or switch OPENROUTER_PROPOSAL_MODEL to a model that supports JSON responses.', 502, 'response'); }
-    const result: DraftOutput = {
-      heading: limit(parsed.heading, 100),
-      introduction: limit(parsed.introduction, 900),
-      scope: limit(parsed.scope, 1800),
-    };
-    if (!result.heading || !result.introduction || !result.scope) return failure('The AI response was missing required sections. No proposal was saved.', 502, 'response');
-    return NextResponse.json({ suggestion: result, saved: false, sent: false }, { headers: noStore });
-  } catch (error) {
-    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-      return failure('OpenRouter took too long to respond (29 seconds). No draft was saved. Check model speed or set OPENROUTER_PROPOSAL_MODEL to a faster model.', 504, 'timeout');
-    }
-    return failure('Unable to contact OpenRouter. Check the provider status and deployment logs; manual proposal editing still works.', 502, 'provider');
+    return failure(`${diagnostic} Set OPENROUTER_PROPOSAL_MODEL to a compatible chat model, or use manual wording.`, 502, 'response');
+  } catch {
+    return failure('Unexpected provider response. Try the proposal AI again or enter the wording manually.', 502, 'response');
   }
 }

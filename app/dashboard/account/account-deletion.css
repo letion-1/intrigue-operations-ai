@@ -1,0 +1,22 @@
+/* Scoped account controls. No global color or navigation overrides. */
+.intrigue-account-panel { border: 1px solid var(--intrigue-account-border, #d7c7b0); border-radius: 18px; padding: 23px; margin-top: 18px; background: var(--intrigue-account-bg, #fffdf9); color: var(--intrigue-account-fg, #17253a); }
+.intrigue-account-heading { display: flex; align-items: center; gap: 9px; font-weight: 650; }
+.intrigue-account-description { margin-top: 10px; font-size: 13px; line-height: 1.65; }
+.intrigue-account-muted { margin-top: 10px; font-size: 12px; opacity: .8; }
+.intrigue-account-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 17px; }
+.intrigue-account-actions button, .intrigue-account-confirmation button { display: inline-flex; align-items: center; gap: 7px; border-radius: 9px; padding: 10px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.intrigue-account-actions button:disabled, .intrigue-account-confirmation button:disabled { cursor: not-allowed; opacity: .48; }
+.intrigue-account-secondary { background: transparent; border: 1px solid #b8a185; color: inherit; }
+.intrigue-account-danger { background: #a22d32; color: #fff; border: 1px solid #a22d32; }
+.intrigue-account-danger:not(:disabled):hover { background: #882228; }
+.intrigue-account-blockers { padding: 13px; border: 1px solid #dd9d75; border-radius: 10px; margin-top: 12px; background: rgba(222,160,92,.1); font-size: 12px; line-height: 1.6; }
+.intrigue-account-blockers ul { list-style: disc; margin: 6px 0 8px 21px; }
+.intrigue-account-confirmation { margin-top: 16px; padding: 16px; border: 1px solid #ad5352; border-radius: 12px; display: grid; gap: 12px; font-size: 13px; }
+.intrigue-account-confirmation input[type="text"] { display: block; width: 100%; margin-top: 6px; padding: 9px 12px; border-radius: 8px; border: 1px solid #b8a185; background: #fff; color: #17253a; }
+.intrigue-account-ack { display: flex; align-items: start; gap: 9px; }
+.intrigue-account-label { display: block; overflow-wrap: anywhere; }
+.intrigue-account-error, .intrigue-account-warning { margin-top: 12px; border-radius: 8px; padding: 10px 12px; background: rgba(201,70,60,.1); border: 1px solid #ca7777; font-size: 12px; line-height: 1.5; }
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-account-panel { --intrigue-account-bg: #142539; --intrigue-account-fg: #f5efe7; --intrigue-account-border: #46536c; }
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-account-confirmation input[type="text"] { background: #0e2033; border-color: #596379; color: #f5efe7; }
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-account-panel { --intrigue-account-bg: #fffdf9; --intrigue-account-fg: #17253a; --intrigue-account-border: #decbb6; }
+.intrigue-account-panel button:focus-visible, .intrigue-account-panel input:focus-visible { outline: 2px solid #bb9453; outline-offset: 3px; }

@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { createClient } from "@/lib/supabase/client";
 import "./brand.css";
 import "./intrigue-themes.css";
+import "./intrigue-logout.css";
+import { LogOut } from "lucide-react";
+import AccountDeletionPanel from "./account/AccountDeletionPanel";
 import "./knowledge-hub.css";
 import IntegrationsPanel from "./integrations-panel";
 import CalendarConnections from "./calendar-connections";
@@ -237,6 +240,20 @@ export default function DashboardPage() {
 
   // Authenticated Supabase browser client. Authorization is also enforced in Postgres RLS.
   const supabase = useMemo(() => createClient(), []);
+  const [signingOut, setSigningOut] = useState(false);
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error) throw error;
+      window.location.replace("/auth/login");
+    } catch (err) {
+      window.alert(`Unable to log out: ${err instanceof Error ? err.message : String(err)}`);
+      setSigningOut(false);
+    }
+  };
+
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [role, setRole] = useState<MemberRole>("owner");
   const isOwner = role === "owner";
@@ -1081,6 +1098,7 @@ export default function DashboardPage() {
           <div className="mb-2 flex items-center gap-2 text-[#d5b46a]"><ShieldCheck size={17}/><span className="text-xs font-semibold">Development preview</span></div>
           <p className="text-xs leading-5 text-[#d5dfeb]">Business records are in Supabase. Chat is read-only; Action Center drafts require your approval. Only use fictional data with unvetted model providers.</p>
         </div>
+<button type="button" onClick={() => void handleSignOut()} disabled={signingOut} className="intrigue-signout-button mt-3 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:opacity-60" aria-label="Log out of INTRIGUE"><LogOut size={15}/>{signingOut ? "Logging out…" : "Log out"}</button>
         <div className="mt-4 flex items-center gap-3 px-2 py-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#344358] text-xs font-bold text-[#f5f0e8]">IS</div>
           <div className="min-w-0"><div className="text-xs font-semibold text-[#f5f0e8]">INTRIGUE STUDIOS</div><div className="text-[11px] text-[#9eacba]">Developer workspace</div></div>
@@ -1121,6 +1139,9 @@ export default function DashboardPage() {
                 <p className="mt-2 text-xs leading-5 text-[#aebed0]">Contract signatures, quotation approvals, missed appointments and integration alerts will appear here after the secure event service is enabled. This panel does not claim to monitor those events yet.</p>
               </div>}
             </div>
+            <button type="button" className="intrigue-signout-button inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:opacity-60" onClick={() => void handleSignOut()} disabled={signingOut} aria-label="Log out of INTRIGUE" title="Log out">
+              <LogOut size={16}/><span className="hidden sm:inline">{signingOut ? "Logging out…" : "Log out"}</span>
+            </button>
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#80642f] text-xs font-bold text-[#f5f0e8]">IS</div>
           </div>
         </header>
@@ -1485,6 +1506,7 @@ export default function DashboardPage() {
           </div>}
 
           {section === "Settings" && <div className="space-y-5">
+            <AccountDeletionPanel />
             <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-7 shadow-sm">
               <div className="flex items-center gap-3"><Settings className="text-[#e0bf76]" size={22}/><h2 className="text-lg font-bold">Company & assistant setup</h2></div>
               <p className="mt-2 text-sm text-[#afbdcb]">Configure your business identity, service hours and AI preferences. All data stays in your workspace.</p>

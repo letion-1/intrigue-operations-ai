@@ -1,0 +1,23 @@
+/* Small, self-contained account controls for INTRIGUE. No global button overrides. */
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-signout-button {
+  background: #fffdf9;
+  border-color: #dbc9b2;
+  color: #223247;
+}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-signout-button:hover:not(:disabled) {
+  background: #f1e3d1;
+  border-color: #c8ad88;
+}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-signout-button {
+  background: #182c41;
+  border-color: #435771;
+  color: #f4e8d2;
+}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-signout-button:hover:not(:disabled) {
+  background: #253d57;
+  border-color: #b79556;
+}
+.intrigue-signout-button:focus-visible {
+  outline: 2px solid #c8a15f;
+  outline-offset: 3px;
+}

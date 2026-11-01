@@ -13,6 +13,22 @@ type Line = { id: string; catalog_id: string | null; item_name: string; quantity
 const randomItem = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 type RowDraft = DraftItem & { localId: string };
 const emptyRows = (): RowDraft[] => [{ localId: randomItem(), catalogId: "", quantity: 1 }];
+// Persist only an opaque quotation ID, never customer details or draft contents.
+const selectionKey = (workspace: string) => `intrigue:quotation:selection:${workspace}`;
+function storedSelection(workspace: string): string | null {
+  if (typeof window === "undefined" || !workspace) return null;
+  try {
+    const value = window.sessionStorage.getItem(selectionKey(workspace));
+    return value && /^[0-9a-fA-F-]{36}$/.test(value) ? value : null;
+  } catch { return null; }
+}
+function writeSelection(workspace: string, id: string | null) {
+  if (typeof window === "undefined" || !workspace) return;
+  try {
+    if (id) window.sessionStorage.setItem(selectionKey(workspace), id);
+    else window.sessionStorage.removeItem(selectionKey(workspace));
+  } catch { /* Browser storage might be unavailable; live state still works. */ }
+}
 
 export default function QuotationsStudio({ workspaceId, companyName, customers, services, quotes, canWrite, refresh }: {
   workspaceId: string;
@@ -52,12 +68,20 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
   try { estimate = quoteSubtotal(rows.filter(r => r.catalogId), services); } catch { estimate = null; }
   const customer = selected ? byCustomer.get(selected.customer_id) : null;
 
-  // Switching companies invalidates all local quote selection and unsaved fields.
+  // On mount or workspace switch, restore the last *selected quotation for this workspace*.
+  // Explicitly leaving the quotation through "All quotations" clears it. We do not
+  // store customer details or unsaved proposal content in sessionStorage.
   useEffect(() => {
     requestSerial.current += 1;
-    setSelectedId(null); setLines([]); setDetailError(""); setFormOpen(false);
+    setSelectedId(storedSelection(workspaceId));
+    setLines([]); setDetailError(""); setFormOpen(false);
     setEditingId(null); setCustomerId(""); setRows(emptyRows()); setNote(""); setError(""); setNotice("");
   }, [workspaceId]);
+
+  const selectQuote = (id: string | null) => {
+    writeSelection(workspaceId, id);
+    setSelectedId(id);
+  };
 
   const loadLines = useCallback(async (id: string) => {
     if (!workspaceId) return;
@@ -77,10 +101,10 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
   }, [selectedId, quotes, loadLines]);
 
   const startNew = () => {
-    setSelectedId(null); setEditingId(null); setCustomerId(""); setRows(emptyRows());
+    selectQuote(null); setEditingId(null); setCustomerId(""); setRows(emptyRows());
     setNote(""); setError(""); setNotice(""); setFormOpen(true);
   };
-  const openQuote = (id: string) => { setFormOpen(false); setSelectedId(id); setNotice(""); setError(""); };
+  const openQuote = (id: string) => { setFormOpen(false); selectQuote(id); setNotice(""); setError(""); };
   const editQuote = () => {
     if (!selected || selected.status !== "draft" || !lines.length || !canWrite) return;
     if (lines.some(l => !l.catalog_id || !byService.has(l.catalog_id) || !byService.get(l.catalog_id)?.is_active)) {
@@ -90,7 +114,7 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
     setCustomerId(selected.customer_id);
     setNote(selected.quote_note || "");
     setRows(lines.map(l => ({ localId: randomItem(), catalogId: l.catalog_id || "", quantity: Number(l.quantity) })));
-    setSelectedId(null); setError(""); setNotice(""); setFormOpen(true);
+    selectQuote(null); setError(""); setNotice(""); setFormOpen(true);
   };
   const updateRow = (localId: string, field: "catalogId" | "quantity", value: string) => {
     setRows(old => old.map(r => r.localId !== localId ? r : ({ ...r, [field]: field === "quantity" ? Number(value) : value })));
@@ -122,7 +146,7 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
       setFormOpen(false); setEditingId(null);
       setNotice(`Draft saved: ${euro(Number(created.amount ?? 0))}. Nothing was sent to the customer.`);
       await refresh();
-      setSelectedId(created.quotation_id);
+      selectQuote(created.quotation_id);
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to save this quotation."); }
     finally { setSaving(false); }
   }
@@ -175,7 +199,7 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
       {error && <p role="alert" className="qs-error">{error}</p>}
       <div className="qs-actions"><button className="qs-primary" type="submit" disabled={saving || !activeServices.length || !customers.length}>{saving ? "Saving draft…" : editingId ? "Save draft changes" : "Save unsent draft"}</button><button type="button" className="qs-secondary" onClick={() => { setFormOpen(false); setError(""); }}>Cancel</button></div>
     </form> : selected ? <article className="qs-panel qs-detail">
-      <div className="qs-topline"><button type="button" className="qs-secondary" onClick={() => setSelectedId(null)}><ArrowLeft size={15}/> All quotations</button><span className="qs-pill">{selected.status}</span></div>
+      <div className="qs-topline"><button type="button" className="qs-secondary" onClick={() => selectQuote(null)}><ArrowLeft size={15}/> All quotations</button><span className="qs-pill">{selected.status}</span></div>
       <div className="qs-topline"><div><span className="qs-eyebrow">QT-{selected.id.slice(0, 8).toUpperCase()}</span><h3>{customer?.full_name ?? "Customer unavailable"}</h3><p>{customer?.email ?? "No email provided"}</p></div><strong className="qs-amount">{euro(Number(selected.amount))}</strong></div>
       {detailLoading ? <p className="qs-muted">Loading draft lines…</p> : detailError ? <p role="alert" className="qs-error">{detailError}</p> : lines.length ? <div className="qs-table-wrap"><table><thead><tr><th>Catalog item</th><th>Qty</th><th>Unit price</th><th>Total</th></tr></thead><tbody>{lines.map(l => <tr key={l.id}><td>{l.item_name}</td><td>{l.quantity}</td><td>{euro(Number(l.unit_price))}</td><td>{euro(Number(l.line_total))}</td></tr>)}</tbody></table></div> : <div className="qs-legacy"><strong>Imported or legacy quotation</strong><p>This quote was saved before structured line items existed. It remains readable but its catalog-price sources cannot be reconstructed.</p></div>}
       {lines.length > 0 && !detailLoading && !detailError && <ProposalComposer

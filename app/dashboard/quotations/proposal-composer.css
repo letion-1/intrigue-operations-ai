@@ -65,3 +65,14 @@
   .intrigue-quote-studio .pc-paper-totals>div:last-child{font-weight:700;border-top:1px solid #bbb;padding-top:8px}
   .intrigue-quote-studio .pc-print footer{border-top:1px solid #ddd;padding-top:12px;margin-top:28px;font-size:8.5pt;color:#6a6870}
 }
+
+/* V16.5.3: VAT field rows must align, including their helper copy. */
+.intrigue-quote-studio .pc-vat-grid { align-items:start; }
+.intrigue-quote-studio .pc-vat-field { min-width:0; display:grid; grid-template-rows:20px 43px auto; gap:7px; align-items:start; }
+.intrigue-quote-studio .pc-vat-field > label { display:block!important; line-height:20px; margin:0!important; font-size:12px; font-weight:700; }
+.intrigue-quote-studio .pc-vat-field > :is(select,input) { height:43px!important; min-height:43px!important; max-height:43px!important; box-sizing:border-box!important; margin:0!important; width:100%; }
+.intrigue-quote-studio .pc-vat-hint { font-size:11px; color:var(--qs-muted); line-height:1.4; min-height:30px; }
+.intrigue-quote-studio .pc-logo-controls { display:grid; gap:6px; flex:0 1 260px; min-width:190px; }
+.intrigue-quote-studio .pc-logo-picker-label { color:var(--qs-muted); font-size:11px; }
+.intrigue-quote-studio .pc-panel input.pc-logo-picker { display:block!important; height:auto!important; padding:8px!important; border:1px solid var(--qs-border); border-radius:8px; background:var(--qs-field); color:var(--qs-ink); max-width:100%; }
+.intrigue-quote-studio .pc-panel input.pc-logo-picker::file-selector-button { background:var(--qs-gold); border:0; border-radius:6px; color:var(--qs-on-gold); padding:7px 10px; cursor:pointer; margin-right:10px; font-weight:700; }

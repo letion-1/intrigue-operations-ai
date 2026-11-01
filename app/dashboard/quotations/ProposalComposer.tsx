@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { FileDown, ImagePlus, Loader2, Save, Sparkles } from "lucide-react";
+import { FileDown, Loader2, Save, Sparkles } from "lucide-react";
 import "./proposal-composer.css";
 
 type ProposalLine = { id: string; item_name: string; quantity: number; unit_price: number; line_total: number };
@@ -43,7 +43,6 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
   const [vatRate, setVatRate] = useState(19);
   const [logo, setLogo] = useState<string | null>(null);
   const [logoReading, setLogoReading] = useState(false);
-  const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
   const eligible = status === "draft" && lines.length > 0;
   const vatValid = Number.isFinite(vatRate) && vatRate >= 0 && vatRate <= 25 && Math.abs(Math.round(vatRate * 100) - vatRate * 100) < 1e-7;
@@ -86,39 +85,67 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
 
   const change = (setter: (s: string) => void, value: string) => { setter(value); setDirty(true); setNotice(""); };
   const setTreatment = (next: "unset" | "inclusive" | "exclusive") => { setVatMode(next); setDirty(true); };
-  const onLogo = async (event: ChangeEvent<HTMLInputElement>) => {
-    // Do not let the file input interact with any surrounding dashboard click/form handler.
-    event.stopPropagation();
-    const input = event.currentTarget;
-    const file = input.files?.[0];
-    input.value = "";
-    if (!file) return;
-    if (!["image/png", "image/jpeg"].includes(file.type) || file.size > 125000) {
-      setError("Choose a PNG or JPEG logo smaller than 125 KB. The logo was not changed.");
-      return;
-    }
-    setLogoReading(true);
-    setError("");
-    setNotice("Reading company logo…");
+  // Decode and resize on-device. Supabase stores a small PNG/JPEG data URL with
+  // the proposal; raw images never leave the browser until the user saves.
+  async function encodeLogo(file: File): Promise<string> {
+    if (!["image/png", "image/jpeg"].includes(file.type)) throw new Error("Choose a PNG or JPEG logo.");
+    if (file.size > 6 * 1024 * 1024) throw new Error("Choose a logo smaller than 6 MB.");
+    const url = URL.createObjectURL(file);
     try {
-      const data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Unreadable logo"));
-        reader.onerror = () => reject(new Error("Logo file could not be read"));
-        reader.readAsDataURL(file);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const element = new Image();
+        element.onload = () => resolve(element);
+        element.onerror = () => reject(new Error("The logo image could not be decoded."));
+        element.src = url;
       });
-      // The RPC enforces a 180,000-character data URL limit, including the prefix.
-      if (data.length > 180000) throw new Error("Logo is too large after encoding. Choose a smaller PNG/JPEG.");
-      setLogo(data);
-      setDirty(true);
-      setError("");
-      setNotice(`Logo ready: ${file.name}. Click Save proposal changes to keep it.`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Logo upload failed.");
-      setNotice("");
+      if (!img.naturalWidth || !img.naturalHeight || img.naturalWidth * img.naturalHeight > 24_000_000) {
+        throw new Error("The logo image is too large to process. Resize it first.");
+      }
+      for (const maxSide of [700, 500, 350, 250, 180]) {
+        const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Your browser could not process the logo image.");
+        context.drawImage(img, 0, 0, canvas.width, canvas.height);
+        // Preserve transparency if possible. The SQL data-URL limit is 180K.
+        if (file.type === "image/png") {
+          const png = canvas.toDataURL("image/png");
+          if (png.length <= 175_000) return png;
+        }
+        // JPEG is a safe fallback for complex photos that exceed PNG size limits.
+        context.globalCompositeOperation = "destination-over";
+        context.fillStyle = "#FFFFFF";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        for (const quality of [0.86, 0.72, 0.58]) {
+          const jpeg = canvas.toDataURL("image/jpeg", quality);
+          if (jpeg.length <= 175_000) return jpeg;
+        }
+      }
+      throw new Error("Unable to compress this logo. Try a smaller image.");
     } finally {
-      setLogoReading(false);
+      URL.revokeObjectURL(url);
     }
+  }
+
+  const onLogo = async (event: ChangeEvent<HTMLInputElement>) => {
+    event.stopPropagation();
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    setLogoReading(true); setError(""); setNotice("Optimizing logo…");
+    try {
+      const data = await encodeLogo(file);
+      setLogo(data); setDirty(true); setError("");
+      setNotice(`Logo optimized: ${file.name}. Saving it to this quotation…`);
+      // Save immediately so a dashboard tab switch cannot discard the chosen file.
+      // This remains an UNSENT draft; the current form fields are saved together.
+      await commitProposal(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The logo could not be loaded.");
+      setNotice("");
+    } finally { setLogoReading(false); }
   };
 
   const suggest = async () => {
@@ -132,9 +159,14 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
         body: JSON.stringify({ workspaceId, quotationId: quoteId }),
       });
-      const result: unknown = await response.json();
+      const result: unknown = await response.json().catch(() => null);
+      if (result === null) throw new Error(`Proposal AI returned a non-JSON response (HTTP ${response.status}). Check /api/proposals/assist in Vercel function logs.`);
       const payload = result && typeof result === "object" ? result as Record<string, unknown> : {};
-      if (!response.ok) throw new Error(String(payload.error || "AI drafting failed"));
+      if (!response.ok) {
+        const reason = String(payload.error || `AI drafting failed (HTTP ${response.status})`);
+        const stage = typeof payload.stage === "string" ? ` [${payload.stage}]` : "";
+        throw new Error(`${reason}${stage}`);
+      }
       const draft = payload.suggestion as Suggestion | undefined;
       if (!draft?.heading || !draft?.introduction || !draft?.scope) throw new Error("AI returned an incomplete suggestion.");
       setSuggestion(draft);
@@ -149,20 +181,21 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
     setScope(suggestion.scope); setDirty(true); setSuggestion(null);
     setNotice("AI wording applied locally. Review and save it before printing.");
   };
-  const save = async () => {
+  async function commitProposal(logoOverride?: string | null) {
     if (!canWrite || !eligible || busy) return;
     if (!heading.trim() || heading.length > 140 || introduction.length > 2500 || scope.length > 4000 || paymentTerms.length > 1400) {
       setError("Check the proposal title and text lengths."); return;
     }
     if (!vatValid) { setError("Enter a VAT rate between 0 and 25%, with at most two decimal places."); return; }
-    if (logoReading) { setError("Finish loading the logo before saving."); return; }
+    if (logoReading && logoOverride === undefined) { setError("Finish loading the logo before saving."); return; }
+    const selectedLogo = logoOverride === undefined ? logo : logoOverride;
     setBusy(true); setError(""); setNotice("");
     try {
       const { data, error: saveError } = await supabase.rpc("intrigue_proposal_save", {
         p_workspace_id: workspaceId, p_quotation_id: quoteId,
         p_heading: heading.trim(), p_introduction: introduction, p_scope: scope,
         p_payment_terms: paymentTerms, p_validity_days: validityDays,
-        p_vat_mode: vatMode, p_vat_rate: vatRate, p_brand_logo_data: logo,
+        p_vat_mode: vatMode, p_vat_rate: vatRate, p_brand_logo_data: selectedLogo,
       });
       if (saveError) throw new Error(saveError.message);
       const result = data as { document_id?: string; subtotal?: number; vat_amount?: number; total_amount?: number; updated_at?: string; source_line_snapshot?: ProposalDocument["source_line_snapshot"] } | null;
@@ -170,13 +203,15 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
       setDoc({ id: result.document_id, updated_at: result.updated_at ?? new Date().toISOString(), heading, introduction, scope, payment_terms: paymentTerms,
         validity_days: validityDays, vat_mode: vatMode, vat_rate: vatRate,
         subtotal: Number(result.subtotal), vat_amount: Number(result.vat_amount),
-        total_amount: Number(result.total_amount), brand_logo_data: logo,
+        total_amount: Number(result.total_amount), brand_logo_data: selectedLogo,
         source_line_snapshot: result.source_line_snapshot ?? [] });
-      setDirty(false);
-      setNotice("Proposal draft saved in this workspace. Nothing was approved or sent.");
+      setLogo(selectedLogo); setDirty(false);
+      setNotice(logoOverride === undefined
+        ? "Proposal draft saved in this workspace. Nothing was approved or sent."
+        : "Company logo uploaded and draft saved in this workspace. Nothing was sent.");
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to save the proposal."); }
     finally { setBusy(false); }
-  };
+  }
   const print = async () => {
     if (!doc || dirty || stale || busy || logoReading) return;
     setBusy(true); setError("");
@@ -226,20 +261,23 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
       </div>
       <label>Introduction<textarea rows={3} maxLength={2500} disabled={!canWrite || !eligible} value={introduction} onChange={e => change(setIntroduction,e.target.value)} placeholder="Introduce the customer's requested items and your proposed approach."/></label>
       <label>Scope and deliverables<textarea rows={4} maxLength={4000} disabled={!canWrite || !eligible} value={scope} onChange={e => change(setScope,e.target.value)} placeholder="Summarize precisely what's included. Avoid unverified promises."/></label>
-      <div className="pc-grid">
-        <label>VAT treatment
-          <select disabled={!canWrite || !eligible} value={vatMode} onChange={e => setTreatment(e.target.value as "unset"|"inclusive"|"exclusive")}>
+      <div className="pc-grid pc-vat-grid">
+        <div className="pc-vat-field">
+          <label htmlFor={`pc-vat-mode-${quoteId}`}>VAT treatment</label>
+          <select id={`pc-vat-mode-${quoteId}`} disabled={!canWrite || !eligible} value={vatMode} onChange={e => setTreatment(e.target.value as "unset"|"inclusive"|"exclusive")}>
             <option value="unset">Not set (internal draft)</option>
             <option value="inclusive">Catalog prices include VAT</option>
             <option value="exclusive">Add VAT to catalog prices</option>
           </select>
-        </label>
-        <label>VAT rate (%)
-          <input type="number" inputMode="decimal" min={0} max={25} step={0.01}
+          <span className="pc-vat-hint">Choose whether catalog prices include VAT.</span>
+        </div>
+        <div className="pc-vat-field">
+          <label htmlFor={`pc-vat-rate-${quoteId}`}>VAT rate (%)</label>
+          <input id={`pc-vat-rate-${quoteId}`} type="number" inputMode="decimal" min={0} max={25} step={0.01}
             aria-label="Custom VAT rate percentage" disabled={!canWrite || !eligible || vatMode === "unset"}
             value={Number.isFinite(vatRate) ? vatRate : ""} onChange={e => { setVatRate(e.target.value === "" ? NaN : Number(e.target.value)); setDirty(true); setNotice(""); }}/>
-          <span className="pc-muted">Enter your verified rate, including decimals (0–25%).</span>
-        </label>
+          <span className="pc-vat-hint">Enter your verified rate (0–25%, up to 2 decimals).</span>
+        </div>
       </div>
       {!vatValid && <p role="alert" className="pc-error">Enter a VAT rate from 0 to 25% using no more than two decimal places.</p>}
       <p className="pc-muted">VAT is selected manually by an authorized user. The AI does not determine the legal tax rate. Verify the customer's jurisdiction and whether catalog prices include VAT.</p>
@@ -248,19 +286,18 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
         <div className="pc-grand"><span>Draft total</span><strong>{euro(displayed.total)}</strong></div>
       </div>
       <label>Payment and commercial terms<textarea rows={2} maxLength={1400} disabled={!canWrite || !eligible} value={paymentTerms} onChange={e => change(setPaymentTerms,e.target.value)} placeholder="Enter your approved payment, return and delivery terms."/></label>
-      <div className="pc-logo"><div>{logo && <img src={logo} alt="Company logo preview"/>}<div><strong>Company logo</strong><p>Optional PNG/JPEG (max 125 KB). Preview it, then save the proposal to keep it. Company name is always shown.</p></div></div>
-        <input ref={logoInputRef} type="file" accept="image/png,image/jpeg" hidden
-          aria-label="Choose company logo image" onClick={e => e.stopPropagation()} onChange={onLogo}/>
-        {canWrite && eligible && <button type="button" className="pc-upload" disabled={logoReading || busy}
-          onClick={e => { e.preventDefault(); e.stopPropagation(); logoInputRef.current?.click(); }}>
-          {logoReading ? <Loader2 size={15}/> : <ImagePlus size={15}/>}{logoReading ? "Loading logo…" : logo ? "Change logo" : "Upload logo"}
-        </button>}
+      <div className="pc-logo"><div>{logo && <img src={logo} alt="Company logo preview"/>}<div><strong>Company logo</strong><p>PNG/JPEG up to 6 MB. Optimized locally and automatically saved to this unsent proposal draft, together with current form edits.</p></div></div>
+        {canWrite && eligible && <div className="pc-logo-controls">
+          <span className="pc-logo-picker-label">Choose company logo</span>
+          <input type="file" className="pc-logo-picker" accept="image/png,image/jpeg"
+            aria-label="Choose company logo image" disabled={logoReading || busy} onClick={e => e.stopPropagation()} onChange={onLogo}/>
+        </div>}
         {canWrite && eligible && logo && <button type="button" className="pc-secondary" disabled={logoReading || busy}
           onClick={() => {setLogo(null);setDirty(true);setNotice("Logo removed locally. Save the proposal to keep this change.");}}>Remove logo</button>}
       </div>
       {canWrite && eligible && <div className="pc-actions">
         <button type="button" className="pc-secondary" disabled={generating || busy} onClick={suggest}><Sparkles size={15}/>{generating ? "Preparing AI suggestion…" : "Suggest wording with AI"}</button>
-        <button type="button" className="pc-primary" disabled={busy || generating || logoReading || !vatValid || !dirty && !!doc} onClick={save}><Save size={15}/>{busy ? "Saving…" : doc ? "Save proposal changes" : "Save proposal draft"}</button>
+        <button type="button" className="pc-primary" disabled={busy || generating || logoReading || !vatValid || !dirty && !!doc} onClick={() => { void commitProposal(); }}><Save size={15}/>{busy ? "Saving…" : doc ? "Save proposal changes" : "Save proposal draft"}</button>
       </div>}
       {suggestion && <div className="pc-ai-preview"><strong>AI suggestion (not saved)</strong><p><b>{suggestion.heading}</b></p><p>{suggestion.introduction}</p><p>{suggestion.scope}</p>
         <button type="button" className="pc-primary" onClick={applySuggestion}>Apply suggestion to editor</button>

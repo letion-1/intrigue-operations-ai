@@ -9,6 +9,7 @@ import IntegrationsPanel from "./integrations-panel";
 import CalendarConnections from "./calendar-connections";
 import ReceptionistPanel from "./ai-receptionist/ReceptionistPanel";
 import DataManagementPanel from "./data-management/DataManagementPanel";
+import CompanyOnboarding from "./company-onboarding/CompanyOnboarding";
 import {
   Activity,
   ArrowRight,
@@ -1330,106 +1331,27 @@ export default function DashboardPage() {
             {tasks.length===0 && <p className="rounded-xl border border-[#35485d] p-6 text-sm text-[#afbdcb]">No follow-up tasks yet.</p>}
           </div>}
 
-          {section === "Knowledge Base" && (
+          {section === "Knowledge Base" && workspace && (
             <div className="space-y-5 intrigue-khub">
-              <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-                <div className="flex items-center gap-2"><BookOpen size={20}/><h2 className="text-lg font-bold">Company Knowledge Base</h2></div>
-                <p className="mt-2 text-sm leading-6">Give INTRIGUE the information it should know about this company. Choose a file or write the information yourself. Then review it with AI.</p>
-                <p className="mt-3 rounded-xl border px-4 py-3 text-xs leading-5 intrigue-khub-notice">Knowledge documents and notes are searchable context. They do <strong>not</strong> automatically become customers, products, orders, follow-ups or quotations. Those records have their own import and creation workflows.</p>
-              </div>
-
-              {isOwner && <div className="grid gap-3 md:grid-cols-2" role="group" aria-label="Choose how to add company knowledge">
-                <button type="button" aria-pressed={knowledgeHubMode==='files'} onClick={()=>{setKnowledgeHubMode('files');setKnowledgeAnalysis('');setKnowledgeAnalysisError('');}} className={`intrigue-khub-option rounded-2xl border p-5 text-left ${knowledgeHubMode==='files'?'intrigue-khub-selected':''}`}>
-                  <div className="flex items-center gap-3"><FileUp size={23}/><strong>1. Upload company files</strong></div>
-                  <p className="mt-2 text-xs leading-5">PDF, TXT and Markdown policies, catalogs, FAQs or company descriptions.</p>
-                </button>
-                <button type="button" aria-pressed={knowledgeHubMode==='write'} onClick={()=>{setKnowledgeHubMode('write');setKnowledgeAnalysis('');setKnowledgeAnalysisError('');}} className={`intrigue-khub-option rounded-2xl border p-5 text-left ${knowledgeHubMode==='write'?'intrigue-khub-selected':''}`}>
-                  <div className="flex items-center gap-3"><Pencil size={23}/><strong>2. Write company details</strong></div>
-                  <p className="mt-2 text-xs leading-5">Paste business details, policies and services directly as text.</p>
-                </button>
-              </div>}
-
-              {isOwner && knowledgeHubMode === 'files' && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-                <h3 className="flex items-center gap-2 text-sm font-semibold"><FileUp size={19}/>Upload files for AI knowledge</h3>
-                <p className="mt-2 text-xs leading-5">Text-based PDFs (up to 15 pages), TXT or Markdown, max 2 MB. Extracted text is saved in Supabase. Scanned PDFs without selectable text are not supported.</p>
-                <form onSubmit={uploadDocument} className="mt-4 flex flex-wrap items-center gap-3">
-                  <input id="intrigue-document-file" aria-label="Choose a company document" type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" onChange={e=>setDocumentFile(e.target.files?.[0]||null)} className="block min-w-0 max-w-full flex-1 rounded-xl border px-3 py-2 text-xs intrigue-khub-input"/>
-                  <button className={newButtonClass} type="submit" disabled={!documentFile||!workspace||documentBusy}>{documentBusy?'Uploading…':'Upload document'}</button>
-                </form>
-                {documentError && <p role="alert" className="mt-3 text-xs intrigue-khub-error">{documentError}</p>}
-                {documentSuccess && <p role="status" className="mt-3 text-xs">{documentSuccess}</p>}
-                <div className="mt-5 space-y-2">
-                  <h4 className="text-xs font-semibold">Uploaded documents ({documents.length})</h4>
-                  {documents.length===0 && <p className="text-xs">No uploaded files yet.</p>}
-                  {documents.map(d=><div key={d.id} className="intrigue-khub-file flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3">
-                    <div className="min-w-0"><p className="break-all text-xs font-semibold">{d.filename}</p><p className="mt-1 text-[11px]">{d.file_type.toUpperCase()} · {d.page_count} page(s) · {d.characters.toLocaleString()} characters</p></div>
-                    <button type="button" aria-label={`Delete ${d.filename}`} disabled={documentBusy} onClick={()=>void deleteDocument(d.id)} className="intrigue-khub-delete rounded-lg border px-3 py-2 text-xs"><Trash2 size={14}/></button>
-                  </div>)}
-                </div>
-                <button type="button" disabled={!documents.length||knowledgeAnalysisBusy||!workspace} onClick={()=>void reviewKnowledgeWithAi('files')} className={`${newButtonClass} mt-5 inline-flex items-center gap-2`}><Sparkles size={16}/>{knowledgeAnalysisBusy?'Analyzing…':'Analyze uploaded files with AI'}</button>
-              </section>}
-
-              {isOwner && knowledgeHubMode === 'write' && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-                <h3 className="flex items-center gap-2 text-sm font-semibold"><Pencil size={18}/>Write or paste company information</h3>
-                <p className="mt-2 text-xs leading-5">Describe your company, products, service prices, delivery, returns, FAQs, policies and operating hours. Save notes for future AI retrieval, or analyze the draft first.</p>
-                <form onSubmit={addKnowledge} className="mt-5 space-y-3">
-                  <div className="grid gap-3 md:grid-cols-[1fr_180px]">
-                    <input className={inputClass} aria-label="Knowledge title" placeholder="e.g. About NOVA THREADS" value={knowledgeForm.title} maxLength={120} required minLength={3} onChange={e=>setKnowledgeForm({...knowledgeForm,title:e.target.value})}/>
-                    <select className={inputClass} aria-label="Knowledge category" value={knowledgeForm.category} onChange={e=>setKnowledgeForm({...knowledgeForm,category:e.target.value})}>
-                      {['Policy','Service','FAQ','Supplier'].map(category=><option key={category} value={category}>{category}</option>)}
-                    </select>
-                  </div>
-                  <textarea className={`${inputClass} min-h-[230px] resize-y`} aria-label="Company information" placeholder="Company name:\nWhat we sell:\nProducts/services:\nPrices (if verified):\nOpening hours:\nShipping/returns:\nContact information:\nFrequently asked questions:" required minLength={10} maxLength={4000} value={knowledgeForm.content} onChange={e=>setKnowledgeForm({...knowledgeForm,content:e.target.value})}/>
-                  <p className="text-xs">{knowledgeForm.content.length}/4,000 characters. Save multiple entries for longer company descriptions.</p>
-                  <div className="flex flex-wrap gap-3">
-                    <button type="submit" disabled={knowledgeBusy||!workspace} className={newButtonClass}>{knowledgeBusy?'Saving…':'Save company details'}</button>
-                    <button type="button" disabled={knowledgeAnalysisBusy||(!knowledgeForm.content.trim()&&!knowledgeEntries.length)} onClick={()=>void reviewKnowledgeWithAi('write')} className="intrigue-khub-secondary inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold"><Sparkles size={16}/>{knowledgeAnalysisBusy?'Analyzing…':'Ask AI to analyze'}</button>
-                  </div>
-                </form>
-                {knowledgeError && <p role="alert" className="mt-3 text-xs intrigue-khub-error">{knowledgeError}</p>}
-              </section>}
-
-              {isOwner && (knowledgeAnalysis||knowledgeAnalysisError||knowledgeAnalysisBusy) && <section className="intrigue-khub-result rounded-2xl border p-6" aria-live="polite">
-                <div className="flex items-center gap-2"><Sparkles size={19}/><h3 className="text-sm font-bold">AI company analysis</h3></div>
-                <p className="mt-2 text-xs">This is a read-only review. No quotations, CRM records or approvals are created.</p>
-                {knowledgeAnalysisBusy && <p className="mt-3 text-sm">Reviewing company information…</p>}
-                {knowledgeAnalysisError && <p role="alert" className="mt-3 text-xs intrigue-khub-error">{knowledgeAnalysisError}</p>}
-                {knowledgeAnalysis && <div className="mt-4 whitespace-pre-wrap break-words text-sm leading-7">{knowledgeAnalysis}</div>}
-              </section>}
-
-              {!isOwner && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-                <h3 className="text-sm font-semibold">Company documents (read-only)</h3>
-                <div className="mt-3 space-y-2">{documents.length ? documents.map(d=><div key={d.id} className="rounded-lg border p-3 text-xs">{d.filename}</div>) : <p className="text-xs">No documents uploaded yet.</p>}</div>
-              </section>}
-
+              {isOwner ? <CompanyOnboarding
+                workspaceId={workspace.id}
+                workspaceName={workspace.name}
+                onImported={() => { void refresh(); void loadKnowledge(); void loadServices(); void loadDocuments(); }}
+              /> : <section className="rounded-2xl border p-6"><h2 className="font-bold">Company Knowledge (read-only)</h2><p className="mt-2 text-sm">Only the company owner can import or update business records.</p></section>}
               <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-bold">Saved company knowledge ({knowledgeEntries.length})</h3><span className="text-xs">Structured notes and FAQs, not customer transactions</span></div>
-                {knowledgeLoading && <p className="mt-3 text-xs">Loading saved notes…</p>}
-                {!knowledgeLoading&&knowledgeEntries.length===0&&<p className="mt-4 text-xs">No saved text entries yet. Upload a document or write company details above.</p>}
-                {knowledgeError && knowledgeHubMode !== 'write' && <p role="alert" className="mt-3 text-xs intrigue-khub-error">{knowledgeError}</p>}
-                <div className="mt-4 grid gap-3 md:grid-cols-2">{knowledgeEntries.map(entry=><article key={entry.id} className="intrigue-khub-file rounded-xl border p-4">
-                  <div className="flex items-center justify-between gap-3"><Tag variant="blue">{entry.category}</Tag><span className="text-[11px]">{niceDate(entry.created_at)}</span></div>
-                  <h4 className="mt-3 text-sm font-semibold">{entry.title}</h4>
+                <div className="flex items-center gap-2"><BookOpen size={18}/><h3 className="font-semibold">Saved company knowledge ({knowledgeEntries.length})</h3></div>
+                {!knowledgeEntries.length && <p className="mt-3 text-sm">No saved entries yet. Upload or type company information above to populate this automatically.</p>}
+                <div className="mt-4 grid gap-3 md:grid-cols-2">{knowledgeEntries.map(entry => <article key={entry.id} className="intrigue-khub-file rounded-xl border p-4">
+                  <p className="text-xs opacity-70">{entry.category}</p><h4 className="mt-2 font-semibold">{entry.title}</h4>
                   <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-6">{entry.content}</p>
-                  {isOwner&&<button type="button" disabled={knowledgeBusy} className="intrigue-khub-delete mt-4 rounded-lg border px-3 py-2 text-xs" onClick={()=>void deleteKnowledge(entry.id)}>Delete</button>}
+                  {isOwner && <button type="button" className="intrigue-khub-delete mt-4 rounded-lg border px-3 py-2 text-xs" onClick={() => { void deleteKnowledge(entry.id); }}>Delete</button>}
                 </article>)}</div>
               </section>
-
-              {isOwner && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-                <h3 className="text-sm font-semibold">Structured business data belongs in Data Management</h3>
-                <p className="mt-2 text-xs leading-6">To populate customer and service records, import CSV/JSON through Data Management. To create a real draft quotation, add a customer and a verified amount in Quotations &amp; Proposals. The current importer does not bulk-create enquiries, quotations or orders from a knowledge document.</p>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button type="button" onClick={()=>navigate('Data Management')} className={newButtonClass}>Open Data Management</button>
-                  <button type="button" onClick={()=>navigate('Quotations')} className="intrigue-khub-secondary rounded-xl border px-4 py-2.5 text-xs font-semibold">Open Quotations</button>
-                </div>
+              {documents.length > 0 && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
+                <h3 className="font-semibold">Previously uploaded searchable documents ({documents.length})</h3>
+                <p className="mt-2 text-xs">These were uploaded before the automatic importer. They remain available to your knowledge search; uploading a company dataset above creates structured records.</p>
+                <div className="mt-3 space-y-2">{documents.map(d => <div key={d.id} className="intrigue-khub-file rounded-xl border p-3 text-xs">{d.filename}</div>)}</div>
               </section>}
-
-              {isOwner && <details className="rounded-2xl border border-[#35485d] bg-[#142539] p-5">
-                <summary className="cursor-pointer text-xs font-semibold">Advanced: semantic search indexing</summary>
-                <p className="mt-3 text-xs leading-5">Index up to 12 saved sections for meaning-based retrieval. Embedding model usage may incur charges. Keyword search remains available.</p>
-                <button type="button" disabled={!workspace||semanticBusy} onClick={()=>void buildSemanticIndex()} className={`${newButtonClass} mt-3`}>{semanticBusy?'Indexing…':'Build semantic index'}</button>
-                {semanticStatus && <p role="status" className="mt-3 text-xs">{semanticStatus}</p>}
-              </details>}
             </div>
           )}
 

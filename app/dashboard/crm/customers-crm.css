@@ -77,3 +77,56 @@
 .intrigue-crm .crm-form-grid textarea { resize:vertical; min-height:88px; }
 .intrigue-crm .crm-form-grid textarea:focus-visible,.intrigue-crm .crm-form-grid select:focus-visible { border-color:var(--crm-accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--crm-accent) 25%,transparent); }
 @media(max-width:700px) { .intrigue-crm .crm-tabs { width:100%; } .intrigue-crm .crm-tabs button { flex:1; justify-content:center; padding:9px 7px; } }
+
+/* V16.4.4 Customer 360°. Scoped to CRM, no global theme or sidebar overrides. */
+.intrigue-crm .crm-profile-link {
+  appearance:none; background:none; border:0; padding:0; margin:0; color:var(--crm-text);
+  font:inherit; font-weight:700; text-align:left; text-decoration:underline;
+  text-decoration-color:transparent; text-underline-offset:3px; cursor:pointer;
+}
+.intrigue-crm .crm-profile-link:hover { color:var(--crm-accent); text-decoration-color:currentColor; }
+.intrigue-crm .crm-profile-link:focus-visible { outline:2px solid var(--crm-accent); outline-offset:3px; border-radius:3px; }
+.intrigue-crm .crm-profile {
+  display:grid; gap:17px; padding:23px; min-width:0; background:var(--crm-bg);
+  color:var(--crm-text); border:1px solid var(--crm-border); border-radius:16px;
+}
+.intrigue-crm .crm-profile-top { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; }
+.intrigue-crm .crm-profile-top .crm-secondary { display:inline-flex; gap:8px; align-items:center; }
+.intrigue-crm .crm-profile-eyebrow { color:var(--crm-sub); font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+.intrigue-crm .crm-profile-title { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-start; justify-content:space-between; }
+.intrigue-crm .crm-profile-title h3 { font-size:26px; line-height:1.2; font-weight:700; margin:0; }
+.intrigue-crm .crm-profile-title p { color:var(--crm-sub); font-size:12px; margin:6px 0 0; }
+.intrigue-crm .crm-profile-title .crm-secondary { display:inline-flex; gap:7px; align-items:center; }
+.intrigue-crm .crm-profile-contacts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.intrigue-crm .crm-profile-contacts>div { display:grid; gap:8px; min-width:0; border:1px solid var(--crm-border); border-radius:12px; padding:14px; background:var(--crm-input); }
+.intrigue-crm .crm-profile-contacts strong { font-size:11px; color:var(--crm-sub); font-weight:650; }
+.intrigue-crm .crm-profile-contacts a { display:flex; align-items:center; gap:7px; color:var(--crm-text); overflow-wrap:anywhere; text-decoration:underline; text-decoration-color:var(--crm-border); font-size:13px; }
+.intrigue-crm .crm-profile-contacts span { font-size:13px; overflow-wrap:anywhere; }
+.intrigue-crm .crm-profile-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; }
+.intrigue-crm .crm-profile-stats>div { display:grid; gap:5px; border:1px solid var(--crm-border); border-radius:12px; padding:15px 13px; background:var(--crm-input); }
+.intrigue-crm .crm-profile-stats strong { font-size:23px; color:var(--crm-text); line-height:1.2; }
+.intrigue-crm .crm-profile-stats span { font-size:11px; color:var(--crm-sub); }
+.intrigue-crm .crm-profile-actions { display:flex; gap:9px; flex-wrap:wrap; }
+.intrigue-crm .crm-profile-actions .crm-secondary { display:inline-flex; gap:7px; align-items:center; }
+.intrigue-crm .crm-profile-form { background:var(--crm-input); border-radius:13px; }
+.intrigue-crm .crm-profile-notice { border:1px solid var(--crm-border); border-radius:10px; padding:11px 13px; background:var(--crm-head); color:var(--crm-text); font-size:12px; }
+.intrigue-crm .crm-profile-history { border:1px solid var(--crm-border); border-radius:13px; overflow:hidden; }
+.intrigue-crm .crm-profile-history-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:17px 18px; background:var(--crm-head); }
+.intrigue-crm .crm-profile-history-head h4 { font-size:15px; font-weight:700; margin:0; }
+.intrigue-crm .crm-profile-history-head span { color:var(--crm-sub); font-size:12px; }
+.intrigue-crm .crm-profile-timeline { list-style:none; padding:0; margin:0; }
+.intrigue-crm .crm-profile-timeline li { display:flex; align-items:flex-start; gap:13px; padding:16px 18px; border-top:1px solid var(--crm-border); }
+.intrigue-crm .crm-profile-timeline-icon { display:grid; place-items:center; flex:0 0 31px; width:31px; height:31px; border-radius:9px; color:var(--crm-text); background:var(--crm-head); }
+.intrigue-crm .crm-profile-timeline li>div { min-width:0; flex:1; display:grid; gap:5px; }
+.intrigue-crm .crm-profile-timeline strong { font-size:13px; line-height:1.4; font-weight:650; overflow-wrap:anywhere; }
+.intrigue-crm .crm-profile-timeline li>div span { color:var(--crm-sub); font-size:11px; }
+.intrigue-crm .crm-profile-timeline time { color:var(--crm-sub); font-size:11px; white-space:nowrap; }
+.intrigue-crm .crm-profile-empty, .intrigue-crm .crm-profile-note { padding:14px 18px; margin:0; font-size:12px; color:var(--crm-sub); }
+.intrigue-crm .crm-profile-note { border-top:1px solid var(--crm-border); font-size:11px; }
+@media(max-width:800px) {
+  .intrigue-crm .crm-profile { padding:15px; }
+  .intrigue-crm .crm-profile-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .intrigue-crm .crm-profile-contacts { grid-template-columns:1fr; }
+  .intrigue-crm .crm-profile-timeline li { flex-wrap:wrap; }
+  .intrigue-crm .crm-profile-timeline time { padding-left:44px; }
+}

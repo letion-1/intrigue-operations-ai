@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { ClipboardList, Mail, Pencil, Phone, Plus, Search, Users, X } from "lucide-react";
+import { ArrowLeft, CalendarClock, ClipboardList, FileText, Mail, Package, Pencil, Phone, Plus, Search, Users, X } from "lucide-react";
 import { isAutomotiveIndustry } from "./IndustryIcon";
 import "./customers-crm.css";
 
@@ -21,6 +21,11 @@ type Enquiry = {
   status: string;
   created_at: string;
 };
+type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string };
+type FollowUp = { id: string; customer_id: string; title: string; due_at: string; status: string; priority: string };
+type ImportedOrder = { id: string; customer_id: string | null; external_id: string; kind: string; status: string; description: string; amount: number; currency: string; created_at: string };
+type ProfileAction = "quote" | "followup" | null;
+type TimelineEntry = { id: string; date: string; kind: "enquiry" | "quotation" | "followup" | "order"; title: string; detail: string };
 type Draft = { full_name: string; email: string; phone: string; vehicle: string; enquiry: string };
 const emptyDraft: Draft = { full_name: "", email: "", phone: "", vehicle: "", enquiry: "" };
 
@@ -48,6 +53,20 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
   const automotive = isAutomotiveIndustry(industry);
   const [activeTab, setActiveTab] = useState<"customers" | "enquiries">("customers");
   const [search, setSearch] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [returnTab, setReturnTab] = useState<"customers" | "enquiries">("customers");
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileErrors, setProfileErrors] = useState<string[]>([]);
+  const [profileQuotes, setProfileQuotes] = useState<Quote[]>([]);
+  const [profileFollowUps, setProfileFollowUps] = useState<FollowUp[]>([]);
+  const [profileOrders, setProfileOrders] = useState<ImportedOrder[]>([]);
+  const [profileAction, setProfileAction] = useState<ProfileAction>(null);
+  const [profileDescription, setProfileDescription] = useState("");
+  const [profileAmount, setProfileAmount] = useState("");
+  const [profileDate, setProfileDate] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
+  const requestSerial = useRef(0);
   const [showEnquiryForm, setShowEnquiryForm] = useState(false);
   const [enquiryCustomerId, setEnquiryCustomerId] = useState("");
   const [enquirySubject, setEnquirySubject] = useState("");
@@ -66,6 +85,128 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
     return [e.subject, c?.full_name, c?.email, c?.phone].some(value => (value ?? "").toLowerCase().includes(search.toLowerCase().trim()));
   }), [byId, enquiries, search]);
 
+  const selectedCustomer = selectedCustomerId ? byId.get(selectedCustomerId) : null;
+  const customerEnquiries = useMemo(() => selectedCustomerId
+    ? enquiries.filter(e => e.customer_id === selectedCustomerId) : [], [enquiries, selectedCustomerId]);
+
+  // Server and RLS remain the final authority. The workspace/customer filters
+  // are applied to every query, even when the user opened a profile locally.
+  const loadProfile = useCallback(async (customerId: string) => {
+    if (!workspaceId || !customers.some(c => c.id === customerId)) return;
+    const serial = ++requestSerial.current;
+    setProfileLoading(true);
+    setProfileErrors([]);
+    const [quotes, followups, orders] = await Promise.all([
+      supabase.from("quotations")
+        .select("id,customer_id,description,amount,status,created_at")
+        .eq("workspace_id", workspaceId).eq("customer_id", customerId)
+        .order("created_at", { ascending: false }),
+      supabase.from("follow_ups")
+        .select("id,customer_id,title,due_at,status,priority")
+        .eq("workspace_id", workspaceId).eq("customer_id", customerId)
+        .order("due_at", { ascending: false }),
+      supabase.from("intrigue_imported_orders")
+        .select("id,customer_id,external_id,kind,status,description,amount,currency,created_at")
+        .eq("workspace_id", workspaceId).eq("customer_id", customerId)
+        .order("created_at", { ascending: false }),
+    ]);
+    if (serial !== requestSerial.current) return;
+    setProfileQuotes((quotes.data ?? []) as Quote[]);
+    setProfileFollowUps((followups.data ?? []) as FollowUp[]);
+    setProfileOrders((orders.data ?? []) as ImportedOrder[]);
+    const failures = [
+      quotes.error ? `Quotations: ${quotes.error.message}` : null,
+      followups.error ? `Follow-ups: ${followups.error.message}` : null,
+      orders.error ? `Imported orders: ${orders.error.message}` : null,
+    ].filter((x): x is string => Boolean(x));
+    setProfileErrors(failures);
+    setProfileLoading(false);
+  }, [workspaceId, supabase, customers]);
+
+  useEffect(() => {
+    // Prevent exposing stale profile records after a workspace switch.
+    requestSerial.current += 1;
+    setSelectedCustomerId(null);
+    setProfileQuotes([]); setProfileFollowUps([]); setProfileOrders([]);
+    setProfileErrors([]); setProfileAction(null);
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (selectedCustomerId && byId.has(selectedCustomerId)) {
+      void loadProfile(selectedCustomerId);
+    }
+  }, [selectedCustomerId, byId, loadProfile]);
+
+  const openProfile = (customerId: string, from: "customers" | "enquiries") => {
+    if (!byId.has(customerId)) return;
+    setReturnTab(from); setActiveTab(from);
+    setSelectedCustomerId(customerId); setShowCreate(false); setShowEnquiryForm(false);
+    setProfileAction(null); setProfileMessage(""); setError(""); setSuccess("");
+  };
+  const closeProfile = () => {
+    requestSerial.current += 1;
+    setSelectedCustomerId(null); setActiveTab(returnTab);
+    setProfileAction(null); setProfileMessage(""); setProfileErrors([]);
+  };
+  const startProfileAction = (action: Exclude<ProfileAction, null>) => {
+    setProfileAction(action); setProfileDescription(""); setProfileAmount("");
+    setProfileDate(""); setProfileMessage("");
+  };
+  const openProfileEnquiry = () => {
+    if (!selectedCustomerId) return;
+    const id = selectedCustomerId;
+    closeProfile(); setActiveTab("enquiries"); setShowEnquiryForm(true);
+    setEnquiryCustomerId(id); setEnquirySubject("");
+  };
+  const openProfileEdit = () => {
+    if (!selectedCustomer) return;
+    const customer = selectedCustomer;
+    closeProfile(); setActiveTab("customers"); openEdit(customer);
+  };
+  async function saveProfileAction(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedCustomerId || !byId.has(selectedCustomerId) || !workspaceId || !canWrite || profileSaving || !profileAction) return;
+    const description = profileDescription.trim();
+    if (description.length < 3 || description.length > 500) {
+      setProfileMessage("Enter a description between 3 and 500 characters."); return;
+    }
+    if (profileAction === "quote" && (!Number.isFinite(Number(profileAmount)) || Number(profileAmount) <= 0 || Number(profileAmount) > 99999999)) {
+      setProfileMessage("Enter a valid positive quotation amount."); return;
+    }
+    if (profileAction === "followup" && (!/^\d{4}-\d{2}-\d{2}$/.test(profileDate) || Number.isNaN(new Date(`${profileDate}T12:00:00`).getTime()))) {
+      setProfileMessage("Select a valid follow-up date."); return;
+    }
+    setProfileSaving(true); setProfileMessage("");
+    try {
+      const result = profileAction === "quote"
+        ? await supabase.from("quotations").insert({
+            workspace_id: workspaceId, customer_id: selectedCustomerId,
+            description, amount: Number(profileAmount), status: "draft",
+          })
+        : await supabase.from("follow_ups").insert({
+            workspace_id: workspaceId, customer_id: selectedCustomerId,
+            title: description, due_at: new Date(`${profileDate}T12:00:00`).toISOString(),
+            status: "pending", priority: "normal",
+          });
+      if (result.error) throw new Error(result.error.message);
+      setProfileAction(null);
+      setProfileMessage(profileAction === "quote" ? "Draft quotation saved. Nothing was sent." : "Follow-up saved.");
+      await refresh();
+      await loadProfile(selectedCustomerId);
+    } catch (err) {
+      setProfileMessage(err instanceof Error ? err.message : "Unable to save this action.");
+    } finally { setProfileSaving(false); }
+  }
+  const timeline = useMemo<TimelineEntry[]>(() => {
+    if (!selectedCustomerId) return [];
+    return [
+      ...customerEnquiries.map(e => ({ id: `enquiry-${e.id}`, date: e.created_at, kind: "enquiry" as const, title: e.subject, detail: `Enquiry · ${e.status.replace(/_/g," ")}` })),
+      ...profileQuotes.map(q => ({ id: `quotation-${q.id}`, date: q.created_at, kind: "quotation" as const, title: q.description, detail: `Quotation · ${q.status} · €${Number(q.amount).toFixed(2)}` })),
+      ...profileFollowUps.map(f => ({ id: `followup-${f.id}`, date: f.due_at, kind: "followup" as const, title: f.title, detail: `Follow-up · ${f.status.replace(/_/g," ")} · ${f.priority} priority` })),
+      ...profileOrders.map(o => ({ id: `order-${o.id}`, date: o.created_at, kind: "order" as const, title: o.description || o.external_id, detail: `${o.kind.replace(/_/g," ")} · ${o.status} · ${Number(o.amount).toFixed(2)} ${o.currency}` })),
+    ].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [customerEnquiries, profileQuotes, profileFollowUps, profileOrders, selectedCustomerId]);
+
   const updateField = (key: keyof Draft, value: string) => setDraft(current => ({ ...current, [key]: value }));
   const openCreate = () => {
     setActiveTab("customers"); setShowEnquiryForm(false);
@@ -79,6 +220,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
     setActiveTab(tab); setShowCreate(false); setShowEnquiryForm(false); setError(""); setSuccess("");
   };
   const openEdit = (c: Customer) => {
+    setActiveTab("customers"); setSelectedCustomerId(null);
     setEditingId(c.id);
     setDraft({ full_name: c.full_name, email: c.email || "", phone: c.phone || "", vehicle: c.vehicle || "", enquiry: "" });
     setError(""); setSuccess(""); setShowCreate(true);
@@ -164,6 +306,54 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       <div><strong>{customers.filter(c => !!c.email).length}</strong><span>With email</span></div>
       <div><strong>{customers.filter(c => !!c.phone).length}</strong><span>With phone</span></div>
     </div>
+    {selectedCustomer && <div className="crm-profile" aria-label={`Customer profile: ${selectedCustomer.full_name}`}>
+      <div className="crm-profile-top">
+        <button type="button" className="crm-secondary" onClick={closeProfile}><ArrowLeft size={15}/> Back to {returnTab}</button>
+        <span className="crm-profile-eyebrow">CUSTOMER 360° · {companyName}</span>
+      </div>
+      <div className="crm-profile-title">
+        <div><h3>{selectedCustomer.full_name}</h3><p>Customer since {new Date(selectedCustomer.created_at).toLocaleDateString()}</p></div>
+        {canWrite && <button type="button" className="crm-secondary" onClick={openProfileEdit}><Pencil size={14}/> Edit contact</button>}
+      </div>
+      <div className="crm-profile-contacts">
+        <div><strong>Email</strong>{selectedCustomer.email ? <a href={`mailto:${selectedCustomer.email}`}><Mail size={15}/>{selectedCustomer.email}</a> : <span>Not provided</span>}</div>
+        <div><strong>Phone</strong>{selectedCustomer.phone ? <a href={`tel:${selectedCustomer.phone.replace(/[^+\d]/g,"")}`}><Phone size={15}/>{selectedCustomer.phone}</a> : <span>Not provided</span>}</div>
+        {automotive && <div><strong>Vehicle</strong><span>{selectedCustomer.vehicle || "Not provided"}</span></div>}
+      </div>
+      <div className="crm-profile-stats">
+        <div><strong>{customerEnquiries.length}</strong><span>Enquiries</span></div>
+        <div><strong>{profileLoading ? "…" : profileQuotes.length}</strong><span>Quotations</span></div>
+        <div><strong>{profileLoading ? "…" : profileOrders.length}</strong><span>{automotive ? "Work orders" : "Orders"}</span></div>
+        <div><strong>{profileLoading ? "…" : profileFollowUps.length}</strong><span>Follow-ups</span></div>
+      </div>
+      {profileErrors.length > 0 && <div className="crm-alert" role="alert">Some customer activity could not be loaded: {profileErrors.join(" | ")}</div>}
+      {canWrite && <div className="crm-profile-actions">
+        <button type="button" className="crm-primary" onClick={openProfileEnquiry}><Plus size={15}/> New enquiry</button>
+        <button type="button" className="crm-secondary" onClick={() => startProfileAction("quote")}><FileText size={15}/> Draft quotation</button>
+        <button type="button" className="crm-secondary" onClick={() => startProfileAction("followup")}><CalendarClock size={15}/> New follow-up</button>
+      </div>}
+      {profileMessage && <div className="crm-profile-notice" role="status">{profileMessage}</div>}
+      {canWrite && profileAction && <form className="crm-form crm-profile-form" onSubmit={saveProfileAction}>
+        <div className="crm-form-heading"><strong>{profileAction === "quote" ? "Draft quotation" : "Schedule follow-up"}</strong><button type="button" aria-label="Close action" onClick={() => setProfileAction(null)}><X size={18}/></button></div>
+        <div className="crm-form-grid">
+          <label className="crm-wide">{profileAction === "quote" ? "Quotation description *" : "Follow-up task *"}<textarea required minLength={3} maxLength={500} rows={3} value={profileDescription} onChange={e => setProfileDescription(e.target.value)} /></label>
+          {profileAction === "quote" ? <label>Amount (EUR) *<input type="number" required min="0.01" max="99999999" step="0.01" value={profileAmount} onChange={e => setProfileAmount(e.target.value)}/></label> : <label>Due date *<input type="date" required value={profileDate} onChange={e => setProfileDate(e.target.value)}/></label>}
+        </div>
+        {profileAction === "quote" && <p className="crm-form-help">Saved as an unsent draft. The current quotations schema stores amounts in EUR.</p>}
+        <div className="crm-form-actions"><button className="crm-primary" type="submit" disabled={profileSaving}>{profileSaving ? "Saving…" : profileAction === "quote" ? "Save draft" : "Save follow-up"}</button><button className="crm-secondary" type="button" onClick={() => setProfileAction(null)}>Cancel</button></div>
+      </form>}
+      <div className="crm-profile-history">
+        <div className="crm-profile-history-head"><h4>Customer activity</h4><span>{profileLoading ? "Loading linked records…" : `${timeline.length} activities`}</span></div>
+        {profileLoading ? <p className="crm-profile-empty">Loading quotations, orders and follow-ups…</p> : timeline.length ?
+          <ol className="crm-profile-timeline">{timeline.map(event => <li key={event.id}>
+            <span className="crm-profile-timeline-icon" aria-hidden="true">{event.kind === "order" ? <Package size={16}/> : event.kind === "quotation" ? <FileText size={16}/> : event.kind === "followup" ? <CalendarClock size={16}/> : <ClipboardList size={16}/>}</span>
+            <div><strong>{event.title}</strong><span>{event.detail}</span></div>
+            <time dateTime={event.date}>{new Date(event.date).toLocaleDateString()}</time>
+          </li>)}</ol> : <p className="crm-profile-empty">No linked activities yet. Use the actions above to create the first one.</p>}
+        <p className="crm-profile-note">Shows records explicitly linked to this customer in the current workspace. Imported orders without a customer link are not included.</p>
+      </div>
+    </div>}
+    {!selectedCustomer && <>
     <div className="crm-tabs" role="tablist" aria-label="CRM views">
       <button type="button" role="tab" id="crm-customers-tab" aria-selected={activeTab === "customers"} aria-controls="crm-customers-panel" className={activeTab === "customers" ? "crm-tab-active" : ""} onClick={() => switchTab("customers")}><Users size={16} /> Customers <span>({customers.length})</span></button>
       <button type="button" role="tab" id="crm-enquiries-tab" aria-selected={activeTab === "enquiries"} aria-controls="crm-enquiries-panel" className={activeTab === "enquiries" ? "crm-tab-active" : ""} onClick={() => switchTab("enquiries")}><ClipboardList size={16} /> Enquiries <span>({enquiries.length})</span></button>
@@ -203,7 +393,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       <div className="crm-table-scroll"><table>
         <thead><tr><th>Name</th><th>Email</th><th>Phone</th>{automotive && <th>Vehicle</th>}{canWrite && <th>Actions</th>}</tr></thead>
         <tbody>{visibleCustomers.map(c => <tr key={c.id}>
-          <td className="crm-name">{c.full_name}</td>
+          <td className="crm-name"><button type="button" className="crm-profile-link" onClick={() => openProfile(c.id, "customers")} aria-label={`View profile for ${c.full_name}`}>{c.full_name}</button></td>
           <td>{c.email ? <a href={`mailto:${c.email}`}><Mail size={14}/>{c.email}</a> : <span className="crm-empty">Not provided</span>}</td>
           <td>{c.phone ? <a href={`tel:${c.phone.replace(/[^+\d]/g, "")}`}><Phone size={14}/>{c.phone}</a> : <span className="crm-empty">Not provided</span>}</td>
           {automotive && <td>{c.vehicle || <span className="crm-empty">Not provided</span>}</td>}
@@ -218,10 +408,11 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
         <thead><tr><th>Customer</th><th>{automotive ? "Service request" : "Enquiry / request"}</th><th>Status</th><th>Received</th></tr></thead>
         <tbody>{visibleEnquiries.map(row => {
           const customer = byId.get(row.customer_id);
-          return <tr key={row.id}><td><strong>{customer?.full_name || "Unknown customer"}</strong><span className="crm-subtext">{customer?.email || customer?.phone || "Contact not provided"}</span></td><td>{row.subject}</td><td><span className="crm-status">{row.status.replace(/_/g, " ")}</span></td><td>{new Date(row.created_at).toLocaleDateString()}</td></tr>;
+          return <tr key={row.id}><td>{customer ? <button type="button" className="crm-profile-link" onClick={() => openProfile(customer.id, "enquiries")}>{customer.full_name}</button> : <strong>Unknown customer</strong>}<span className="crm-subtext">{customer?.email || customer?.phone || "Contact not provided"}</span></td><td>{row.subject}</td><td><span className="crm-status">{row.status.replace(/_/g, " ")}</span></td><td>{new Date(row.created_at).toLocaleDateString()}</td></tr>;
         })}</tbody>
       </table></div>
       {!visibleEnquiries.length && <div className="crm-empty-state">{enquiries.length ? "No enquiries match your search." : "No enquiries yet. Use New enquiry to record the first request."}</div>}
     </div>}
+    </>}
   </section>;
 }

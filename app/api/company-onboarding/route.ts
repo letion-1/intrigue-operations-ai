@@ -131,7 +131,12 @@ function declaredCompanyName(source:string):string{
   const first=source.replace(/^\uFEFF/,'').split(/\r?\n/).slice(0,12);
   for(const line of first){
     const label=line.match(/^\s*(?:company\s*name|business\s*name)\s*:\s*(.{2,100})\s*$/i);
-    if(label)return label[1].trim();
+    if(label){
+      // Manual entry can put a second sentence on the same line. Only use
+      // the declared company name, not the entire paragraph.
+      const declared=label[1].trim().split(/(?:\.\s+(?=[A-Z][a-z])|;\s+|,\s*(?=(?:industry|business|website|email|phone)\s*:))/i,1)[0];
+      return declared.trim().replace(/[.;]+$/,'').trim();
+    }
     const header=line.match(/^\s*([A-Z][A-Z0-9 &'.,-]{2,90})\s*\|\s*INTRIGUE(?:\s|$)/);
     if(header)return header[1].trim();
   }

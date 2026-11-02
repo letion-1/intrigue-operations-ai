@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { createClient } from "@/lib/supabase/client";
 import VapiReceptionist from "./vapi-receptionist";
 import BusinessEmailConnections from "./integrations/BusinessEmailConnections"; // INTRIGUE_V1657
+import CalendarProviderConnections from "./integrations/CalendarProviderConnections"; // INTRIGUE_V1658
 
 type Scheduler = "none" | "cal" | "calendly";
 type MailProvider = "none" | "gmail" | "outlook";
@@ -94,8 +95,8 @@ export default function IntegrationsPanel({workspaceId,onImported,onOpenCalendar
   },[supabase,workspaceId]);
   useEffect(()=>{void load();},[load]);
 
-  async function save(event:FormEvent<HTMLFormElement>){
-    event.preventDefault();setStatus("");setError("");
+  async function save(event?:FormEvent<HTMLFormElement>){
+    event?.preventDefault();setStatus("");setError("");
     const url=pref.scheduling_provider==="none"?"":pref.booking_url.trim();
     if(!bookingUrlOk(pref.scheduling_provider,url)){
       setError("Enter a full HTTPS booking URL on cal.com or calendly.com for the selected provider.");return;
@@ -172,22 +173,25 @@ export default function IntegrationsPanel({workspaceId,onImported,onOpenCalendar
         <div className="rounded-xl border border-[#41556b] bg-[#0d1e30] p-4"><h3 className="font-semibold text-[#e7c37c]">CRM imports</h3><p className="mt-2 text-xs text-[#b8c7d4]">CSV contact import remains available below while the CRM module is upgraded.</p></div>
       </div>
     </div>
+    <CalendarProviderConnections
+      workspaceId={workspaceId} onOpenCalendar={onOpenCalendar}
+      bookingProvider={pref.scheduling_provider} bookingUrl={pref.booking_url}
+      onBookingProviderChange={provider=>setPref(p=>({...p,scheduling_provider:provider,booking_url:""}))}
+      onBookingUrlChange={url=>setPref(p=>({...p,booking_url:url}))}
+      onSaveBooking={()=>{void save();}}
+      preferenceLoading={loading} preferenceSaving={saving} preferenceStatus={status} preferenceError={error}
+    />
     <BusinessEmailConnections workspaceId={workspaceId}/>
     <details className="rounded-2xl border border-[#35485d] bg-[#142539] p-4">
       <summary className="cursor-pointer text-sm font-semibold text-[#e7c37c]">Advanced integration preferences</summary>
     <div className="mt-4 space-y-5">
     <div className={box}>
-      <h2 className="text-lg font-semibold text-[#f4efe5]">Connect your business tools</h2>
+      <h2 className="text-lg font-semibold text-[#f4efe5]">Advanced business preferences</h2>
       <p className="mt-2 text-sm leading-6 text-[#b8c7d4]">Each company keeps its own integration preferences. Saving a provider name does not grant INTRIGUE access to your provider account. No outbound calls or emails are sent by this screen.</p>
       {loading?<p className="mt-4 text-sm text-[#a9b9ca]">Loading company integrations...</p>:
       <form onSubmit={save} className="mt-5 grid gap-5">
         <div className="grid gap-3 md:grid-cols-2">
-          <div><label className="text-xs font-semibold text-[#e7c37c]" htmlFor="v153-scheduler">Meeting scheduler</label>
-            <select id="v153-scheduler" className={field+" mt-1"} value={pref.scheduling_provider} onChange={e=>setPref(p=>({...p,scheduling_provider:e.target.value as Scheduler,booking_url:""}))}>
-              <option value="none">Not configured</option><option value="cal">Cal.com</option><option value="calendly">Calendly</option>
-            </select></div>
-          <div><label className="text-xs font-semibold text-[#e7c37c]" htmlFor="v153-booking">Booking page URL</label>
-            <input id="v153-booking" className={field+" mt-1"} value={pref.booking_url} onChange={e=>setPref(p=>({...p,booking_url:e.target.value}))} placeholder="https://cal.com/your-team/meeting" maxLength={400}/></div>
+          {/* INTRIGUE_V1658: Calendly and Cal.com links moved to visible Scheduling providers section. */}
           <div><label className="text-xs font-semibold text-[#e7c37c]" htmlFor="v153-vapi">Vapi assistant ID</label>
             <input id="v153-vapi" className={field+" mt-1"} value={pref.vapi_assistant_id} onChange={e=>setPref(p=>({...p,vapi_assistant_id:e.target.value}))} placeholder="Vapi assistant identifier (optional)" maxLength={100}/>
             <p className="mt-1 text-xs text-[#96a9ba]">Reference only, not a live voice connection. Never paste a Vapi API key here.</p></div>
@@ -213,7 +217,7 @@ export default function IntegrationsPanel({workspaceId,onImported,onOpenCalendar
     </details>
     <div className="grid gap-3 md:grid-cols-3">
       {[
-        {title:"Scheduling",desc:"Booking-page link is available when saved. API availability and meeting sync need OAuth + webhooks."},
+        {title:"Scheduling",desc:"Calendly and Cal.com connection controls and booking links are visible above. Provider features depend on their OAuth permissions."},
         {title:"AI receptionist",desc:"Vapi assistant ID can be saved. Call handling, appointment tools and webhooks are not connected yet."},
         {title:"Email",desc:"Manage Gmail authorization in Business email above. Outlook is not available yet. Approval and sending remain separate."},
       ].map(item=><div className={box} key={item.title}><h3 className="font-semibold text-[#efd5a1]">{item.title}</h3><p className="mt-2 text-xs leading-5 text-[#b8c7d4]">{item.desc}</p></div>)}

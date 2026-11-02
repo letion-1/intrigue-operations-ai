@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { approvedPdf } from '../_lib/approved-pdf';
 import { NextRequest } from 'next/server';
 import { actor, adminClient, decrypt, emailPattern, googleConfig, jsonBody, mailError, MailError, noStore, sha, uuidPattern } from '../_lib/common';
 
@@ -36,11 +37,26 @@ export async function POST(request: NextRequest) {
     const quotationId = String(input.quotationId || '');
     if (!uuidPattern.test(workspaceId) || !uuidPattern.test(quotationId)) throw new MailError('Invalid workspace or quotation.');
     if (input.confirmation !== 'SEND APPROVED PROPOSAL') throw new MailError('Explicit send confirmation is required.');
-    const base64 = input.pdfBase64;
-    if (typeof base64 !== 'string' || base64.length > 2_100_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) throw new MailError('Attach the reviewed PDF (maximum 1.5 MB).');
-    const pdf = Buffer.from(base64, 'base64');
-    if (pdf.length < 100 || pdf.length > MAX_PDF_BYTES || !pdf.subarray(0, 8).toString('latin1').startsWith('%PDF-') || !pdf.subarray(-4096).toString('latin1').includes('%%EOF')) {
-      throw new MailError('The attachment is not a valid-looking PDF or exceeds 1.5 MB.');
+    const generated = input.attachmentMode === 'generated';
+    let pdf: Buffer;
+    let previewSnapshotHash: string | null = null;
+    if (generated) {
+      const wantedHash = String(input.previewSnapshotHash || '');
+      if (!/^[a-f0-9]{64}$/.test(wantedHash)) throw new MailError('Preview the current approved PDF before sending.',409);
+      // The server regenerates the attachment from the currently approved DB revision.
+      // Browser-supplied PDF bytes, prices, text and logos are ignored in generated mode.
+      const rendered = await approvedPdf(request, workspaceId, quotationId);
+      if (rendered.snapshotHash !== wantedHash) throw new MailError('The approved proposal has changed since PDF preview. Generate and review the new PDF.',409);
+      previewSnapshotHash = rendered.snapshotHash;
+      pdf = rendered.pdf;
+    } else {
+      // Legacy manual attachment path remains available for non-WinAnsi documents.
+      const base64 = input.pdfBase64;
+      if (typeof base64 !== 'string' || base64.length > 2_100_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) throw new MailError('Attach the reviewed PDF (maximum 1.5 MB).');
+      pdf = Buffer.from(base64, 'base64');
+      if (pdf.length < 100 || pdf.length > MAX_PDF_BYTES || !pdf.subarray(0, 8).toString('latin1').startsWith('%PDF-') || !pdf.subarray(-4096).toString('latin1').includes('%%EOF')) {
+        throw new MailError('The attachment is not a valid-looking PDF or exceeds 1.5 MB.');
+      }
     }
     const { userClient } = await actor(request, workspaceId);
     const { data: preview, error: previewError } = await userClient.rpc('intrigue_proposal_email_preview', {
@@ -84,6 +100,19 @@ export async function POST(request: NextRequest) {
     if (verifiedError || !verified || verified.recipient !== recipient || verified.subject !== subject || verified.body !== body) {
       await db.from('intrigue_mail_deliveries').update({ status: 'failed', error_code: 'approval_changed' }).eq('id', deliveryId);
       throw new MailError('Approval changed during preparation. Do not send; request a new approval.', 409);
+    }
+    if (generated && previewSnapshotHash) {
+      // Final check after the atomic claim. Even a concurrent logo/terms change
+      // invalidates the previously reviewed automatic PDF before Gmail is called.
+      let stillCurrent = false;
+      try {
+        const latest = await approvedPdf(request, workspaceId, quotationId);
+        stillCurrent = latest.snapshotHash === previewSnapshotHash;
+      } catch { stillCurrent = false; }
+      if (!stillCurrent) {
+        await db.from('intrigue_mail_deliveries').update({ status:'failed', error_code:'pdf_snapshot_changed' }).eq('id',deliveryId);
+        throw new MailError('Proposal changed before delivery. The request has been stopped. Check the delivery log before trying again.',409);
+      }
     }
     const raw = mime(String(account.sender_email), recipient, subject, body, pdf);
     attemptedGmail = true;

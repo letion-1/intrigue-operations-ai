@@ -1,0 +1,5 @@
+.gd-auto-pdf{border:1px solid var(--qs-border);border-radius:12px;padding:15px;margin:16px 0;background:var(--qs-field)}
+.gd-auto-heading{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}.gd-auto-heading svg{flex-shrink:0;color:#cba359}.gd-auto-heading strong{font-size:.86rem}.gd-auto-heading p{margin:4px 0 0;font-size:.78rem;opacity:.8}
+.gd-preview-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin-top:12px}.gd-preview-actions a{text-decoration:none}.gd-preview-actions span{font-size:.75rem;opacity:.8}
+.gd-manual{border:1px dashed var(--qs-border);padding:11px 13px;border-radius:9px;margin-top:14px}.gd-manual summary{cursor:pointer;font-size:.78rem;font-weight:600}.gd-manual .gd-file{margin-bottom:0}
+@media(max-width:620px){.gd-preview-actions .gd-btn{width:100%;justify-content:center}}

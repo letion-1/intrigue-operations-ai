@@ -1,0 +1,38 @@
+name: INTRIGUE V17 Read-Only Security Baseline
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'app/api/**'
+      - 'database/**'
+      - 'workers/**'
+      - 'tools/intrigue-audit/**'
+      - '.github/workflows/intrigue-v17-audit.yml'
+  pull_request:
+    paths:
+      - 'app/api/**'
+      - 'database/**'
+      - 'workers/**'
+      - 'tools/intrigue-audit/**'
+permissions:
+  contents: read
+jobs:
+  static-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test audit tool
+        run: node --test tools/intrigue-audit/audit.test.mjs
+      - name: Create source-level baseline without secrets
+        run: node tools/intrigue-audit/audit.mjs . "$RUNNER_TEMP/intrigue-v17-audit"
+      - name: Upload review report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: intrigue-v17-source-inventory
+          path: ${{ runner.temp }}/intrigue-v17-audit/
+          retention-days: 7

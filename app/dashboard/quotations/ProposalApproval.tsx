@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { CheckCircle2, ClipboardCopy, ExternalLink, Loader2, Mail, ShieldCheck, XCircle } from "lucide-react";
 import "./proposal-approval.css";
+import GmailDelivery from "./GmailDelivery";
 
 type ApprovalState = "requested" | "approved" | "rejected";
 type Approval = {
@@ -132,7 +133,7 @@ export default function ProposalApproval({ workspaceId, quotationId, proposalId,
 
   return <section className="pa-panel" aria-label="Proposal approval and delivery preparation">
     <div className="pa-head"><div><h3><ShieldCheck size={18}/> Proposal approval</h3>
-      <p>Request approval, review the final draft, then prepare an email. Email sending is not connected yet.</p></div>
+      <p>Request approval, review the final draft, then prepare an email. Approved proposals can be sent through a connected Gmail account after a separate final confirmation.</p></div>
       <span className={`pa-status pa-status-${approval?.state || "draft"}`}>
         {approval?.state ? approval.state.charAt(0).toUpperCase() + approval.state.slice(1) : "Not requested"}
       </span>
@@ -156,7 +157,7 @@ export default function ProposalApproval({ workspaceId, quotationId, proposalId,
       </div>
       {approval?.state === "approved" && !preview && <p className="pa-muted">Approval is checked again against saved pricing, terms, logo and recipient before a manual email draft is made available.</p>}
       {preview && <div className="pa-email"><h4>Approved email draft</h4>
-        <p className="pa-warning">Not sent. Outlook/Gmail OAuth is not connected in this release. Opening an email app does not confirm delivery.{recipientIsDemo ? " This is a fictional .example recipient; do not try to send it." : ""}</p>
+        <p className="pa-warning">Not sent. Connect Gmail below for controlled sending, or prepare a manual draft in your mail app. Opening a mail app does not confirm delivery.{recipientIsDemo ? " This is a fictional .example recipient; do not try to send it." : ""}</p>
         <div><strong>To</strong><span>{preview.recipient}</span></div>
         <div><strong>Subject</strong><span>{preview.subject}</span></div>
         <label>Body<textarea value={preview.body} readOnly rows={9}/></label>
@@ -164,12 +165,13 @@ export default function ProposalApproval({ workspaceId, quotationId, proposalId,
           <button type="button" className="pa-button" onClick={() => void copyText(preview.body, "Email body")}><ClipboardCopy size={15}/> Copy full email</button>
           {!recipientIsDemo && <a className="pa-button pa-link" href={manualMailto} target="_blank" rel="noopener noreferrer"><ExternalLink size={15}/> Open email app (manual)</a>}
         </div>
-        <p className="pa-muted">Attach the approved PDF exported from this quotation yourself. The email client may truncate long text, so use Copy full email if needed.</p>
+        <p className="pa-muted">For manual email, attach the approved PDF yourself. The email client may truncate long text.</p>
+        {canReview && <GmailDelivery workspaceId={workspaceId} quotationId={quotationId} preview={preview} pendingChanges={pendingChanges}/>}
       </div>}
       {events.length > 0 && <details className="pa-history"><summary>Review activity ({events.length} recent)</summary><ul>
         {events.map(e => <li key={e.id}><strong>{e.action.replaceAll("_", " ")}</strong> · {displayDate(e.created_at)}{e.detail ? ` · ${e.detail}` : ""}</li>)}
       </ul></details>}
-      <p className="pa-muted">Approved drafts remain internal until a separate authorized delivery action. No emails, payments, or signatures are sent by INTRIGUE in this version.</p>
+      <p className="pa-muted">Approved drafts remain internal until a separate authorized delivery action. Sending is available only after a workspace Gmail connection, current approval and separate final confirmation. No payments or signatures are triggered.</p>
     </>}
   </section>;
 }

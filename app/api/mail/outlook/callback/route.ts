@@ -18,10 +18,12 @@ function back(result: string, microsoftError = '', microsoftDescription = '') {
 }
 
 export async function GET(request: NextRequest) {
+  let stage = 'start';
   try {
     const query = request.nextUrl.searchParams;
     const state = query.get('state') || '';
     if (!/^[A-Za-z0-9_-]{35,100}$/.test(state)) return back('invalid_state');
+    stage = 'load_oauth_state';
     const db = adminClient();
     // Consume PKCE state exactly once, before token exchange. State binds actor/workspace.
     const {data: records, error} = await db.from('intrigue_outlook_oauth_states')
@@ -34,6 +36,7 @@ export async function GET(request: NextRequest) {
     if (query.get('error')) return back('declined', query.get('error') || '', query.get('error_description') || '');
     const code = query.get('code');
     if (!code || code.length > 4096) return back('missing_code');
+    stage = 'exchange_microsoft_token';
     const config = outlookConfig();
     const token = await exchangeMicrosoftToken(new URLSearchParams({
       client_id:config.clientId,client_secret:config.clientSecret,code,
@@ -43,21 +46,31 @@ export async function GET(request: NextRequest) {
     if (typeof token.access_token !== 'string' || typeof token.refresh_token !== 'string' || !token.refresh_token) return back('no_refresh_token');
     // Verify the delegated grants actually include Mail.Send; avoid saving unusable credentials.
     if (typeof token.scope !== 'string' || !token.scope.toLowerCase().split(/\s+/).includes('mail.send')) return back('missing_scope');
+    stage = 'fetch_microsoft_profile';
     const profileRes = await fetch('https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName',{
       headers:{Authorization:`Bearer ${token.access_token}`}, signal:AbortSignal.timeout(10000),
     });
     if (!profileRes.ok) return back('profile_failed');
     const profile: unknown = await profileRes.json();
+    stage = 'validate_microsoft_profile';
     const sender = verifiedMicrosoftEmail(profile);
     // Permission could have been revoked while user was authorizing Microsoft.
+    stage = 'verify_workspace_permissions';
     const {data: membership} = await db.from('workspace_memberships')
       .select('role').eq('workspace_id',row.workspace_id).eq('user_id',row.actor_id).maybeSingle();
     if (!membership || !['owner','admin'].includes(String(membership.role))) return back('access_revoked');
+    stage = 'save_outlook_connection';
     const {error: saveError} = await db.from('intrigue_outlook_connections').upsert({
       workspace_id:row.workspace_id,connected_by:row.actor_id,sender_email:sender,
       refresh_token_cipher:encrypt(token.refresh_token),updated_at:new Date().toISOString(),
     },{onConflict:'workspace_id'});
     if (saveError) return back('storage_failed');
     return back('connected');
-  } catch { return back('callback_failed'); }
+  } catch (cause) {
+    // Only log phase and exception class. Never log OAuth query strings, raw errors,
+    // auth codes, access/refresh tokens, decrypted verifiers, or customer data.
+    const errorType = cause instanceof Error ? cause.name : 'UnknownError';
+    console.error('[INTRIGUE_OUTLOOK_CALLBACK_FAILED]', {stage, errorType});
+    return back('callback_failed');
+  }
 }

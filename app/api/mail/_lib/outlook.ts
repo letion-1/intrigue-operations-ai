@@ -27,6 +27,15 @@ export async function exchangeMicrosoftToken(params: URLSearchParams): Promise<R
     });
   } catch { throw new MailError('Microsoft token service could not be reached.', 502); }
   const data: unknown = await response.json().catch(() => null);
+  // Safe OAuth diagnostics: only protocol error codes, never token payloads or PII.
+  if (!response.ok) {
+    const details = data && typeof data === 'object' ? data as {error?:unknown; error_codes?:unknown} : {};
+    const errorType = typeof details.error === 'string' && /^[a-z_]{2,60}$/.test(details.error)
+      ? details.error : 'unknown';
+    const code = Array.isArray(details.error_codes) && Number.isSafeInteger(details.error_codes[0])
+      ? details.error_codes[0] : null;
+    console.error('[INTRIGUE_OUTLOOK_TOKEN_REJECTED]', {httpStatus:response.status, errorType, aadstsCode:code});
+  }
   if (!response.ok || !data || typeof data !== 'object') {
     throw new MailError('Microsoft authorization was rejected or expired. Reconnect Outlook.', 409);
   }

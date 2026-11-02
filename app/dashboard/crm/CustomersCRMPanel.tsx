@@ -24,8 +24,21 @@ type Enquiry = {
 type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string };
 type FollowUp = { id: string; customer_id: string; title: string; due_at: string; status: string; priority: string };
 type ImportedOrder = { id: string; customer_id: string | null; external_id: string; kind: string; status: string; description: string; amount: number; currency: string; created_at: string };
+// INTRIGUE V16.7 CUSTOMER EMAIL HISTORY (workspace scoped, read-only).
+type MailDelivery = {
+  id: string; quotation_id: string; sender_email: string; recipient: string;
+  status: "sending" | "submitted" | "uncertain" | "failed";
+  gmail_message_id: string | null; error_code: string | null;
+  created_at: string; submitted_at: string | null;
+};
+const mailStatusLabels: Record<MailDelivery["status"], string> = {
+  sending: "Submission in progress",
+  submitted: "Submitted to Gmail (inbox delivery not confirmed)",
+  uncertain: "Submission uncertain: verify Gmail Sent",
+  failed: "Submission failed",
+};
 type ProfileAction = "quote" | "followup" | null;
-type TimelineEntry = { id: string; date: string; kind: "enquiry" | "quotation" | "followup" | "order"; title: string; detail: string };
+type TimelineEntry = { id: string; date: string; kind: "enquiry" | "quotation" | "followup" | "order" | "email"; title: string; detail: string };
 type Draft = { full_name: string; email: string; phone: string; vehicle: string; enquiry: string };
 const emptyDraft: Draft = { full_name: "", email: "", phone: "", vehicle: "", enquiry: "" };
 
@@ -60,6 +73,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
   const [profileQuotes, setProfileQuotes] = useState<Quote[]>([]);
   const [profileFollowUps, setProfileFollowUps] = useState<FollowUp[]>([]);
   const [profileOrders, setProfileOrders] = useState<ImportedOrder[]>([]);
+  const [profileMail, setProfileMail] = useState<MailDelivery[]>([]);
   const [profileAction, setProfileAction] = useState<ProfileAction>(null);
   const [profileDescription, setProfileDescription] = useState("");
   const [profileAmount, setProfileAmount] = useState("");
@@ -110,7 +124,23 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
         .eq("workspace_id", workspaceId).eq("customer_id", customerId)
         .order("created_at", { ascending: false }),
     ]);
+    // Only fetch deliveries for quotations belonging to this customer and workspace.
+    // Supabase RLS restricts intrigue_mail_deliveries SELECT to workspace Owners/Admins.
+    const linkedQuoteIds = !quotes.error ? (quotes.data ?? []).map(q => q.id) : [];
+    let mailError: string | null = null;
+    let mailRows: MailDelivery[] = [];
+    if (linkedQuoteIds.length > 0) {
+      const mailResult = await supabase.from("intrigue_mail_deliveries")
+        .select("id,quotation_id,sender_email,recipient,status,gmail_message_id,error_code,created_at,submitted_at")
+        .eq("workspace_id", workspaceId)
+        .in("quotation_id", linkedQuoteIds)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      mailError = mailResult.error?.message ?? null;
+      if (!mailResult.error) mailRows = (mailResult.data ?? []) as MailDelivery[];
+    }
     if (serial !== requestSerial.current) return;
+    setProfileMail(mailRows);
     setProfileQuotes((quotes.data ?? []) as Quote[]);
     setProfileFollowUps((followups.data ?? []) as FollowUp[]);
     setProfileOrders((orders.data ?? []) as ImportedOrder[]);
@@ -118,6 +148,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       quotes.error ? `Quotations: ${quotes.error.message}` : null,
       followups.error ? `Follow-ups: ${followups.error.message}` : null,
       orders.error ? `Imported orders: ${orders.error.message}` : null,
+      mailError ? `Gmail activity: ${mailError}` : null,
     ].filter((x): x is string => Boolean(x));
     setProfileErrors(failures);
     setProfileLoading(false);
@@ -127,7 +158,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
     // Prevent exposing stale profile records after a workspace switch.
     requestSerial.current += 1;
     setSelectedCustomerId(null);
-    setProfileQuotes([]); setProfileFollowUps([]); setProfileOrders([]);
+    setProfileQuotes([]); setProfileFollowUps([]); setProfileOrders([]); setProfileMail([]);
     setProfileErrors([]); setProfileAction(null);
   }, [workspaceId]);
 
@@ -204,8 +235,14 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       ...profileQuotes.map(q => ({ id: `quotation-${q.id}`, date: q.created_at, kind: "quotation" as const, title: q.description, detail: `Quotation · ${q.status} · €${Number(q.amount).toFixed(2)}` })),
       ...profileFollowUps.map(f => ({ id: `followup-${f.id}`, date: f.due_at, kind: "followup" as const, title: f.title, detail: `Follow-up · ${f.status.replace(/_/g," ")} · ${f.priority} priority` })),
       ...profileOrders.map(o => ({ id: `order-${o.id}`, date: o.created_at, kind: "order" as const, title: o.description || o.external_id, detail: `${o.kind.replace(/_/g," ")} · ${o.status} · ${Number(o.amount).toFixed(2)} ${o.currency}` })),
+      ...profileMail.map(m => ({
+        id: `email-${m.id}`, date: m.submitted_at || m.created_at,
+        kind: "email" as const,
+        title: `Proposal email · ${mailStatusLabels[m.status] ?? "Unknown status"}`,
+        detail: `From ${m.sender_email} · To ${m.recipient} · Quotation ${m.quotation_id.slice(0, 8).toUpperCase()}`,
+      })),
     ].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [customerEnquiries, profileQuotes, profileFollowUps, profileOrders, selectedCustomerId]);
+  }, [customerEnquiries, profileQuotes, profileFollowUps, profileOrders, profileMail, selectedCustomerId]);
 
   const updateField = (key: keyof Draft, value: string) => setDraft(current => ({ ...current, [key]: value }));
   const openCreate = () => {
@@ -343,14 +380,14 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
         <div className="crm-form-actions"><button className="crm-primary" type="submit" disabled={profileSaving}>{profileSaving ? "Saving…" : profileAction === "quote" ? "Save draft" : "Save follow-up"}</button><button className="crm-secondary" type="button" onClick={() => setProfileAction(null)}>Cancel</button></div>
       </form>}
       <div className="crm-profile-history">
-        <div className="crm-profile-history-head"><h4>Customer activity</h4><span>{profileLoading ? "Loading linked records…" : `${timeline.length} activities`}</span></div>
+        <div className="crm-profile-history-head"><h4>Customer activity</h4><span>{profileLoading ? "Loading linked records…" : `${timeline.length} activities · ${profileMail.length} Gmail attempts`}</span></div>
         {profileLoading ? <p className="crm-profile-empty">Loading quotations, orders and follow-ups…</p> : timeline.length ?
           <ol className="crm-profile-timeline">{timeline.map(event => <li key={event.id}>
-            <span className="crm-profile-timeline-icon" aria-hidden="true">{event.kind === "order" ? <Package size={16}/> : event.kind === "quotation" ? <FileText size={16}/> : event.kind === "followup" ? <CalendarClock size={16}/> : <ClipboardList size={16}/>}</span>
+            <span className="crm-profile-timeline-icon" aria-hidden="true">{event.kind === "order" ? <Package size={16}/> : event.kind === "quotation" ? <FileText size={16}/> : event.kind === "followup" ? <CalendarClock size={16}/> : event.kind === "email" ? <Mail size={16}/> : <ClipboardList size={16}/>}</span>
             <div><strong>{event.title}</strong><span>{event.detail}</span></div>
             <time dateTime={event.date}>{new Date(event.date).toLocaleDateString()}</time>
           </li>)}</ol> : <p className="crm-profile-empty">No linked activities yet. Use the actions above to create the first one.</p>}
-        <p className="crm-profile-note">Shows records explicitly linked to this customer in the current workspace. Imported orders without a customer link are not included.</p>
+        <p className="crm-profile-note">Only records linked to this customer in the current workspace appear. Gmail activity is visible to workspace Owners/Admins under the existing RLS policy, and Submitted does not prove inbox delivery. Up to 100 recent Gmail attempts are shown. Unlinked imported orders are omitted.</p>
       </div>
     </div>}
     {!selectedCustomer && <>

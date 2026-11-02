@@ -2,9 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminClient, appOrigin, decrypt, encrypt, sha } from '../../_lib/common';
 import { exchangeMicrosoftToken, outlookConfig, verifiedMicrosoftEmail } from '../../_lib/outlook';
 
-function back(result: string) {
+function back(result: string, microsoftError = '', microsoftDescription = '') {
   const url = new URL('/dashboard', appOrigin());
+  // Keep OAuth outcomes visible in Integrations, rather than silently opening Overview.
+  url.searchParams.set('integration', 'outlook');
   url.searchParams.set('outlook', result);
+  // Allowlisted identifiers only. Never redirect Microsoft error_description, tokens or PII.
+  if (result === 'declined') {
+    const kind = /^[a-z_]{2,50}$/.test(microsoftError) ? microsoftError : 'authorization_error';
+    url.searchParams.set('outlook_error', kind);
+    const code = microsoftDescription.match(/\bAADSTS\d{5,7}\b/i)?.[0]?.toUpperCase();
+    if (code) url.searchParams.set('outlook_code', code);
+  }
   return NextResponse.redirect(url, {headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
 }
 
@@ -22,7 +31,7 @@ export async function GET(request: NextRequest) {
       .select('workspace_id,actor_id,verifier_cipher');
     if (error || records?.length !== 1) return back('expired_state');
     const row = records[0];
-    if (query.get('error')) return back('declined');
+    if (query.get('error')) return back('declined', query.get('error') || '', query.get('error_description') || '');
     const code = query.get('code');
     if (!code || code.length > 4096) return back('missing_code');
     const config = outlookConfig();

@@ -33,6 +33,36 @@ export default function OutlookConnection({workspaceId}:{workspaceId:string}) {
     refresh().catch(e=>{if(active)setError(describe(e));}).finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
   },[refresh]);
+  // Display OAuth outcome after the full-page Microsoft redirect. The callback carries
+  // only a safe status, OAuth error category and optional AADSTS diagnostic number.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const result = url.searchParams.get('outlook');
+    if (!result) return;
+    const kind = url.searchParams.get('outlook_error') || '';
+    const rawCode = url.searchParams.get('outlook_code') || '';
+    const code = /^AADSTS\d{5,7}$/.test(rawCode) ? ` (${rawCode})` : '';
+    if (result === 'connected') {
+      setNotice('Microsoft Outlook connected successfully.');
+    } else if (result === 'declined') {
+      setError(`Microsoft did not authorize Outlook${code}. ${kind === 'access_denied' ? 'The account may have declined consent, or its organization may require administrator approval.' : 'Review the Microsoft app registration and sign-in permissions.'} ${code ? 'Look up the AADSTS code in Microsoft Entra sign-in logs.' : 'Retry and check for a Microsoft consent or administrator approval screen.'}`);
+    } else {
+      const messages: Record<string, string> = {
+        expired_state: 'The Outlook sign-in attempt expired or was already used. Click Connect Outlook again.',
+        invalid_state: 'Microsoft returned an invalid authorization state. Restart the Outlook connection.',
+        missing_code: 'Microsoft did not return an authorization code. Restart Outlook authorization.',
+        no_refresh_token: 'Microsoft did not grant offline access. Check delegated permissions and reconnect.',
+        missing_scope: 'Microsoft did not grant Mail.Send. Check delegated Microsoft Graph permissions and consent.',
+        profile_failed: 'Microsoft Graph could not read the connected account profile. Check User.Read and the mailbox account.',
+        access_revoked: 'Your company Owner/Admin access changed during authorization.',
+        storage_failed: 'Outlook authorization could not be stored. Verify the V16.8 Supabase migration.',
+        callback_failed: 'The Outlook callback failed. Check the Vercel function logs for /api/mail/outlook/callback.',
+      };
+      setError(messages[result] || 'Outlook connection failed. Check Microsoft permissions and try again.');
+    }
+    for (const key of ['outlook','outlook_error','outlook_code']) url.searchParams.delete(key);
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  }, []);
   async function connect(){
     if(busy)return;setBusy(true);setError('');setNotice('');
     try{

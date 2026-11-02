@@ -37,6 +37,8 @@ const mailStatusLabels: Record<MailDelivery["status"], string> = {
   uncertain: "Submission uncertain: verify Gmail Sent",
   failed: "Submission failed",
 };
+// INTRIGUE_V168_OUTLOOK: separate provider activity, same company/customer isolation.
+type OutlookMail = {id:string;quotation_id:string;sender_email:string;recipient:string;status:string;created_at:string;submitted_at:string|null};
 type ProfileAction = "quote" | "followup" | null;
 type TimelineEntry = { id: string; date: string; kind: "enquiry" | "quotation" | "followup" | "order" | "email"; title: string; detail: string };
 type Draft = { full_name: string; email: string; phone: string; vehicle: string; enquiry: string };
@@ -74,6 +76,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
   const [profileFollowUps, setProfileFollowUps] = useState<FollowUp[]>([]);
   const [profileOrders, setProfileOrders] = useState<ImportedOrder[]>([]);
   const [profileMail, setProfileMail] = useState<MailDelivery[]>([]);
+  const [profileOutlook, setProfileOutlook] = useState<OutlookMail[]>([]);
   const [profileAction, setProfileAction] = useState<ProfileAction>(null);
   const [profileDescription, setProfileDescription] = useState("");
   const [profileAmount, setProfileAmount] = useState("");
@@ -140,6 +143,17 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       if (!mailResult.error) mailRows = (mailResult.data ?? []) as MailDelivery[];
     }
     if (serial !== requestSerial.current) return;
+    // Outlook deliveries use the same Owner/Admin-only RLS policy.
+    let outlookRows: OutlookMail[] = [];
+    if (linkedQuoteIds.length > 0) {
+      const outlook = await supabase.from("intrigue_outlook_deliveries")
+        .select("id,quotation_id,sender_email,recipient,status,created_at,submitted_at")
+        .eq("workspace_id",workspaceId).in("quotation_id",linkedQuoteIds)
+        .order("created_at",{ascending:false}).limit(100);
+      if (!outlook.error) outlookRows=(outlook.data??[]) as OutlookMail[];
+    }
+    if (serial !== requestSerial.current) return;
+    setProfileOutlook(outlookRows);
     setProfileMail(mailRows);
     setProfileQuotes((quotes.data ?? []) as Quote[]);
     setProfileFollowUps((followups.data ?? []) as FollowUp[]);
@@ -158,7 +172,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
     // Prevent exposing stale profile records after a workspace switch.
     requestSerial.current += 1;
     setSelectedCustomerId(null);
-    setProfileQuotes([]); setProfileFollowUps([]); setProfileOrders([]); setProfileMail([]);
+    setProfileQuotes([]); setProfileFollowUps([]); setProfileOrders([]); setProfileMail([]); setProfileOutlook([]);
     setProfileErrors([]); setProfileAction(null);
   }, [workspaceId]);
 
@@ -235,6 +249,11 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       ...profileQuotes.map(q => ({ id: `quotation-${q.id}`, date: q.created_at, kind: "quotation" as const, title: q.description, detail: `Quotation · ${q.status} · €${Number(q.amount).toFixed(2)}` })),
       ...profileFollowUps.map(f => ({ id: `followup-${f.id}`, date: f.due_at, kind: "followup" as const, title: f.title, detail: `Follow-up · ${f.status.replace(/_/g," ")} · ${f.priority} priority` })),
       ...profileOrders.map(o => ({ id: `order-${o.id}`, date: o.created_at, kind: "order" as const, title: o.description || o.external_id, detail: `${o.kind.replace(/_/g," ")} · ${o.status} · ${Number(o.amount).toFixed(2)} ${o.currency}` })),
+      ...profileOutlook.map(m => ({
+        id: `outlook-${m.id}`, date:m.submitted_at||m.created_at, kind:"email" as const,
+        title: `Proposal email · ${m.status === "submitted" ? "Submitted to Outlook (inbox delivery not confirmed)" : m.status === "uncertain" ? "Outlook submission uncertain" : m.status === "failed" ? "Outlook submission failed" : "Outlook submission in progress"}`,
+        detail: `From ${m.sender_email} · To ${m.recipient} · Quotation ${m.quotation_id.slice(0,8).toUpperCase()}`,
+      })),
       ...profileMail.map(m => ({
         id: `email-${m.id}`, date: m.submitted_at || m.created_at,
         kind: "email" as const,
@@ -242,7 +261,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
         detail: `From ${m.sender_email} · To ${m.recipient} · Quotation ${m.quotation_id.slice(0, 8).toUpperCase()}`,
       })),
     ].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [customerEnquiries, profileQuotes, profileFollowUps, profileOrders, profileMail, selectedCustomerId]);
+  }, [customerEnquiries, profileQuotes, profileFollowUps, profileOrders, profileMail, profileOutlook, selectedCustomerId]);
 
   const updateField = (key: keyof Draft, value: string) => setDraft(current => ({ ...current, [key]: value }));
   const openCreate = () => {
@@ -380,7 +399,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
         <div className="crm-form-actions"><button className="crm-primary" type="submit" disabled={profileSaving}>{profileSaving ? "Saving…" : profileAction === "quote" ? "Save draft" : "Save follow-up"}</button><button className="crm-secondary" type="button" onClick={() => setProfileAction(null)}>Cancel</button></div>
       </form>}
       <div className="crm-profile-history">
-        <div className="crm-profile-history-head"><h4>Customer activity</h4><span>{profileLoading ? "Loading linked records…" : `${timeline.length} activities · ${profileMail.length} Gmail attempts`}</span></div>
+        <div className="crm-profile-history-head"><h4>Customer activity</h4><span>{profileLoading ? "Loading linked records…" : `${timeline.length} activities · ${profileMail.length} Gmail · ${profileOutlook.length} Outlook attempts`}</span></div>
         {profileLoading ? <p className="crm-profile-empty">Loading quotations, orders and follow-ups…</p> : timeline.length ?
           <ol className="crm-profile-timeline">{timeline.map(event => <li key={event.id}>
             <span className="crm-profile-timeline-icon" aria-hidden="true">{event.kind === "order" ? <Package size={16}/> : event.kind === "quotation" ? <FileText size={16}/> : event.kind === "followup" ? <CalendarClock size={16}/> : event.kind === "email" ? <Mail size={16}/> : <ClipboardList size={16}/>}</span>

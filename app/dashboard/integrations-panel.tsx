@@ -197,7 +197,7 @@ export default function IntegrationsPanel({workspaceId,onImported,onOpenCalendar
             <p className="mt-1 text-xs text-[#96a9ba]">Reference only, not a live voice connection. Never paste a Vapi API key here.</p></div>
           <div><label className="text-xs font-semibold text-[#e7c37c]" htmlFor="v153-mail">Preferred email connection</label>
             <select id="v153-mail" className={field+" mt-1"} value={pref.preferred_email_provider} onChange={e=>setPref(p=>({...p,preferred_email_provider:e.target.value as MailProvider}))}>
-              <option value="none">Not selected</option><option value="gmail">Gmail (manage connection above)</option><option value="outlook">Microsoft Outlook (not yet available)</option>
+              <option value="none">Not selected</option><option value="gmail">Gmail (manage connection above)</option><option value="outlook">Microsoft Outlook (manage connection above)</option>
             </select></div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -219,7 +219,7 @@ export default function IntegrationsPanel({workspaceId,onImported,onOpenCalendar
       {[
         {title:"Scheduling",desc:"Calendly and Cal.com connection controls and booking links are visible above. Provider features depend on their OAuth permissions."},
         {title:"AI receptionist",desc:"Vapi assistant ID can be saved. Call handling, appointment tools and webhooks are not connected yet."},
-        {title:"Email",desc:"Manage Gmail authorization in Business email above. Outlook is not available yet. Approval and sending remain separate."},
+        {title:"Email",desc:"Manage Gmail authorization in Business email above. Outlook and Gmail connections are managed above. Sending still requires approval."},
       ].map(item=><div className={box} key={item.title}><h3 className="font-semibold text-[#efd5a1]">{item.title}</h3><p className="mt-2 text-xs leading-5 text-[#b8c7d4]">{item.desc}</p></div>)}
     </div>
     <div className={box}>

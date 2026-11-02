@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { CheckCircle2, Link2, Loader2, Mail, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
 import './business-email-connections.css';
+import OutlookConnection from './OutlookConnection'; // INTRIGUE_V168_OUTLOOK
 
 type Connection = { connected: boolean; sender: string | null };
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : 'Unable to manage your email connection.'; }
@@ -104,7 +105,7 @@ export default function BusinessEmailConnections({ workspaceId }: { workspaceId:
             </> : <button type="button" className="bec-primary" disabled={busy} onClick={() => void connect()}><Link2 size={14}/> Connect Gmail</button>}
           </div>
         </div>
-        <div className="bec-provider"><div className="bec-provider-info"><strong>Microsoft Outlook</strong><p>Not connected. Microsoft Graph OAuth sending has not been implemented yet.</p></div><span className="bec-upcoming">Coming later</span></div>
+        <OutlookConnection key={workspaceId} workspaceId={workspaceId}/>
       </div>}
     {error && <p className="bec-error" role="alert">{error}</p>}
     {notice && <p className="bec-notice" role="status">{notice}</p>}

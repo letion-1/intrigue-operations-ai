@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { CheckCircle2, ClipboardCopy, ExternalLink, Loader2, Mail, ShieldCheck, XCircle } from "lucide-react";
 import "./proposal-approval.css";
 import GmailDelivery from "./GmailDelivery";
+import OutlookDelivery from "./OutlookDelivery"; // INTRIGUE_V168_OUTLOOK
 
 type ApprovalState = "requested" | "approved" | "rejected";
 type Approval = {
@@ -40,6 +41,7 @@ export default function ProposalApproval({ workspaceId, quotationId, proposalId,
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState<EmailPreview | null>(null);
+  const [mailProvider, setMailProvider] = useState<"gmail" | "outlook">("gmail");
   const canReview = role === "owner" || role === "admin";
 
   const reload = useCallback(async () => {
@@ -168,7 +170,13 @@ export default function ProposalApproval({ workspaceId, quotationId, proposalId,
           {!recipientIsDemo && <a className="pa-button pa-link" href={manualMailto} target="_blank" rel="noopener noreferrer"><ExternalLink size={15}/> Open email app (manual)</a>}
         </div>
         <p className="pa-muted">For manual email, attach the approved PDF yourself. The email client may truncate long text.</p>
-        {canReview && <GmailDelivery workspaceId={workspaceId} quotationId={quotationId} preview={preview} pendingChanges={pendingChanges}/>}
+        {canReview && <>
+  <div className="pa-actions" role="group" aria-label="Choose email provider">
+    <button type="button" className="pa-button" aria-pressed={mailProvider === "gmail"} onClick={() => setMailProvider("gmail")}>Gmail</button>
+    <button type="button" className="pa-button" aria-pressed={mailProvider === "outlook"} onClick={() => setMailProvider("outlook")}>Outlook</button>
+  </div>
+  {mailProvider === "gmail" ? <GmailDelivery workspaceId={workspaceId} quotationId={quotationId} preview={preview} pendingChanges={pendingChanges}/> : <OutlookDelivery workspaceId={workspaceId} quotationId={quotationId} preview={preview} pendingChanges={pendingChanges}/>}
+</>}
       </div>}
       {events.length > 0 && <details className="pa-history"><summary>Review activity ({events.length} recent)</summary><ul>
         {events.map(e => <li key={e.id}><strong>{e.action.replaceAll("_", " ")}</strong> · {displayDate(e.created_at)}{e.detail ? ` · ${e.detail}` : ""}</li>)}

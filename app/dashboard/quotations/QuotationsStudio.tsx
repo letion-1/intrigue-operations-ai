@@ -60,6 +60,7 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
   const [notice, setNotice] = useState("");
   const [approvalStates, setApprovalStates] = useState<Record<string, ApprovalStage>>({});
   const [deliveryStates, setDeliveryStates] = useState<Record<string, MailStage>>({});
+  const [outlookStates, setOutlookStates] = useState<Record<string, MailStage>>({}); // INTRIGUE_V168_OUTLOOK
   const [approvalError, setApprovalError] = useState("");
   const stageRequest = useRef(0);
   const byCustomer = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
@@ -68,6 +69,10 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
   const selected = quotes.find(q => q.id === selectedId) ?? null;
   // Quotation.status remains Draft while editable; proposal review is a separate state.
   function stageFor(quote: Quote): { label: string; tone: string } {
+    const outlook=outlookStates[quote.id];
+    if (outlook === "submitted") return {label:"Submitted to Outlook",tone:"submitted"};
+    if (outlook === "uncertain" || outlook === "sending") return {label:"Outlook delivery under review",tone:"requested"};
+    if (outlook === "failed") return {label:"Outlook submission failed",tone:"failed"};
     const delivery = deliveryStates[quote.id];
     if (delivery === "submitted") return { label: "Submitted to Gmail", tone: "submitted" };
     if (delivery === "uncertain" || delivery === "sending") return { label: "Delivery under review", tone: "requested" };
@@ -108,10 +113,20 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
         nextDelivery[item.quotation_id] = item.status as MailStage;
       }
     }
+    const outlookRows=await supabase.from("intrigue_outlook_deliveries")
+      .select("quotation_id,status,created_at").eq("workspace_id",workspaceId)
+      .order("created_at",{ascending:false}).limit(500);
+    if (requestId !== stageRequest.current) return;
+    const nextOutlook:Record<string,MailStage>={};
+    if (!outlookRows.error) for (const row of outlookRows.data||[]) {
+      if (!(row.quotation_id in nextOutlook) && ["sending","submitted","uncertain","failed"].includes(row.status))
+        nextOutlook[row.quotation_id]=row.status as MailStage;
+    }
+    setOutlookStates(nextOutlook);
     setApprovalStates(nextApprovals); setDeliveryStates(nextDelivery); setApprovalError("");
   }, [supabase, workspaceId]);
   useEffect(() => {
-    setApprovalStates({}); setDeliveryStates({}); setApprovalError("");
+    setApprovalStates({}); setDeliveryStates({}); setOutlookStates({}); setApprovalError("");
     return () => { stageRequest.current += 1; };
   }, [workspaceId]);
   useEffect(() => { void refreshApprovalStages(); }, [refreshApprovalStages, selectedId]);

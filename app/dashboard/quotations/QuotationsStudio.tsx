@@ -5,10 +5,13 @@ import { createClient } from "@/lib/supabase/client";
 import { ArrowLeft, FileText, Pencil, Plus, Printer, Search, Trash2, X } from "lucide-react";
 import { euro, quoteSubtotal, type DraftItem, type CatalogPrice } from "./quote-math";
 import "./quotations-studio.css";
+import "./approval-stages.css"; // INTRIGUE_V1657
 import ProposalComposer from "./ProposalComposer";
 
 type Customer = { id: string; full_name: string; email: string | null };
 type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string; quote_note?: string | null; currency?: string | null };
+type ApprovalStage = "requested" | "approved" | "rejected";
+type MailStage = "sending" | "submitted" | "uncertain" | "failed";
 type Line = { id: string; catalog_id: string | null; item_name: string; quantity: number; unit_price: number; line_total: number; currency: string; position: number };
 const randomItem = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 type RowDraft = DraftItem & { localId: string };
@@ -55,10 +58,26 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [approvalStates, setApprovalStates] = useState<Record<string, ApprovalStage>>({});
+  const [deliveryStates, setDeliveryStates] = useState<Record<string, MailStage>>({});
+  const [approvalError, setApprovalError] = useState("");
+  const stageRequest = useRef(0);
   const byCustomer = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
   const byService = useMemo(() => new Map(services.map(s => [s.id, s])), [services]);
   const activeServices = useMemo(() => services.filter(s => s.is_active && s.currency === "EUR" && Number(s.price) > 0), [services]);
   const selected = quotes.find(q => q.id === selectedId) ?? null;
+  // Quotation.status remains Draft while editable; proposal review is a separate state.
+  function stageFor(quote: Quote): { label: string; tone: string } {
+    const delivery = deliveryStates[quote.id];
+    if (delivery === "submitted") return { label: "Submitted to Gmail", tone: "submitted" };
+    if (delivery === "uncertain" || delivery === "sending") return { label: "Delivery under review", tone: "requested" };
+    if (delivery === "failed") return { label: "Delivery failed", tone: "failed" };
+    const approval = approvalStates[quote.id];
+    if (approval === "approved") return { label: "Approved", tone: "approved" };
+    if (approval === "requested") return { label: "Pending approval", tone: "requested" };
+    if (approval === "rejected") return { label: "Changes requested", tone: "rejected" };
+    return { label: "Draft", tone: "draft" };
+  }
   const matches = quotes.filter(q => {
     if (filter === "draft" && q.status !== "draft") return false;
     const c = byCustomer.get(q.customer_id);
@@ -67,6 +86,43 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
   let estimate: number | null = null;
   try { estimate = quoteSubtotal(rows.filter(r => r.catalogId), services); } catch { estimate = null; }
   const customer = selected ? byCustomer.get(selected.customer_id) : null;
+
+  // INTRIGUE_V1657: load workspace-only approval and Gmail submission states.
+  const refreshApprovalStages = useCallback(async () => {
+    if (!workspaceId) return;
+    const requestId = ++stageRequest.current;
+    const [approval, delivery] = await Promise.all([
+      supabase.from("intrigue_proposal_approvals").select("quotation_id,state").eq("workspace_id", workspaceId),
+      supabase.from("intrigue_mail_deliveries").select("quotation_id,status,created_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(500),
+    ]);
+    if (requestId !== stageRequest.current) return;
+    if (approval.error) { setApprovalError("Could not read proposal approvals: " + approval.error.message); return; }
+    const nextApprovals: Record<string, ApprovalStage> = {};
+    for (const item of approval.data || []) {
+      if (item.state === "requested" || item.state === "approved" || item.state === "rejected") nextApprovals[item.quotation_id] = item.state;
+    }
+    const nextDelivery: Record<string, MailStage> = {};
+    // The delivery table has Owner/Admin-only read access. Staff may receive an empty list.
+    if (!delivery.error) for (const item of delivery.data || []) {
+      if (!(item.quotation_id in nextDelivery) && ["sending", "submitted", "uncertain", "failed"].includes(item.status)) {
+        nextDelivery[item.quotation_id] = item.status as MailStage;
+      }
+    }
+    setApprovalStates(nextApprovals); setDeliveryStates(nextDelivery); setApprovalError("");
+  }, [supabase, workspaceId]);
+  useEffect(() => {
+    setApprovalStates({}); setDeliveryStates({}); setApprovalError("");
+    return () => { stageRequest.current += 1; };
+  }, [workspaceId]);
+  useEffect(() => { void refreshApprovalStages(); }, [refreshApprovalStages, selectedId]);
+  useEffect(() => {
+    const handle = (event: Event) => {
+      const detail = (event as CustomEvent<{ workspaceId: string }>).detail;
+      if (detail?.workspaceId === workspaceId) void refreshApprovalStages();
+    };
+    window.addEventListener("intrigue:proposal-approval-updated", handle);
+    return () => window.removeEventListener("intrigue:proposal-approval-updated", handle);
+  }, [workspaceId, refreshApprovalStages]);
 
   // On mount or workspace switch, restore the last *selected quotation for this workspace*.
   // Explicitly leaving the quotation through "All quotations" clears it. We do not
@@ -169,10 +225,12 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
 
     <div className="qs-stats">
       <div><strong>{quotes.length}</strong><span>Total quotations</span></div>
-      <div><strong>{quotes.filter(q => q.status === "draft").length}</strong><span>Unsent drafts</span></div>
+      <div><strong>{quotes.filter(q => q.status === "draft").length}</strong><span>Quotation drafts</span></div>
+      <div><strong>{Object.values(approvalStates).filter(s => s === "approved").length}</strong><span>Approved proposals</span></div>
       <div><strong>{activeServices.length}</strong><span>Active EUR catalog items</span></div>
     </div>
     {notice && <p role="status" className="qs-notice">{notice}</p>}
+    {approvalError && <p role="alert" className="qs-error">{approvalError}</p>}
     {error && !formOpen && <p role="alert" className="qs-error">{error}</p>}
 
     {formOpen ? <form className="qs-panel qs-form" onSubmit={save}>
@@ -205,7 +263,8 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
       {error && <p role="alert" className="qs-error">{error}</p>}
       <div className="qs-actions"><button className="qs-primary" type="submit" disabled={saving || !activeServices.length || !customers.length}>{saving ? "Saving draft…" : editingId ? "Save draft changes" : "Save unsent draft"}</button><button type="button" className="qs-secondary" onClick={() => { setFormOpen(false); setError(""); }}>Cancel</button></div>
     </form> : selected ? <article className="qs-panel qs-detail">
-      <div className="qs-topline"><button type="button" className="qs-secondary" onClick={() => selectQuote(null)}><ArrowLeft size={15}/> All quotations</button><span className="qs-pill">{selected.status}</span></div>
+      <div className="qs-topline"><button type="button" className="qs-secondary" onClick={() => selectQuote(null)}><ArrowLeft size={15}/> All quotations</button><span className={`iq-stage iq-stage-${stageFor(selected).tone}`}>{stageFor(selected).label}</span></div>
+      <p className="iq-status-explain">Quotation record: {selected.status}. Approval and Gmail submission are tracked separately.</p>
       <div className="qs-topline"><div><span className="qs-eyebrow">QT-{selected.id.slice(0, 8).toUpperCase()}</span><h3>{customer?.full_name ?? "Customer unavailable"}</h3><p>{customer?.email ?? "No email provided"}</p></div><strong className="qs-amount">{euro(Number(selected.amount))}</strong></div>
       {detailLoading ? <p className="qs-muted">Loading draft lines…</p> : detailError ? <p role="alert" className="qs-error">{detailError}</p> : lines.length ? <div className="qs-table-wrap"><table><thead><tr><th>Catalog item</th><th>Qty</th><th>Unit price</th><th>Total</th></tr></thead><tbody>{lines.map(l => <tr key={l.id}><td>{l.item_name}</td><td>{l.quantity}</td><td>{euro(Number(l.unit_price))}</td><td>{euro(Number(l.line_total))}</td></tr>)}</tbody></table></div> : <div className="qs-legacy"><strong>Imported or legacy quotation</strong><p>This quote was saved before structured line items existed. It remains readable but its catalog-price sources cannot be reconstructed.</p></div>}
       {lines.length > 0 && !detailLoading && !detailError && <ProposalComposer
@@ -241,8 +300,8 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
     </article> : <div className="qs-panel qs-list">
       <div className="qs-topline"><div><h3>Saved quotations</h3><p>Includes imported quotes and drafts created in Customer 360°.</p></div><div className="qs-switch"><button type="button" className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>All</button><button type="button" className={filter === "draft" ? "active" : ""} onClick={() => setFilter("draft")}>Drafts</button></div></div>
       <label className="qs-search"><Search size={16}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search customer, reference or description" aria-label="Search quotations"/></label>
-      <div className="qs-table-wrap"><table><thead><tr><th>Reference</th><th>Customer</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody>
-        {matches.map(q => <tr key={q.id}><td className="qs-reference">QT-{q.id.slice(0, 8).toUpperCase()}</td><td>{byCustomer.get(q.customer_id)?.full_name ?? "Unknown"}</td><td className="qs-summary">{q.description}</td><td>{euro(Number(q.amount))}</td><td><span className="qs-pill">{q.status}</span></td><td><button type="button" className="qs-secondary" onClick={() => openQuote(q.id)}><FileText size={14}/> View</button></td></tr>)}
+      <div className="qs-table-wrap"><table><thead><tr><th>Reference</th><th>Customer</th><th>Description</th><th>Amount</th><th>Proposal status</th><th></th></tr></thead><tbody>
+        {matches.map(q => <tr key={q.id}><td className="qs-reference">QT-{q.id.slice(0, 8).toUpperCase()}</td><td>{byCustomer.get(q.customer_id)?.full_name ?? "Unknown"}</td><td className="qs-summary">{q.description}</td><td>{euro(Number(q.amount))}</td><td className="iq-status-cell"><span className={`iq-stage iq-stage-${stageFor(q).tone}`}>{stageFor(q).label}</span><div className="iq-status-explain">Quote: {q.status}</div></td><td><button type="button" className="qs-secondary" onClick={() => openQuote(q.id)}><FileText size={14}/> View</button></td></tr>)}
       </tbody></table>{matches.length === 0 && <p className="qs-muted qs-empty">No quotations match this view.</p>}</div>
     </div>}
   </section>;

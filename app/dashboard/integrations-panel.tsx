@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import VapiReceptionist from "./vapi-receptionist";
+import BusinessEmailConnections from "./integrations/BusinessEmailConnections"; // INTRIGUE_V1657
 
 type Scheduler = "none" | "cal" | "calendly";
 type MailProvider = "none" | "gmail" | "outlook";
@@ -106,7 +107,7 @@ export default function IntegrationsPanel({workspaceId,onImported,onOpenCalendar
       preferred_email_provider:pref.preferred_email_provider,updated_at:new Date().toISOString(),
     },{onConflict:"workspace_id"});
     if(e)setError(e.message);
-    else setStatus("Preferences saved for this company. Booking link is available; Vapi and email still require provider authorization.");
+    else setStatus("Preferences saved. Business email connections are managed in the Business email panel above.");
     setSaving(false);
   }
 
@@ -167,10 +168,11 @@ export default function IntegrationsPanel({workspaceId,onImported,onOpenCalendar
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <div className="rounded-xl border border-[#41556b] bg-[#0d1e30] p-4"><h3 className="font-semibold text-[#e7c37c]">Google Calendar / scheduling</h3><p className="mt-2 text-xs text-[#b8c7d4]">Manage appointments and direct-booking settings in Calendar.</p><button type="button" onClick={onOpenCalendar} className="mt-3 rounded-lg border border-[#bea16e] px-3 py-2 text-xs text-[#e8ca86]">Open Calendar</button></div>
         <div className="rounded-xl border border-[#41556b] bg-[#0d1e30] p-4"><h3 className="font-semibold text-[#e7c37c]">Vapi AI Receptionist</h3><p className="mt-2 text-xs text-[#b8c7d4]">Review call history and AI receptionist activity in its dedicated module.</p><button type="button" onClick={onOpenReceptionist} className="mt-3 rounded-lg border border-[#bea16e] px-3 py-2 text-xs text-[#e8ca86]">Open AI Receptionist</button></div>
-        <div className="rounded-xl border border-[#41556b] bg-[#0d1e30] p-4"><h3 className="font-semibold text-[#e7c37c]">Gmail / Outlook</h3><p className="mt-2 text-xs text-[#b8c7d4]">Provider preference only. Sending requires future OAuth and explicit approval.</p></div>
+
         <div className="rounded-xl border border-[#41556b] bg-[#0d1e30] p-4"><h3 className="font-semibold text-[#e7c37c]">CRM imports</h3><p className="mt-2 text-xs text-[#b8c7d4]">CSV contact import remains available below while the CRM module is upgraded.</p></div>
       </div>
     </div>
+    <BusinessEmailConnections workspaceId={workspaceId}/>
     <details className="rounded-2xl border border-[#35485d] bg-[#142539] p-4">
       <summary className="cursor-pointer text-sm font-semibold text-[#e7c37c]">Advanced integration preferences</summary>
     <div className="mt-4 space-y-5">
@@ -191,7 +193,7 @@ export default function IntegrationsPanel({workspaceId,onImported,onOpenCalendar
             <p className="mt-1 text-xs text-[#96a9ba]">Reference only, not a live voice connection. Never paste a Vapi API key here.</p></div>
           <div><label className="text-xs font-semibold text-[#e7c37c]" htmlFor="v153-mail">Preferred email connection</label>
             <select id="v153-mail" className={field+" mt-1"} value={pref.preferred_email_provider} onChange={e=>setPref(p=>({...p,preferred_email_provider:e.target.value as MailProvider}))}>
-              <option value="none">Not selected</option><option value="gmail">Gmail (OAuth not connected)</option><option value="outlook">Microsoft Outlook (OAuth not connected)</option>
+              <option value="none">Not selected</option><option value="gmail">Gmail (manage connection above)</option><option value="outlook">Microsoft Outlook (not yet available)</option>
             </select></div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -213,7 +215,7 @@ export default function IntegrationsPanel({workspaceId,onImported,onOpenCalendar
       {[
         {title:"Scheduling",desc:"Booking-page link is available when saved. API availability and meeting sync need OAuth + webhooks."},
         {title:"AI receptionist",desc:"Vapi assistant ID can be saved. Call handling, appointment tools and webhooks are not connected yet."},
-        {title:"Email",desc:"Gmail/Outlook preference only. OAuth and send approval are still required; no email is sent."},
+        {title:"Email",desc:"Manage Gmail authorization in Business email above. Outlook is not available yet. Approval and sending remain separate."},
       ].map(item=><div className={box} key={item.title}><h3 className="font-semibold text-[#efd5a1]">{item.title}</h3><p className="mt-2 text-xs leading-5 text-[#b8c7d4]">{item.desc}</p></div>)}
     </div>
     <div className={box}>

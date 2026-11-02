@@ -1,0 +1,14 @@
+.intrigue-quote-studio .iq-stage { display:inline-flex; align-items:center; border-radius:999px; margin-top:5px; padding:5px 9px; font-size:11px; font-weight:600; background:#273b53; color:#e7d3ad; white-space:nowrap; }
+.intrigue-quote-studio .iq-stage-approved { background:#193e36; color:#a7e7c7; }
+.intrigue-quote-studio .iq-stage-requested { background:#4e3e22; color:#f6dca6; }
+.intrigue-quote-studio .iq-stage-rejected, .intrigue-quote-studio .iq-stage-failed { background:#542a30; color:#ffd1ce; }
+.intrigue-quote-studio .iq-stage-submitted { background:#1c3b55; color:#b3dcff; }
+.intrigue-quote-studio .iq-status-cell { min-width:135px; }
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-quote-studio .iq-stage { background:#f3e9d9; color:#6d5228; }
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-quote-studio .iq-stage-approved { background:#e4f4e9; color:#1c6c4c; }
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-quote-studio .iq-stage-requested { background:#fcf0d2; color:#77571b; }
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-quote-studio .iq-stage-rejected, .intrigue-dashboard[data-intrigue-theme="light"] .intrigue-quote-studio .iq-stage-failed { background:#fbe5e4; color:#993731; }
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-quote-studio .iq-stage-submitted { background:#e0effb; color:#225e80; }
+.intrigue-quote-studio .iq-status-explain { margin:4px 0 8px; font-size:11px; color:var(--qs-muted); }
+
+@media (min-width: 861px) { .intrigue-quote-studio .qs-stats { grid-template-columns: repeat(4,minmax(0,1fr)); } }

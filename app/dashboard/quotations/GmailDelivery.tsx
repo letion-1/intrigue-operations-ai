@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Link2, Loader2, Send, ShieldCheck, Unplug, RefreshCw } from 'lucide-react';
+import { Loader2, Send, ShieldCheck, RefreshCw } from 'lucide-react';
 import './gmail-delivery.css';
 
 type Preview = { recipient: string; subject: string; body: string };
@@ -68,26 +68,7 @@ export default function GmailDelivery({ workspaceId, quotationId, preview, pendi
       .finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
   }, [refresh]);
-  async function connect() {
-    setBusy(true); setError(''); setNotice('');
-    try {
-      const data = await api('/api/mail/google/start', 'POST', { workspaceId });
-      if (typeof data.authorizationUrl !== 'string') throw new Error('Google authorization URL was not returned.');
-      const destination = new URL(data.authorizationUrl);
-      if (destination.origin !== 'https://accounts.google.com') throw new Error('Unexpected Google authorization destination.');
-      window.location.assign(destination.href);
-    } catch (e) { setError(formatError(e)); setBusy(false); }
-  }
-  async function disconnect() {
-    if (!window.confirm(`Disconnect Gmail ${status?.sender || ''} from this company? This does not revoke access in Google settings.`)) return;
-    setBusy(true); setError(''); setNotice('');
-    try {
-      await api('/api/mail/disconnect', 'POST', { workspaceId });
-      await refresh();
-      setNotice('Gmail disconnected from INTRIGUE. Existing delivery history remains.');
-    } catch (e) { setError(formatError(e)); }
-    finally { setBusy(false); }
-  }
+  // INTRIGUE_V1657: Manage provider OAuth exclusively in Integrations.
   function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     setError(''); setFile(null); setReviewed(false); setConfirmation('');
     const selected = event.target.files?.[0];
@@ -110,6 +91,7 @@ export default function GmailDelivery({ workspaceId, quotationId, preview, pendi
       setSubmitted(result.submitted === true);
       setNotice(typeof result.warning === 'string' ? result.warning : 'Gmail accepted the message and attached PDF. Inbox delivery is not confirmed.');
       await refresh();
+      window.dispatchEvent(new CustomEvent("intrigue:proposal-approval-updated", { detail: { workspaceId } }));
     } catch (e) { setError(formatError(e)); await refresh().catch(() => {}); }
     finally { setBusy(false); }
   }
@@ -118,12 +100,10 @@ export default function GmailDelivery({ workspaceId, quotationId, preview, pendi
     <p className="gd-hint">Send only after proposal approval. Gmail sends the email and your reviewed PDF attachment; no automated resend occurs.</p>
     {loading ? <p className="gd-hint"><Loader2 size={14}/> Checking connection…</p> : <>
       {status?.connected ? <div className="gd-connection">
-        <div><strong>Connected sender</strong><p>{status.sender}</p></div>
-        <div className="gd-controls"><button type="button" className="gd-btn" disabled={busy} onClick={() => void refresh().catch(e => setError(formatError(e)))}><RefreshCw size={14}/> Refresh</button>
-        <button type="button" className="gd-btn" disabled={busy} onClick={() => void disconnect()}><Unplug size={14}/> Disconnect</button></div>
+        <div><strong>Sender connected in Integrations</strong><p>{status.sender}</p></div>
+        <div className="gd-controls"><button type="button" className="gd-btn" disabled={busy} onClick={() => void refresh().catch(e => setError(formatError(e)))}><RefreshCw size={14}/> Refresh status</button></div>
       </div> : <div className="gd-connection">
-        <div><strong>Not connected</strong><p>Authorize this company to use a Gmail address for sending approved proposals.</p></div>
-        <button type="button" className="gd-btn gd-primary" disabled={busy} onClick={() => void connect()}><Link2 size={14}/> Connect Gmail</button>
+        <div><strong>No Gmail sender connected</strong><p>Open INTRIGUE → Integrations → Business email to connect Gmail. Then return to this approved proposal to deliver it.</p></div>
       </div>}
     </>}
     {status?.connected && <div className="gd-send">

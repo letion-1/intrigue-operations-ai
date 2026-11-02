@@ -87,6 +87,8 @@ export default function ProposalApproval({ workspaceId, quotationId, proposalId,
       if (!data || typeof data !== "object") throw new Error("No approval confirmation was returned.");
       const result = data as {status?: string; already_current?: boolean};
       await reload();
+      // INTRIGUE_V1657: refresh status in the quotation list without a dashboard reload.
+      window.dispatchEvent(new CustomEvent("intrigue:proposal-approval-updated", { detail: { workspaceId } }));
       setNote("");
       setNotice(action === "request"
         ? result.already_current ? `Current approval state is ${result.status}. Nothing was sent.` : "Approval requested. The proposal has NOT been sent."
@@ -157,7 +159,7 @@ export default function ProposalApproval({ workspaceId, quotationId, proposalId,
       </div>
       {approval?.state === "approved" && !preview && <p className="pa-muted">Approval is checked again against saved pricing, terms, logo and recipient before a manual email draft is made available.</p>}
       {preview && <div className="pa-email"><h4>Approved email draft</h4>
-        <p className="pa-warning">Not sent. Connect Gmail below for controlled sending, or prepare a manual draft in your mail app. Opening a mail app does not confirm delivery.{recipientIsDemo ? " This is a fictional .example recipient; do not try to send it." : ""}</p>
+        <p className="pa-warning">Not sent. Connect Gmail from Integrations → Business email, then return here to send the approved PDF, or prepare a manual draft in your mail app. Opening a mail app does not confirm delivery.{recipientIsDemo ? " This is a fictional .example recipient; do not try to send it." : ""}</p>
         <div><strong>To</strong><span>{preview.recipient}</span></div>
         <div><strong>Subject</strong><span>{preview.subject}</span></div>
         <label>Body<textarea value={preview.body} readOnly rows={9}/></label>

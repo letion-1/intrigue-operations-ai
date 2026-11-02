@@ -1,0 +1,4 @@
+.edp-summary{border:1px solid rgba(190,151,91,.54);padding:14px;border-radius:12px;margin:12px 0;color:inherit;background:transparent}
+.edp-summary>strong{display:block;margin-bottom:8px;font-size:.9rem}.edp-summary p{font-size:.84rem;margin:6px 0}
+.edp-summary pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:.86rem;border:1px dashed rgba(180,147,103,.43);border-radius:8px;padding:10px;max-height:155px;overflow:auto}
+.edp-summary small{display:block;margin-top:8px;opacity:.75}.edp-summary .edp-error{color:#c64f45}

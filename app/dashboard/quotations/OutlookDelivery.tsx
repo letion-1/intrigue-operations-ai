@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Eye, FileDown, FileCheck2, Loader2, RefreshCw, Send, ShieldCheck } from 'lucide-react';
 import './outlook-delivery.css';
+import {EmailDeliveryPreferencesSummary,useDeliveryPreferences} from './EmailDeliveryPreferences'; // INTRIGUE_V169_EMAIL
 
 type Preview={recipient:string;subject:string;body:string};
 type Attempt={id:string;status:string;recipient?:string;created_at:string};
@@ -21,6 +22,7 @@ export default function OutlookDelivery({workspaceId,quotationId,preview,pending
   const [busy,setBusy]=useState(false);
   const [rendering,setRendering]=useState(false);
   const [notice,setNotice]=useState('');
+  const {prefs:mailPrefs,error:mailPrefsError,loading:mailPrefsLoading}=useDeliveryPreferences(workspaceId);
   const [error,setError]=useState('');
   const urlRef=useRef<string|null>(null);
   const isDemo=/\.(example|test|invalid)$/i.test(preview.recipient.split('@')[1]||'');
@@ -56,6 +58,7 @@ export default function OutlookDelivery({workspaceId,quotationId,preview,pending
     urlRef.current=null;setPdf(null);setReviewed(false);setConfirmation('');
   },[workspaceId,quotationId,preview.recipient,preview.subject,preview.body,pendingChanges]);
   useEffect(()=>()=>{if(urlRef.current)URL.revokeObjectURL(urlRef.current);},[]);
+  useEffect(()=>{setReviewed(false);setConfirmation('');},[mailPrefs?.revision]);
   async function generate(){
     if(rendering||busy||pendingChanges)return;
     setRendering(true);setError('');setNotice('');setReviewed(false);setConfirmation('');
@@ -80,12 +83,12 @@ export default function OutlookDelivery({workspaceId,quotationId,preview,pending
     }catch(e){setError(message(e));setPdf(null);}finally{setRendering(false);}
   }
   async function send(){
-    if(!status?.connected||priorAttempt||!pdf||!reviewed||confirmation!=='SEND'||busy||rendering||pendingChanges||isDemo)return;
-    if(!window.confirm(`SEND APPROVED PROPOSAL VIA OUTLOOK?\n\nFrom: ${status.sender}\nTo: ${preview.recipient}\nSubject: ${preview.subject}\nPDF: server-generated and reviewed\n\nMicrosoft Graph may submit this once. Do not retry on a timeout.`))return;
+    if(!status?.connected||priorAttempt||!pdf||!reviewed||confirmation!=='SEND'||busy||rendering||pendingChanges||isDemo||!mailPrefs||!!mailPrefsError||mailPrefsLoading)return;
+    if(!window.confirm(`SEND APPROVED PROPOSAL VIA OUTLOOK?\n\nFrom: ${status.sender}\nTo: ${preview.recipient}\nSubject: ${preview.subject}\nReply-to: ${mailPrefs?.replyTo || status.sender}\nSignature: ${mailPrefs?.signature || '(none)'}\nPDF: server-generated and reviewed\n\nMicrosoft Graph may submit this once. Do not retry on a timeout.`))return;
     setBusy(true);setError('');setNotice('');
     try{
       const response=await api('/api/mail/outlook/send','POST',{
-        workspaceId,quotationId,previewSnapshotHash:pdf.snapshotHash,confirmation:'SEND APPROVED PROPOSAL'});
+        workspaceId,quotationId,previewSnapshotHash:pdf.snapshotHash,confirmation:'SEND APPROVED PROPOSAL',preferencesRevision:mailPrefs!.revision});
       if(response instanceof Response||response.submitted!==true)throw new Error('Outlook submission was not confirmed.');
       setNotice('Microsoft Graph accepted this message (202). Inbox delivery has not been confirmed.');
       await refresh();
@@ -104,9 +107,10 @@ export default function OutlookDelivery({workspaceId,quotationId,preview,pending
       {priorAttempt&&<p className="od-warning">A Gmail or Outlook attempt already exists for this quotation. Never resend an uncertain attempt without manual reconciliation.</p>}
       <button className="od-primary" type="button" onClick={()=>void generate()} disabled={busy||rendering||pendingChanges}><FileCheck2 size={15}/> {rendering?'Generating…':pdf?'Regenerate approved PDF':'Generate approved PDF'}</button>
       {pdf&&<div className="od-actions"><a href={pdf.url} target="_blank" rel="noopener noreferrer"><Eye size={15}/> Preview PDF</a><a href={pdf.url} download={`INTRIGUE-Proposal-${quotationId.slice(0,8)}.pdf`}><FileDown size={15}/> Download copy</a><small>{Math.ceil(pdf.size/1024)} KB</small></div>}
+      <EmailDeliveryPreferencesSummary prefs={mailPrefs} loading={mailPrefsLoading} error={mailPrefsError}/>
       <label className="od-check"><input type="checkbox" checked={reviewed} onChange={e=>setReviewed(e.target.checked)} disabled={!pdf||busy||priorAttempt}/> I reviewed the PDF, recipient, prices, VAT and approval.</label>
       <label className="od-confirm">Type <strong>SEND</strong> for final confirmation<input value={confirmation} onChange={e=>setConfirmation(e.target.value)} placeholder="SEND" autoComplete="off" disabled={busy||priorAttempt}/></label>
-      <button type="button" className="od-primary" onClick={()=>void send()} disabled={busy||rendering||!pdf||!reviewed||confirmation!=='SEND'||priorAttempt||pendingChanges||isDemo}><Send size={15}/> {busy?'Submitting to Microsoft…':priorAttempt?'Already attempted':'Send approved proposal through Outlook'}</button>
+      <button type="button" className="od-primary" onClick={()=>void send()} disabled={busy||rendering||!pdf||!reviewed||confirmation!=='SEND'||priorAttempt||pendingChanges||isDemo||!mailPrefs||mailPrefsLoading||!!mailPrefsError}><Send size={15}/> {busy?'Submitting to Microsoft…':priorAttempt?'Already attempted':'Send approved proposal through Outlook'}</button>
       <small>202 Accepted means Graph took the request. It does not confirm receipt or a read.</small>
     </div>}
     {error&&<p className="od-error" role="alert">{error}</p>}{notice&&<p className="od-success" role="status">{notice}</p>}

@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { approvedPdf } from '../../_lib/approved-pdf';
 import { actor, adminClient, decrypt, encrypt, emailPattern, jsonBody, mailError, MailError, noStore, uuidPattern } from '../../_lib/common';
 import { exchangeMicrosoftToken, outlookConfig } from '../../_lib/outlook';
+import {loadEmailPreferences,assertPreferencesVersion,finalizedEmailBody} from '../../_lib/email-preferences'; // INTRIGUE_V169_EMAIL
 
 export async function POST(request: NextRequest) {
   let deliveryId: string | null = null;
@@ -27,6 +28,9 @@ export async function POST(request: NextRequest) {
     const body = String(emailPreview.body||'');
     if (!emailPattern.test(recipient)||/\.(example|test|invalid)$/i.test(recipient.split('@')[1]||'')) throw new MailError('Fictional or invalid recipients cannot be emailed.',400);
     if (subject.length<2||subject.length>180||/[\r\n\0]/.test(subject)||body.length<2||body.length>12000) throw new MailError('Invalid approved email content.',409);
+    const mailPrefs = await loadEmailPreferences(workspaceId);
+    assertPreferencesVersion(mailPrefs,input.preferencesRevision);
+    const outgoingBody=finalizedEmailBody(body,mailPrefs);
     const db = adminClient();
     const {data: account,error: accountError} = await db.from('intrigue_outlook_connections')
       .select('sender_email,refresh_token_cipher').eq('workspace_id',workspaceId).maybeSingle();
@@ -64,10 +68,16 @@ export async function POST(request: NextRequest) {
       await db.from('intrigue_outlook_deliveries').update({status:'failed',error_code:'approval_or_pdf_changed'}).eq('id',deliveryId);
       throw new MailError('Proposal changed before sending. Delivery stopped; request a new approval if needed.',409);
     }
+    const currentPrefs=await loadEmailPreferences(workspaceId);
+    if(currentPrefs.revision!==mailPrefs.revision){
+      await db.from('intrigue_outlook_deliveries').update({status:'failed',error_code:'email_prefs_changed'}).eq('id',deliveryId);
+      throw new MailError('Email preferences changed during sending. No email was sent. Review the attempt before retrying.',409);
+    }
     const graphMessage = {
       message: {
         subject,
-        body: {contentType:'Text',content:body},
+        body: {contentType:'Text',content:outgoingBody},
+        ...(mailPrefs.replyTo?{replyTo:[{emailAddress:{address:mailPrefs.replyTo}}]}:{}),
         toRecipients:[{emailAddress:{address:recipient}}],
         attachments:[{'@odata.type':'#microsoft.graph.fileAttachment',
           name:'approved-proposal.pdf',contentType:'application/pdf',

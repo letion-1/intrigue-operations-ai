@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { approvedPdf } from '../_lib/approved-pdf';
+import {loadEmailPreferences,assertPreferencesVersion,finalizedEmailBody} from '../_lib/email-preferences'; // INTRIGUE_V169_EMAIL
 import { NextRequest } from 'next/server';
 import { actor, adminClient, decrypt, emailPattern, googleConfig, jsonBody, mailError, MailError, noStore, sha, uuidPattern } from '../_lib/common';
 
@@ -15,10 +16,11 @@ function encodedHeader(value: string) {
   return words.join('\r\n ');
 }
 function wrap64(data: Buffer) { return data.toString('base64').replace(/.{1,76}/g, '$&\r\n').trimEnd(); }
-function mime(sender: string, recipient: string, subject: string, body: string, file: Buffer) {
+function mime(sender: string, recipient: string, subject: string, body: string, file: Buffer, replyTo: string) {
   const boundary = `intrigue_${sha(file.toString('base64')).slice(0, 28)}`;
   const lines = [
     `From: <${sender}>`, `To: <${recipient}>`, `Subject: ${encodedHeader(subject)}`,
+    ...(replyTo ? [`Reply-To: <${replyTo}>`] : []),
     'MIME-Version: 1.0', `Content-Type: multipart/mixed; boundary="${boundary}"`, '',
     `--${boundary}`, 'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '',
     wrap64(Buffer.from(body, 'utf8')), '',
@@ -69,6 +71,9 @@ export async function POST(request: NextRequest) {
     const subject = String(proposal.subject || '').trim();
     const body = String(proposal.body || '');
     if (!subject || subject.length > 180 || !body || body.length > 12_000 || /[\r\n]/.test(subject)) throw new MailError('Invalid approved email content.', 409);
+    const mailPrefs = await loadEmailPreferences(workspaceId);
+    assertPreferencesVersion(mailPrefs,input.preferencesRevision);
+    const outgoingBody=finalizedEmailBody(body,mailPrefs);
     const db = adminClient();
     const { data: account, error: accountError } = await db.from('intrigue_gmail_connections')
       .select('sender_email,refresh_token_cipher').eq('workspace_id', workspaceId).maybeSingle();
@@ -114,7 +119,12 @@ export async function POST(request: NextRequest) {
         throw new MailError('Proposal changed before delivery. The request has been stopped. Check the delivery log before trying again.',409);
       }
     }
-    const raw = mime(String(account.sender_email), recipient, subject, body, pdf);
+    const currentPrefs=await loadEmailPreferences(workspaceId);
+    if(currentPrefs.revision!==mailPrefs.revision){
+      await db.from('intrigue_mail_deliveries').update({status:'failed',error_code:'email_prefs_changed'}).eq('id',deliveryId);
+      throw new MailError('Email preferences changed during sending. No email was sent. Review the attempt before retrying.',409);
+    }
+    const raw = mime(String(account.sender_email), recipient, subject, outgoingBody, pdf, mailPrefs.replyTo);
     attemptedGmail = true;
     let response: Response;
     try {

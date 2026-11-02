@@ -1,0 +1,14 @@
+.ewp-panel{border:1px solid rgba(182,140,81,.36);border-radius:15px;padding:20px;margin-top:18px;color:inherit;background:transparent}
+.ewp-panel h3{display:flex;gap:9px;align-items:center;font-size:1.06rem;font-weight:700;margin:0 0 8px}
+.ewp-muted,.ewp-panel small{font-size:.82rem;opacity:.76;line-height:1.6}
+.ewp-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}
+.ewp-form label{display:flex;flex-direction:column;gap:7px;font-size:.85rem;font-weight:600}
+.ewp-form .ewp-full{grid-column:1/-1}
+.ewp-form input,.ewp-form textarea,.ewp-form select{width:100%;min-width:0;color:inherit;background:transparent;border:1px solid rgba(178,143,93,.58);border-radius:9px;padding:11px;font:inherit;outline-offset:3px}
+.ewp-form option{color:#172b40;background:#fff}
+.ewp-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.ewp-actions button{display:flex;align-items:center;gap:8px;padding:9px 13px;border:1px solid #b78d46;border-radius:9px;color:inherit;background:transparent;cursor:pointer}
+.ewp-actions button:first-child{background:#d6aa5a;color:#09182a}
+.ewp-actions button:disabled{opacity:.5;cursor:not-allowed}
+.ewp-error{color:#c34b46;margin-top:12px}.ewp-notice{color:#218363;margin-top:12px}
+@media(max-width:700px){.ewp-form{grid-template-columns:1fr}}

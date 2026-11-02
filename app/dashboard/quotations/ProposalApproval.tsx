@@ -41,7 +41,21 @@ export default function ProposalApproval({ workspaceId, quotationId, proposalId,
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState<EmailPreview | null>(null);
-  const [mailProvider, setMailProvider] = useState<"gmail" | "outlook">("gmail");
+  const [mailProvider, setMailProvider] = useState<"gmail" | "outlook">("gmail"); // INTRIGUE_V169_EMAIL
+  useEffect(() => {
+    let active = true;
+    setMailProvider("gmail");
+    (async () => {
+      const {data:{session}}=await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      const res=await fetch(`/api/mail/preferences?workspaceId=${encodeURIComponent(workspaceId)}`,{cache:"no-store",headers:{Authorization:`Bearer ${session.access_token}`}});
+      if(!res.ok) return;
+      const data:unknown=await res.json();
+      const provider=data && typeof data==="object" && "defaultProvider" in data ? (data as {defaultProvider?:unknown}).defaultProvider : null;
+      if(active && (provider==="gmail"||provider==="outlook"))setMailProvider(provider);
+    })().catch(()=>{});
+    return()=>{active=false;};
+  },[supabase,workspaceId]);
   const canReview = role === "owner" || role === "admin";
 
   const reload = useCallback(async () => {
@@ -137,7 +151,7 @@ export default function ProposalApproval({ workspaceId, quotationId, proposalId,
 
   return <section className="pa-panel" aria-label="Proposal approval and delivery preparation">
     <div className="pa-head"><div><h3><ShieldCheck size={18}/> Proposal approval</h3>
-      <p>Request approval, review the final draft, then prepare an email. Approved proposals can be sent through a connected Gmail account after a separate final confirmation.</p></div>
+      <p>Request approval, review the final draft, then prepare an email. Approved proposals can be sent through connected Gmail or Outlook accounts after separate final confirmation.</p></div>
       <span className={`pa-status pa-status-${approval?.state || "draft"}`}>
         {approval?.state ? approval.state.charAt(0).toUpperCase() + approval.state.slice(1) : "Not requested"}
       </span>
@@ -161,7 +175,7 @@ export default function ProposalApproval({ workspaceId, quotationId, proposalId,
       </div>
       {approval?.state === "approved" && !preview && <p className="pa-muted">Approval is checked again against saved pricing, terms, logo and recipient before a manual email draft is made available.</p>}
       {preview && <div className="pa-email"><h4>Approved email draft</h4>
-        <p className="pa-warning">Not sent. Connect Gmail from Integrations → Business email, then return here to send the approved PDF, or prepare a manual draft in your mail app. Opening a mail app does not confirm delivery.{recipientIsDemo ? " This is a fictional .example recipient; do not try to send it." : ""}</p>
+        <p className="pa-warning">Not sent. Manage Gmail and Outlook in Integrations → Business email. Sending an approved PDF requires a separate confirmation. Opening a mail app does not confirm delivery.{recipientIsDemo ? " This is a fictional .example recipient; do not try to send it." : ""}</p>
         <div><strong>To</strong><span>{preview.recipient}</span></div>
         <div><strong>Subject</strong><span>{preview.subject}</span></div>
         <label>Body<textarea value={preview.body} readOnly rows={9}/></label>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { CheckCircle2, Link2, Loader2, Mail, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
 import './business-email-connections.css';
+import EmailWorkspacePreferences from './EmailWorkspacePreferences'; // INTRIGUE_V169_EMAIL
 import OutlookConnection from './OutlookConnection'; // INTRIGUE_V168_OUTLOOK
 
 type Connection = { connected: boolean; sender: string | null };
@@ -107,6 +108,7 @@ export default function BusinessEmailConnections({ workspaceId }: { workspaceId:
         </div>
         <OutlookConnection key={workspaceId} workspaceId={workspaceId}/>
       </div>}
+    {!loading && canManage && <EmailWorkspacePreferences key={workspaceId} workspaceId={workspaceId} canManage={canManage}/>}
     {error && <p className="bec-error" role="alert">{error}</p>}
     {notice && <p className="bec-notice" role="status">{notice}</p>}
     <p className="bec-footnote">Connecting an email provider does not send anything. Sending still requires a saved proposal, current approval, reviewed PDF and explicit final confirmation.</p>

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client';
 import { FileCheck2, FileDown, Eye, Loader2, RefreshCw, Send, ShieldCheck } from 'lucide-react';
 import './gmail-delivery.css';
 import './automatic-pdf.css';
+import {EmailDeliveryPreferencesSummary,useDeliveryPreferences} from './EmailDeliveryPreferences'; // INTRIGUE_V169_EMAIL
 
 type Preview = { recipient: string; subject: string; body: string };
 type Delivery = { id: string; quotation_id: string; recipient: string; status: string; submitted_at: string | null; created_at: string };
@@ -33,6 +34,7 @@ export default function GmailDelivery({ workspaceId, quotationId, preview, pendi
   const [reviewed, setReviewed] = useState(false);
   const [confirmation, setConfirmation] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const {prefs:mailPrefs,error:mailPrefsError,loading:mailPrefsLoading}=useDeliveryPreferences(workspaceId);
   const isDemo = /\.(example|test|invalid)$/i.test((preview.recipient.split('@')[1] || '').trim());
   const priorAttempt = !!status?.delivery?.length;
   const auth = useCallback(async () => {
@@ -76,6 +78,7 @@ export default function GmailDelivery({ workspaceId, quotationId, preview, pendi
   }, [workspaceId, quotationId, preview.recipient, preview.subject, preview.body, pendingChanges]);
   useEffect(() => () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current); }, []);
 
+  useEffect(()=>{setReviewed(false);setConfirmation('');},[mailPrefs?.revision]);
   async function generatePdf() {
     if (busy || rendering || pendingChanges) return;
     setRendering(true);setError('');setNotice('');
@@ -117,12 +120,12 @@ export default function GmailDelivery({ workspaceId, quotationId, preview, pendi
   }
   async function send() {
     const hasAttachment=manualMode ? !!manualPdf : !!generatedPdf;
-    if (!hasAttachment || !reviewed || pendingChanges || !status?.connected || confirmation !== 'SEND' || submitted || priorAttempt || isDemo || busy || rendering) return;
+    if (!hasAttachment || !reviewed || pendingChanges || !status?.connected || confirmation !== 'SEND' || submitted || priorAttempt || isDemo || busy || rendering || !mailPrefs || !!mailPrefsError || mailPrefsLoading) return;
     const attachmentDescription=manualMode ? manualPdf?.name || 'manual PDF' : 'server-generated approved PDF';
-    if (!window.confirm(`FINAL CONFIRMATION\n\nFrom: ${status.sender}\nTo: ${preview.recipient}\nSubject: ${preview.subject}\nPDF: ${attachmentDescription}\n\nSend this approved proposal through Gmail now?`)) return;
+    if (!window.confirm(`FINAL CONFIRMATION\n\nFrom: ${status.sender}\nTo: ${preview.recipient}\nSubject: ${preview.subject}\nReply-to: ${mailPrefs?.replyTo || status.sender}\nSignature: ${mailPrefs?.signature || '(none)'}\nPDF: ${attachmentDescription}\n\nSend this approved proposal through Gmail now?`)) return;
     setBusy(true);setError('');setNotice('');
     try {
-      const payload:Record<string,unknown>={workspaceId,quotationId,confirmation:'SEND APPROVED PROPOSAL'};
+      const payload:Record<string,unknown>={workspaceId,quotationId,confirmation:'SEND APPROVED PROPOSAL',preferencesRevision:mailPrefs!.revision};
       if(manualMode) payload.pdfBase64=await pdfAsBase64(manualPdf!);
       else {payload.attachmentMode='generated';payload.previewSnapshotHash=generatedPdf!.snapshotHash;}
       const result=await api('/api/mail/send','POST',payload);
@@ -162,13 +165,14 @@ export default function GmailDelivery({ workspaceId, quotationId, preview, pendi
         {manualMode && <label className="gd-file">Attach the reviewed PDF<input type="file" accept=".pdf,application/pdf" onChange={chooseFile} disabled={busy||submitted||priorAttempt}/></label>}
         {manualMode && manualPdf && <p className="gd-filename">Selected: {manualPdf.name} ({Math.ceil(manualPdf.size/1024)} KB)</p>}
       </details>
+      <EmailDeliveryPreferencesSummary prefs={mailPrefs} loading={mailPrefsLoading} error={mailPrefsError}/>
       <label className="gd-check"><input type="checkbox" checked={reviewed} onChange={e=>setReviewed(e.target.checked)} disabled={busy||submitted||priorAttempt||!(manualMode?manualPdf:generatedPdf)}/>
         I have opened and reviewed the final PDF, recipient, total, VAT and approved proposal.</label>
       <label className="gd-confirm">Type <strong>SEND</strong> to confirm delivery
         <input value={confirmation} onChange={e=>setConfirmation(e.target.value)} autoComplete="off" placeholder="SEND" disabled={busy||submitted||priorAttempt}/>
       </label>
       <button className="gd-btn gd-primary" type="button" onClick={()=>void send()}
-        disabled={busy||rendering||!reviewed||confirmation!=='SEND'||pendingChanges||submitted||priorAttempt||isDemo||!(manualMode?manualPdf:generatedPdf)}>
+        disabled={busy||rendering||!reviewed||confirmation!=='SEND'||pendingChanges||submitted||priorAttempt||isDemo||!(manualMode?manualPdf:generatedPdf)||!mailPrefs||mailPrefsLoading||!!mailPrefsError}>
         <Send size={15}/> {busy?'Submitting to Gmail…':submitted?'Already submitted':'Send approved proposal with PDF'}
       </button>
     </div>}

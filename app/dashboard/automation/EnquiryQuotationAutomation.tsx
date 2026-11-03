@@ -60,7 +60,16 @@ export default function EnquiryQuotationAutomation({workspaceId,canManage}:{work
     return()=>{live=false;};
   },[workspaceId,canManage,load]);
 
-  const runByEnquiry=useMemo(()=>new Map(snapshot.runs.filter(r=>r.payload?.enquiry_id).map(r=>[r.payload!.enquiry_id!,r])),[snapshot.runs]);
+  // Runs arrive newest first. Keep the latest run per enquiry so a re-analysis
+  // replaces the old preview while preserving previous runs in audit history.
+  const runByEnquiry=useMemo(()=>{
+    const byEnquiry=new Map<string,Run>();
+    for(const run of snapshot.runs){
+      const id=run.payload?.enquiry_id;
+      if(id && !byEnquiry.has(id)) byEnquiry.set(id,run);
+    }
+    return byEnquiry;
+  },[snapshot.runs]);
   const customersById=useMemo(()=>new Map(customers.map(c=>[c.id,c.full_name])),[customers]);
   const linkByRun=useMemo(()=>new Map(snapshot.draftLinks.map(l=>[l.run_id,l.quotation_id])),[snapshot.draftLinks]);
 
@@ -76,7 +85,7 @@ export default function EnquiryQuotationAutomation({workspaceId,canManage}:{work
   };
   if(!canManage)return null;
   return <section className="v172" aria-label="Enquiry-to-quotation drafting">
-    <div className="v172-head"><div><span className="v172-eyebrow"><FilePlus2 size={14}/> V17.2B · INTELLIGENT ENQUIRY ROUTING</span>
+    <div className="v172-head"><div><span className="v172-eyebrow"><FilePlus2 size={14}/> V17.2C · INTELLIGENT ENQUIRY ROUTING</span>
       <h2>Understand requests before creating quotations</h2>
       <p>AI checks whether a request is a sale, exchange, refund, stock question or support issue. Only explicit new sales requests may produce catalog-priced quotation drafts. Every analysis needs approval, and nothing is sent.</p>
     </div><button type="button" disabled={busy||loading} onClick={()=>void load().then(()=>setNotice('Quotation data refreshed.')).catch(e=>setError(message(e)))}><RefreshCw size={15}/> Refresh</button></div>
@@ -112,12 +121,13 @@ export default function EnquiryQuotationAutomation({workspaceId,canManage}:{work
             {run&&['queued','retry_wait'].includes(run.status)&&<button disabled={busy} onClick={()=>void act('cancel',{runId:run.id},'Cancel this pending analysis?','Run cancelled.')}><XCircle size={14}/> Cancel</button>}
             {run?.status==='dead_letter'&&<button disabled={busy} onClick={()=>void act('retry',{runId:run.id},'Retry this already approved AI analysis? It may consume additional AI credits.','Run queued for retry.')}>Retry analysis</button>}
             {canCommit&&<button className="v172-save" disabled={busy} onClick={()=>void act('commit_quote',{runId:run!.id},`Create an INTERNAL draft quotation for ${customersById.get(enquiry.customer_id)||'this customer'} using the verified prices shown? No email will be sent.`, 'Draft saved.')}><CheckCircle2 size={14}/> Save quotation draft</button>}
+            {run?.status==='succeeded'&&suggestion?.outcome==='needs_review'&&suggestion?.intent==='sales_quote'&&suggestion?.classification_source==='v17.2b'&&<button disabled={busy} onClick={()=>void act('reanalyze_quotation',{enquiryId:enquiry.id,previousRunId:run.id},'Create a new internal analysis of this sales enquiry? You must approve the new run; no quotation or message will be sent.','Re-analysis queued for approval.')}><RefreshCw size={14}/> Re-analyze quotation</button>}
             {run?.status==='succeeded'&&suggestion?.outcome==='needs_review'&&<span className="v172-muted">Manual review required. Nothing has been sent.</span>}
             {run?.status==='succeeded'&&suggestion?.outcome==='routed'&&<span className="v172-muted">Routed for human handling; no automatic customer action has occurred.</span>}
           </div>
         </article>;
       })}
     </div>}
-    <p className="v172-muted">Existing V17.2A results remain visible but cannot create new drafts after the V17.2B database guard. New classifications require a new enquiry. Reanalysis will follow in a later release. The local worker also needs OPENROUTER_API_KEY in its own private environment.</p>
+    <p className="v172-muted">Existing V17.2A results remain visible but cannot create new drafts after the V17.2B database guard. Unresolved V17.2B sales analyses can be re-analyzed with fresh approval. The local worker needs OPENROUTER_API_KEY in its own private environment.</p>
   </section>;
 }

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { crossOrigin } from '@/lib/ai-security';
 
@@ -139,6 +140,48 @@ export async function POST(request: NextRequest) {
         p_payload:{source:'enquiry',enquiry_id:enquiryId,requested_by:userId},
       });
       if (enqueueError || typeof runId!=='string') throw new AutomationError('Unable to queue quotation analysis.',503);
+      return json({ok:true,runId});
+    }
+    if (operation === 'reanalyze_quotation') {
+      const enquiryId=readId(input.enquiryId,'enquiry');
+      const previousRunId=readId(input.previousRunId,'previous run');
+      // Reanalysis is deliberately limited to a previously completed, unresolved
+      // sales run. It creates a new approval-required run; it never overwrites history.
+      const {data:prior,error:priorError}=await db.from('intrigue_v17_runs')
+        .select('id,status,result,workflow_id,payload').eq('workspace_id',workspaceId).eq('id',previousRunId).maybeSingle();
+      if (priorError || !prior || prior.payload?.enquiry_id!==enquiryId ||
+          prior.status!=='succeeded' || prior.result?.classification_source!=='v17.2b' ||
+          prior.result?.intent!=='sales_quote' || prior.result?.outcome!=='needs_review') {
+        throw new AutomationError('Only unresolved, completed sales analyses can be re-analyzed.',409);
+      }
+      const {data:existingLink,error:linkError}=await db.from('intrigue_v172_draft_links')
+        .select('run_id').eq('workspace_id',workspaceId).eq('run_id',previousRunId).maybeSingle();
+      if (linkError || existingLink) throw new AutomationError('An existing saved draft cannot be re-analyzed.',409);
+      const {data:enquiry,error:enquiryError}=await db.from('enquiries')
+        .select('id,customer_id,subject').eq('workspace_id',workspaceId).eq('id',enquiryId).maybeSingle();
+      if (enquiryError || !enquiry?.customer_id || !enquiry.subject?.trim()) throw new AutomationError('Enquiry is missing.',404);
+      const {data:customer,error:customerError}=await db.from('customers').select('id')
+        .eq('workspace_id',workspaceId).eq('id',enquiry.customer_id).maybeSingle();
+      if (customerError || !customer) throw new AutomationError('Customer not found in this workspace.',404);
+      const {data:workflow,error:workflowError}=await db.from('intrigue_v17_workflows')
+        .select('id,enabled,action_type,trigger_type,requires_approval').eq('workspace_id',workspaceId)
+        .eq('id',prior.workflow_id).maybeSingle();
+      if (workflowError || !workflow || !workflow.enabled || workflow.action_type!=='quotation_draft' ||
+          workflow.trigger_type!=='manual' || workflow.requires_approval!==true) {
+        throw new AutomationError('Quotation workflow is not available.',409);
+      }
+      const since=new Date(Date.now()-60*60*1000).toISOString();
+      const {count,error:rateError}=await db.from('intrigue_v17_runs')
+        .select('id',{count:'exact',head:true}).eq('workspace_id',workspaceId).gte('created_at',since);
+      if (rateError || (count??0)>=100) throw new AutomationError('Workspace workflow rate limit reached.',429);
+      // The event key is unique while the linked enquiry remains the same.
+      // Existing enqueue RPC keeps the new run behind human approval.
+      const {data:runId,error:enqueueError}=await db.rpc('intrigue_v17_enqueue',{
+        p_workflow_id:workflow.id,
+        p_event_key:`reanalyze:${enquiryId}:${randomUUID()}`,
+        p_payload:{source:'enquiry_reanalysis',enquiry_id:enquiryId,requested_by:userId,previous_run_id:previousRunId},
+      });
+      if (enqueueError || typeof runId!=='string') throw new AutomationError('Unable to requeue quotation analysis.',503);
       return json({ok:true,runId});
     }
     if (operation === 'commit_quote') {

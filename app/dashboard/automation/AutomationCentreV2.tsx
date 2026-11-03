@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { createClient } from '@/lib/supabase/client';
 import { CheckCircle2, CircleAlert, Clock3, History, Pause, Play, Plus, RefreshCw, RotateCcw, ShieldCheck, Workflow, XCircle } from 'lucide-react';
 import './automation-centre-v2.css';
+import EnquiryQuotationAutomation from './EnquiryQuotationAutomation';
 
 type WorkflowRow = {
   id:string;name:string;trigger_type:string;action_type:string;enabled:boolean;
@@ -103,10 +104,12 @@ export default function AutomationCentreV2({workspaceId,canManage}:{workspaceId:
     if(!window.confirm(`${w.enabled?'Disable':'Enable'} "${w.name}"? Disabling blocks new runs but does not cancel existing ones.`))return;
     await act({operation:'toggle_workflow',workflowId:w.id,enabled:!w.enabled},`Workflow ${w.enabled?'disabled':'enabled'}.`);
   };
+  const auditIds=new Set(snapshot.workflows.filter(w=>w.action_type==='audit_event').map(w=>w.id));
+  const auditRuns=snapshot.runs.filter(r=>auditIds.has(r.workflow_id));
   const workflowName=(id:string)=>snapshot.workflows.find(w=>w.id===id)?.name||`Workflow ${id.slice(0,8)}`;
-  const pending=snapshot.runs.filter(r=>r.status==='awaiting_approval');
-  const failures=snapshot.runs.filter(r=>r.status==='dead_letter');
-  const completed=snapshot.runs.filter(r=>r.status==='succeeded').length;
+  const pending=auditRuns.filter(r=>r.status==='awaiting_approval');
+  const failures=auditRuns.filter(r=>r.status==='dead_letter');
+  const completed=auditRuns.filter(r=>r.status==='succeeded').length;
   if(!canManage)return null;
   return <section className="acv2" aria-label="Automation Centre">
     <div className="acv2-heading">
@@ -124,7 +127,7 @@ export default function AutomationCentreV2({workspaceId,canManage}:{workspaceId:
     {error&&<p className="acv2-error" role="alert">{error}</p>}
     {notice&&<p className="acv2-notice" role="status">{notice}</p>}
     <div className="acv2-stats">
-      <div><strong>{snapshot.workflows.length}</strong><span>Workflows</span></div>
+      <div><strong>{auditIds.size}</strong><span>Audit workflows</span></div>
       <div><strong>{pending.length}</strong><span>Awaiting approval</span></div>
       <div><strong>{completed}</strong><span>Completed</span></div>
       <div><strong>{failures.length}</strong><span>Needs attention</span></div>
@@ -141,8 +144,8 @@ export default function AutomationCentreV2({workspaceId,canManage}:{workspaceId:
           <div className="acv2-create-row"><input id="acv2-name" value={name} onChange={e=>setName(e.target.value)} minLength={3} maxLength={120} placeholder="Example: Quotation processing audit" required disabled={busy}/><button type="submit" className="acv2-primary" disabled={busy||name.trim().length<3}><Plus size={15}/> Create</button></div>
           <small>Trigger: manual · Action: internal audit event · Human approval: required · Initial state: disabled</small>
         </form>
-        {snapshot.workflows.length===0&&<div className="acv2-empty">No workflows yet. Create your first internal test workflow above.</div>}
-        <div className="acv2-list">{snapshot.workflows.map(w=><article className="acv2-item" key={w.id}>
+        {auditIds.size===0&&<div className="acv2-empty">No workflows yet. Create your first internal test workflow above.</div>}
+        <div className="acv2-list">{snapshot.workflows.filter(w=>w.action_type==='audit_event').map(w=><article className="acv2-item" key={w.id}>
           <div className="acv2-item-header"><div><h3>{w.name}</h3><small>Manual trigger · Audit event · {w.max_attempts} attempts · Created {when(w.created_at)}</small></div><span className={`acv2-status ${w.enabled?'acv2-status-good':''}`}>{w.enabled?'Enabled':'Disabled'}</span></div>
           <div className="acv2-item-actions"><button type="button" disabled={busy} onClick={()=>void toggle(w)}>{w.enabled?<Pause size={14}/>:<Play size={14}/>} {w.enabled?'Disable':'Enable'}</button><button type="button" disabled={busy||!w.enabled} onClick={()=>void queue(w)} className="acv2-primary"><Plus size={14}/> Queue test run</button></div>
         </article>)}</div>
@@ -156,8 +159,8 @@ export default function AutomationCentreV2({workspaceId,canManage}:{workspaceId:
         </article>)}</div>
       </div>}
       {tab==='history'&&<div className="acv2-section">
-        {snapshot.runs.length===0&&<div className="acv2-empty">No execution history yet. Enable a workflow and queue a test run.</div>}
-        <div className="acv2-list">{snapshot.runs.map(r=>{
+        {auditRuns.length===0&&<div className="acv2-empty">No execution history yet. Enable a workflow and queue a test run.</div>}
+        <div className="acv2-list">{auditRuns.map(r=>{
           const events=snapshot.events.filter(e=>e.run_id===r.id);
           return <article className="acv2-item" key={r.id}>
             <div className="acv2-item-header"><div><h3>{workflowName(r.workflow_id)}</h3><small>{when(r.created_at)} · Run {r.id.slice(0,8)}</small></div><span className={`acv2-status ${r.status==='succeeded'?'acv2-status-good':r.status==='dead_letter'?'acv2-status-bad':''}`}>{STATUS[r.status]||r.status}</span></div>
@@ -174,6 +177,7 @@ export default function AutomationCentreV2({workspaceId,canManage}:{workspaceId:
         })}</div>
       </div>}
     </>}
+    <EnquiryQuotationAutomation workspaceId={workspaceId} canManage={canManage} />
     <p className="acv2-foot">New workflow runs are managed here. Previous test jobs remain available below. A disabled workflow accepts no new test runs; previously queued runs still require review or completion.</p>
   </section>;
 }

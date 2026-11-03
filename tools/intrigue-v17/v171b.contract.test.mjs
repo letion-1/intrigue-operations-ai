@@ -36,7 +36,7 @@ test('Cancellation and retry stay scoped and remain service-role-only',()=>{
   assert.match(sql,/status IN \('awaiting_approval','queued','retry_wait'\)/);
 });
 test('Dashboard preserves legacy queue, review gate and safe worker mode',()=>{
-  assert.match(dashboard,/Legacy V11 demonstration queue \(preserved\)/);
+  assert.match(dashboard,/Previous test jobs/);
   assert.match(dashboard,/<AutomationCentreV2/);
   assert.match(ui,/Awaiting approval/);
   assert.match(ui,/No external messages or customer updates/);

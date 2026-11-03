@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { crossOrigin } from '@/lib/ai-security';
 
-// V17.1B is intentionally restricted to audit_event workflows. No email, CRM,
+// V17.2A adds approval-required internal quotation analysis. No email, CRM delivery,
 // calendar or telephony action may be executed from this endpoint.
 // Next.js 16 cacheComponents manages dynamic request rendering.
 // Do not export route-segment runtime or dynamic configuration here.
@@ -46,7 +46,7 @@ async function manager(request: NextRequest, workspaceId: string) {
     .select('id').eq('id',workspaceId).maybeSingle();
   if (workspaceError || !workspace) throw new AutomationError('Workspace is inaccessible.', 403);
   const db = createClient(e.url,e.adminKey,{auth:{persistSession:false,autoRefreshToken:false}});
-  return {db,userId:user.id};
+  return {db,userDb,userId:user.id};
 }
 function readId(raw: unknown, what: string) {
   if (typeof raw !== 'string' || !UUID.test(raw)) throw new AutomationError(`Invalid ${what}.`);
@@ -69,11 +69,15 @@ export async function GET(request: NextRequest) {
     const {db} = await manager(request,workspaceId);
     const [a,b,c] = await Promise.all([
       db.from('intrigue_v17_workflows').select('id,name,trigger_type,action_type,enabled,requires_approval,max_attempts,created_at,updated_at').eq('workspace_id',workspaceId).order('created_at',{ascending:false}).limit(100),
-      db.from('intrigue_v17_runs').select('id,workflow_id,event_key,status,attempts,max_attempts,approved_at,approved_by,last_error,result,available_at,created_at,finished_at').eq('workspace_id',workspaceId).order('created_at',{ascending:false}).limit(100),
+      db.from('intrigue_v17_runs').select('id,workflow_id,event_key,payload,status,attempts,max_attempts,approved_at,approved_by,last_error,result,available_at,created_at,finished_at').eq('workspace_id',workspaceId).order('created_at',{ascending:false}).limit(100),
       db.from('intrigue_v17_run_events').select('id,run_id,event_type,details,created_at').eq('workspace_id',workspaceId).order('created_at',{ascending:false}).limit(150),
     ]);
     if (a.error || b.error || c.error) throw new AutomationError('Workflow service is not configured. Please contact your workspace administrator.', 503);
-    return json({workflows:a.data??[],runs:b.data??[],events:c.data??[],mode:'audit_only',worker:'local'});
+    const links = await db.from('intrigue_v172_draft_links').select('run_id,quotation_id')
+      .eq('workspace_id',workspaceId).limit(100);
+    // Compatibility: V17.1B continues to work before the optional V17.2A SQL migration.
+    return json({workflows:a.data??[],runs:b.data??[],events:c.data??[],
+      draftLinks:links.error?[]:(links.data??[]),mode:'audit_only',worker:'local'});
   } catch(e) {return fail(e);}
 }
 
@@ -81,7 +85,7 @@ export async function POST(request: NextRequest) {
   try {
     const input = await body(request);
     const workspaceId = readId(input.workspaceId,'workspace');
-    const {db,userId} = await manager(request,workspaceId);
+    const {db,userDb,userId} = await manager(request,workspaceId);
     const operation = input.operation;
     if (operation === 'create_workflow') {
       const name = typeof input.name==='string' ? input.name.trim() : '';
@@ -96,6 +100,56 @@ export async function POST(request: NextRequest) {
       }).select('id').single();
       if (error || !data) throw new AutomationError('Could not create workflow. Please contact your workspace administrator.',503);
       return json({ok:true,workflowId:data.id},201);
+    }
+    if (operation === 'enqueue_quotation') {
+      const enquiryId=readId(input.enquiryId,'enquiry');
+      const {data:enquiry,error:enquiryError}=await db.from('enquiries')
+        .select('id,customer_id,subject').eq('workspace_id',workspaceId).eq('id',enquiryId).maybeSingle();
+      if (enquiryError || !enquiry || !enquiry.customer_id || !enquiry.subject?.trim()) {
+        throw new AutomationError('Enquiry not found or is incomplete.',404);
+      }
+      const {data:customer,error:customerError}=await db.from('customers').select('id')
+        .eq('workspace_id',workspaceId).eq('id',enquiry.customer_id).maybeSingle();
+      if (customerError || !customer) throw new AutomationError('Customer not found in this company.',404);
+      const since=new Date(Date.now()-60*60*1000).toISOString();
+      const {count,error:rateError}=await db.from('intrigue_v17_runs')
+        .select('id',{count:'exact',head:true}).eq('workspace_id',workspaceId).gte('created_at',since);
+      if (rateError || (count??0)>=100) throw new AutomationError('Workspace workflow rate limit reached.',429);
+      let {data:quoteWorkflow,error:lookupError}=await db.from('intrigue_v17_workflows')
+        .select('id,enabled').eq('workspace_id',workspaceId).eq('action_type','quotation_draft').maybeSingle();
+      if (lookupError) throw new AutomationError('V17.2A migration is not installed.',503);
+      if (!quoteWorkflow) {
+        const {count:workflowCount,error:wcError}=await db.from('intrigue_v17_workflows')
+          .select('id',{count:'exact',head:true}).eq('workspace_id',workspaceId);
+        if (wcError || (workflowCount??0)>=50) throw new AutomationError('Workspace workflow limit reached.',429);
+        const inserted=await db.from('intrigue_v17_workflows').insert({
+          workspace_id:workspaceId,name:'Enquiry quotation draft (V17.2A)',
+          trigger_type:'manual',action_type:'quotation_draft',enabled:true,requires_approval:true,max_attempts:3,
+        }).select('id,enabled').maybeSingle();
+        if (inserted.error || !inserted.data) {
+          const retry=await db.from('intrigue_v17_workflows').select('id,enabled')
+            .eq('workspace_id',workspaceId).eq('action_type','quotation_draft').maybeSingle();
+          if (retry.error || !retry.data) throw new AutomationError('Cannot register quotation workflow. Confirm V17.2A SQL.',503);
+          quoteWorkflow=retry.data;
+        } else quoteWorkflow=inserted.data;
+      }
+      if (!quoteWorkflow.enabled) throw new AutomationError('Quotation workflow is disabled.',409);
+      const {data:runId,error:enqueueError}=await db.rpc('intrigue_v17_enqueue',{
+        p_workflow_id:quoteWorkflow.id,p_event_key:`enquiry:${enquiryId}`,
+        p_payload:{source:'enquiry',enquiry_id:enquiryId,requested_by:userId},
+      });
+      if (enqueueError || typeof runId!=='string') throw new AutomationError('Unable to queue quotation analysis.',503);
+      return json({ok:true,runId});
+    }
+    if (operation === 'commit_quote') {
+      const runId=readId(input.runId,'run');
+      // Authenticated user's JWT is retained in this RPC; SQL rechecks role and catalog
+      // inside the same transaction as the existing intrigue_quote_save_draft function.
+      const {data,error}=await userDb.rpc('intrigue_v172_commit_quote',{
+        p_workspace_id:workspaceId,p_run_id:runId,
+      });
+      if (error || !data?.quotation_id) throw new AutomationError('Could not save the draft. Review the run, catalog prices and migration.',409);
+      return json({ok:true,quotationId:data.quotation_id,alreadyExists:!!data.already_exists});
     }
     if (operation === 'toggle_workflow') {
       const workflowId=readId(input.workflowId,'workflow');
@@ -142,8 +196,8 @@ export async function POST(request: NextRequest) {
         .select('id,status,approved_at,workflow_id').eq('id',runId).eq('workspace_id',workspaceId).maybeSingle();
       if (lookupError || !run) throw new AutomationError('Workflow run not found.',404);
       const {data:workflow,error:werr}=await db.from('intrigue_v17_workflows')
-        .select('action_type,requires_approval').eq('id',run.workflow_id).eq('workspace_id',workspaceId).maybeSingle();
-      if (werr || !workflow || workflow.action_type!=='audit_event' || workflow.requires_approval!==true) {
+        .select('action_type,trigger_type,requires_approval').eq('id',run.workflow_id).eq('workspace_id',workspaceId).maybeSingle();
+      if (werr || !workflow || !['audit_event','quotation_draft'].includes(workflow.action_type) || workflow.trigger_type!=='manual' || workflow.requires_approval!==true) {
         throw new AutomationError('Unsupported workflow configuration.',409);
       }
       if (operation==='approve') {

@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { crossOrigin } from '@/lib/ai-security';
 
-// V17.2A adds approval-required internal quotation analysis. No email, CRM delivery,
+// V17.2B adds intent-first approval-required internal quotation analysis. No email, CRM delivery,
 // calendar or telephony action may be executed from this endpoint.
 // Next.js 16 cacheComponents manages dynamic request rendering.
 // Do not export route-segment runtime or dynamic configuration here.
@@ -143,6 +143,16 @@ export async function POST(request: NextRequest) {
     }
     if (operation === 'commit_quote') {
       const runId=readId(input.runId,'run');
+      // V17.2B fails closed for earlier V17.2A results and all non-sales intents.
+      // SQL adds an independent trigger guard for direct RPC calls and race safety.
+      const {data:analysis,error:analysisError}=await db.from('intrigue_v17_runs')
+        .select('status,result').eq('id',runId).eq('workspace_id',workspaceId).maybeSingle();
+      if (analysisError || !analysis || analysis.status!=='succeeded' ||
+          analysis.result?.classification_source!=='v17.2b' ||
+          analysis.result?.intent!=='sales_quote' ||
+          analysis.result?.outcome!=='matched') {
+        throw new AutomationError('This request is not a verified new sales quotation. Review the enquiry; old V17.2A runs cannot be saved.',409);
+      }
       // Authenticated user's JWT is retained in this RPC; SQL rechecks role and catalog
       // inside the same transaction as the existing intrigue_quote_save_draft function.
       const {data,error}=await userDb.rpc('intrigue_v172_commit_quote',{

@@ -8,7 +8,7 @@ import './enquiry-quotation-automation.css';
 type Enquiry = {id:string;customer_id:string;subject:string;created_at:string;status:string};
 type Customer = {id:string;full_name:string};
 type Item = {catalog_id:string;item_name:string;quantity:number;unit_price:string;line_total:string};
-type Suggestion = {kind?:string;outcome?:string;catalog_items?:Item[];total?:string;currency?:string;warnings?:string[];note?:string};
+type Suggestion = {kind?:string;outcome?:string;classification_source?:string;intent?:string;intent_label?:string;suggested_action?:string;catalog_items?:Item[];total?:string;currency?:string;warnings?:string[];note?:string};
 type Run = {id:string;status:string;payload?:{enquiry_id?:string};approved_at:string|null;last_error:string|null;result:Suggestion|null;created_at:string};
 type Snapshot = {runs:Run[];draftLinks:{run_id:string;quotation_id:string}[]};
 const message=(error:unknown)=>error instanceof Error?error.message:'Request failed.';
@@ -76,9 +76,9 @@ export default function EnquiryQuotationAutomation({workspaceId,canManage}:{work
   };
   if(!canManage)return null;
   return <section className="v172" aria-label="Enquiry-to-quotation drafting">
-    <div className="v172-head"><div><span className="v172-eyebrow"><FilePlus2 size={14}/> V17.2A · INTERNAL QUOTATION DRAFTS</span>
-      <h2>Turn enquiries into reviewable quotations</h2>
-      <p>AI suggests existing catalog items. The worker runs only after approval. Prices come from Supabase, not AI. A second explicit confirmation is required to save a draft. Nothing is sent.</p>
+    <div className="v172-head"><div><span className="v172-eyebrow"><FilePlus2 size={14}/> V17.2B · INTELLIGENT ENQUIRY ROUTING</span>
+      <h2>Understand requests before creating quotations</h2>
+      <p>AI checks whether a request is a sale, exchange, refund, stock question or support issue. Only explicit new sales requests may produce catalog-priced quotation drafts. Every analysis needs approval, and nothing is sent.</p>
     </div><button type="button" disabled={busy||loading} onClick={()=>void load().then(()=>setNotice('Quotation data refreshed.')).catch(e=>setError(message(e)))}><RefreshCw size={15}/> Refresh</button></div>
     <p className="v172-hint"><ShieldCheck size={15}/> Staging first · Human-controlled · Local worker · No automatic sending or customer-facing changes.</p>
     {error&&<div className="v172-error" role="alert">{error}</div>}
@@ -88,13 +88,17 @@ export default function EnquiryQuotationAutomation({workspaceId,canManage}:{work
         const run=runByEnquiry.get(enquiry.id);
         const suggestion=run?.result;
         const saved=run?linkByRun.get(run.id):undefined;
-        const canCommit=run?.status==='succeeded'&&suggestion?.outcome==='matched'&&!saved;
+        const canCommit=run?.status==='succeeded'&&suggestion?.outcome==='matched'&&suggestion?.intent==='sales_quote'&&suggestion?.classification_source==='v17.2b'&&!saved;
         return <article className="v172-item" key={enquiry.id}>
           <div className="v172-row"><div><strong>{enquiry.subject}</strong><p>{customersById.get(enquiry.customer_id)||'Customer'} · {new Date(enquiry.created_at).toLocaleDateString()} · {enquiry.status}</p></div>
             <span className="v172-status">{saved?'Draft saved':run?run.status.replaceAll('_',' '):'Not queued'}</span></div>
           {run?.last_error&&<p className="v172-error">Worker: {run.last_error}</p>}
           {suggestion?.kind==='quotation_draft'&&<div className="v172-preview">
-            <strong>{suggestion.outcome==='matched'?'Catalog match found':'Needs manual review'}</strong>
+            <strong>{suggestion.outcome==='matched'?'Catalog match found':suggestion.outcome==='routed'?'Not a sales quotation':'Needs manual review'}</strong>
+            {suggestion.classification_source==='v17.2b' ? <>
+              <p className="v172-routing"><b>Request type:</b> {suggestion.intent_label||suggestion.intent||'Unclear'}</p>
+              {suggestion.suggested_action&&<p className="v172-routing"><b>Suggested next step:</b> {suggestion.suggested_action}</p>}
+            </> : <p className="v172-warning">Legacy V17.2A result without intent classification. Review manually; do not send the quotation.</p>}
             {suggestion.catalog_items?.length?<table><thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Line</th></tr></thead>
               <tbody>{suggestion.catalog_items.map(item=><tr key={item.catalog_id}><td>{item.item_name}</td><td>{item.quantity}</td><td>{money(item.unit_price)}</td><td>{money(item.line_total)}</td></tr>)}</tbody>
               <tfoot><tr><th colSpan={3}>Subtotal (before tax)</th><th>{money(suggestion.total||'0')}</th></tr></tfoot></table>:null}
@@ -108,11 +112,12 @@ export default function EnquiryQuotationAutomation({workspaceId,canManage}:{work
             {run&&['queued','retry_wait'].includes(run.status)&&<button disabled={busy} onClick={()=>void act('cancel',{runId:run.id},'Cancel this pending analysis?','Run cancelled.')}><XCircle size={14}/> Cancel</button>}
             {run?.status==='dead_letter'&&<button disabled={busy} onClick={()=>void act('retry',{runId:run.id},'Retry this already approved AI analysis? It may consume additional AI credits.','Run queued for retry.')}>Retry analysis</button>}
             {canCommit&&<button className="v172-save" disabled={busy} onClick={()=>void act('commit_quote',{runId:run!.id},`Create an INTERNAL draft quotation for ${customersById.get(enquiry.customer_id)||'this customer'} using the verified prices shown? No email will be sent.`, 'Draft saved.')}><CheckCircle2 size={14}/> Save quotation draft</button>}
-            {run?.status==='succeeded'&&suggestion?.outcome==='needs_review'&&<span className="v172-muted">Resolve unmatched items in Quotations manually. Nothing has been saved.</span>}
+            {run?.status==='succeeded'&&suggestion?.outcome==='needs_review'&&<span className="v172-muted">Manual review required. Nothing has been sent.</span>}
+            {run?.status==='succeeded'&&suggestion?.outcome==='routed'&&<span className="v172-muted">Routed for human handling; no automatic customer action has occurred.</span>}
           </div>
         </article>;
       })}
     </div>}
-    <p className="v172-muted">Each enquiry can be queued only once in V17.2A. Reanalysis after catalog changes requires a later release. The local worker also needs OPENROUTER_API_KEY in its own private environment.</p>
+    <p className="v172-muted">Existing V17.2A results remain visible but cannot create new drafts after the V17.2B database guard. New classifications require a new enquiry. Reanalysis will follow in a later release. The local worker also needs OPENROUTER_API_KEY in its own private environment.</p>
   </section>;
 }

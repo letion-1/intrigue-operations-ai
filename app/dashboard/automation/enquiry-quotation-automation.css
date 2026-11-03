@@ -21,3 +21,6 @@
 .v172-warning,.v172-error{font-size:12px;color:var(--a-bad);margin-top:10px}
 .v172-notice{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--a-good);margin-top:10px}
 .v172-empty{color:var(--a-muted);padding:12px}
+
+.v172-routing{font-size:12px;line-height:1.55;margin:8px 0;color:var(--a-text)}
+.v172-routing b{color:var(--a-gold)}

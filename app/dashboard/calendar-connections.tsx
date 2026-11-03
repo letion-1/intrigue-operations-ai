@@ -89,7 +89,7 @@ export default function CalendarConnections(){
   }
   return <section className={card}>
     <h2 className="text-lg font-semibold text-[#f4efe5]">Live calendar connections</h2>
-    <p className="mt-2 text-sm leading-6 text-[#b8c7d4]">Connect a company calendar using its own OAuth authorization. Tokens are encrypted on the server. V15.4 can read upcoming meetings, but cannot create or cancel bookings.</p>
+    <p className="mt-2 text-sm leading-6 text-[#b8c7d4]">Connect a company calendar using its own OAuth authorization. Tokens are encrypted on the server. This connection can read upcoming meetings, but cannot create or cancel bookings.</p>
     <div className="mt-4 grid gap-3 md:grid-cols-2">
       {providers.map(([provider,name])=>{
         const connected=status?.[provider].connected||false;
@@ -114,7 +114,7 @@ export default function CalendarConnections(){
     {message&&<p role="status" className="mt-3 text-sm text-[#afe3c8]">{message}</p>}
     {bookings.length>0&&<div className="mt-4 space-y-2">{bookings.map(b=><div key={b.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#41556b] px-3 py-3 text-sm text-[#f3ede2]"><span className="break-words">{b.title}</span><time className="text-xs text-[#bcd0dc]" dateTime={b.start}>{new Date(b.start).toLocaleString()}</time></div>)}</div>}
     <div className="mt-6 rounded-xl border border-[#baa05f]/60 bg-[#101f32] p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-[#f2dfb6]">V15.6 · Vapi + Calendly voice scheduling</h3><span className="text-xs text-[#c7d7e2]">{voice?.settings?.booking_enabled?"Live booking enabled":"Booking disabled by default"}</span></div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-[#f2dfb6]">Vapi + Calendly voice scheduling</h3><span className="text-xs text-[#c7d7e2]">{voice?.settings?.booking_enabled?"Live booking enabled":"Booking disabled by default"}</span></div>
       <p className="mt-2 text-xs leading-5 text-[#b8c7d4]">Choose a Calendly meeting type. Ava can check real availability. Booking actual appointments requires a paid Calendly plan, new OAuth scopes and your explicit activation. No meeting is booked just by saving settings.</p>
       {!voice?.connected?<p className="mt-3 text-xs text-[#ffcfaa]">Connect or reconnect Calendly with event_types:read, availability:read and scheduled_events:write permissions first.</p>:<>
         <label htmlFor="v156-event" className="mt-3 block text-xs text-[#efd5a1]">Allowed meeting type</label>

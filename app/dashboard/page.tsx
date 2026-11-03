@@ -392,7 +392,7 @@ export default function DashboardPage() {
       // The RPC returns only the current authenticated user's former company, if any.
       const { data: previousAccess, error: accessError } = await supabase.rpc("get_intrigue_access_notice");
       if (accessError) {
-        setDbError(`Unable to verify workspace access: ${accessError.message}. Apply the V14.3.1 SQL migration.`);
+        setDbError(`Unable to verify workspace access: ${accessError.message}. Please contact your workspace administrator.`);
       } else if (previousAccess && typeof previousAccess === "object" && previousAccess.revoked === true) {
         setAccessNotice({
           revoked: true,
@@ -460,7 +460,7 @@ export default function DashboardPage() {
     if (!workspace || !isOwner) {setAiUsage(null); return;}
     setUsageBusy(true); setUsageError("");
     const {data,error}=await supabase.rpc("get_intrigue_ai_usage");
-    if (error) { setUsageError("Usage reporting is unavailable. Apply V14.3 SQL: " + error.message);setAiUsage(null); }
+    if (error) { setUsageError("Usage reporting is unavailable: " + error.message);setAiUsage(null); }
     else setAiUsage(data as AiUsage);
     setUsageBusy(false);
   },[supabase,workspace,isOwner]);
@@ -736,7 +736,7 @@ export default function DashboardPage() {
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: false }).limit(100);
     if (result.error) {
-      setKnowledgeError(`Knowledge Base isn't ready yet: ${result.error.message}. Run the V5 SQL in Supabase.`);
+      setKnowledgeError(`Knowledge Base isn't ready yet: ${result.error.message}. Please contact your workspace administrator.`);
     } else setKnowledgeEntries((result.data || []) as KnowledgeEntry[]);
     setKnowledgeLoading(false);
   }, [supabase, workspace]);
@@ -751,7 +751,7 @@ export default function DashboardPage() {
     const {data,error}=await supabase.from("knowledge_documents")
       .select("id,filename,file_type,page_count,characters,created_at")
       .eq("workspace_id",workspace.id).order("created_at",{ascending:false}).limit(100);
-    if (error) setDocumentError("Document tables aren't ready yet. Run the V6 SQL in Supabase.");
+    if (error) setDocumentError("Documents are not available right now. Please contact your workspace administrator.");
     else setDocuments((data||[]) as KnowledgeDocument[]);
   },[supabase,workspace]);
 
@@ -877,7 +877,7 @@ export default function DashboardPage() {
       supabase.from("action_audit_logs").select("id,proposal_id,decision,created_at")
         .eq("workspace_id",workspace.id).order("created_at",{ascending:false}).limit(20),
     ]);
-    if (a.error || b.error) setActionError("Action Center not ready. Run the V8 SQL in Supabase first.");
+    if (a.error || b.error) setActionError("Action Center is unavailable. Please contact your workspace administrator.");
     else {setActionError("");setActionProposals((a.data||[]) as ActionProposal[]);setActionAudit((b.data||[]) as ActionAudit[]);}
   },[supabase,workspace]);
 
@@ -888,7 +888,7 @@ export default function DashboardPage() {
     const result=await supabase.from("automation_jobs")
       .select("id,proposal_id,quotation_id,kind,status,attempts,max_attempts,last_error,result,created_at,updated_at,completed_at")
       .eq("workspace_id",workspace.id).order("created_at",{ascending:false}).limit(75);
-    if (result.error) setAutomationError("Unable to load automation jobs. Install the V11 SQL first: " + result.error.message);
+    if (result.error) setAutomationError("Unable to load previous automation jobs: " + result.error.message);
     else { setAutomationJobs((result.data??[]) as AutomationJob[]); setAutomationError(""); }
   },[workspace,supabase]);
 
@@ -1184,13 +1184,13 @@ export default function DashboardPage() {
           {!loading && !workspace && !dbError && !joinToken && (
             <div className="rounded-2xl border border-[#a18343]/40 bg-[#142539] p-8">
               <h2 className="brand-display text-4xl text-[#f5f0e8]">Create your company workspace.</h2>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-[#afbdcb]">V13 starts each newly registered company with an empty, owner-only workspace. Your other company records remain private. For testing, enter a fictional company name and do not upload real customer data.</p>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-[#afbdcb]">Every newly registered company starts with an empty, private workspace. Other company records remain private. For testing, enter a fictional company name and do not upload real customer data.</p>
               <form onSubmit={createCompany} className="mt-6 flex max-w-xl flex-col gap-3 sm:flex-row">
                 <label htmlFor="v13-company-name" className="sr-only">Company name</label>
                 <input id="v13-company-name" type="text" required minLength={2} maxLength={100} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="e.g. Demo Garage Two" className="min-w-0 flex-1 rounded-xl border border-[#51627a] bg-[#101e31] px-4 py-3 text-sm text-[#f5f0e8] outline-none focus:border-[#c9a552]" />
                 <button type="submit" disabled={busy || companyName.trim().length < 2} className="rounded-xl bg-[#c9a552] px-5 py-3 text-sm font-bold text-[#111b29] disabled:opacity-50">{busy ? "Creating..." : "Create company"}</button>
               </form>
-              <p className="mt-4 text-xs text-[#d5b46a]">One workspace per account in V14. Accept a verified-email invitation to join as staff instead of creating a company.</p>
+              <p className="mt-4 text-xs text-[#d5b46a]">To join an existing company, accept a verified-email team invitation instead of creating a new workspace.</p>
             </div>
           )}
           {!loading && workspace && <>
@@ -1253,14 +1253,14 @@ export default function DashboardPage() {
             <div className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-[#2c3b4d] bg-[#0f2032] shadow-sm">
               <div className="flex items-center gap-3 border-b border-[#2d3b4f] p-5"><div className="rounded-xl bg-[#263447] p-3 text-[#e0bf76]"><Bot size={22}/></div><div><div className="text-sm font-bold">INTRIGUE Assistant</div><div className="text-[11px] text-[#afbdcb]">Tool-calling agent Â· Reads records and prepares approval proposals</div></div><span className="ml-auto"><Tag variant={aiConnected ? "emerald" : "amber"}>{aiConnected ? "AI configured" : "API key missing"}</Tag></span></div>
               <div className="flex h-[440px] flex-col gap-4 overflow-y-auto bg-[#0d1c2b] p-5 md:p-6" aria-live="polite">{messages.map((message, index) => <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`${message.proposalId?"w-full max-w-[90%]":"max-w-[85%]"} space-y-3`}><div className={`whitespace-pre-wrap rounded-2xl px-4 py-3 text-[13px] leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#30455b] text-[#f5f0e8]" : "rounded-tl-sm border border-[#304153] bg-[#142539] text-[#f0e9dc]"}`}>{message.text}</div>{message.toolsUsed?.length ? <p className="text-[11px] text-[#d6bc80]">Tools: {message.toolsUsed.join(" Â· ")}</p> : null}{message.proposalId && (actionProposals.find(p=>p.id===message.proposalId) ? <ProposalReviewCard proposal={actionProposals.find(p=>p.id===message.proposalId)!} customer={customerName(actionProposals.find(p=>p.id===message.proposalId)!.customer_id)} busy={actionBusy} onDecide={(id,decision)=>void decideAction(id,decision)} onEdit={editAction}/> : <button type="button" className="text-xs text-[#e9c577] underline" onClick={()=>navigate("Action Center")}>Open proposal in Action Center</button>)}</div></div>)}{aiLoading && <p className="text-xs text-[#d8c18e]">{chatActionBusy?"Preparing a verified proposal...":"Calling authorized business tools..."}</p>}{actionError && <p role="alert" className="rounded-lg border border-red-400/40 bg-red-400/10 p-3 text-xs text-[#ffc2b9]">Action: {actionError}</p>}{actionMessage && <p role="status" className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs text-[#b3ead0]">{actionMessage}</p>}</div>
-              <div className="border-t border-[#2d3b4f] p-4 md:p-5"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-[#afbdcb]">V10 tools: customers, quotations, follow-ups, knowledge and approval drafts. Human approval required.</span><button type="button" onClick={takeToActionCenter} className="rounded-lg border border-[#b18c46] px-3 py-2 text-xs font-semibold text-[#e9c577] hover:bg-[#26384d]">Open Action Center</button></div><div className="mb-3 flex flex-wrap gap-2">{QUICK_PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => void askQuestion(prompt)} disabled={aiLoading} className="rounded-full border border-[#35485d] px-3 py-1.5 text-[11px] text-[#d5dbe0] hover:bg-[#1b2e42]">{prompt}</button>)}</div><form onSubmit={submitChat} className="flex gap-2"><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask a question or request a draft quote..." className="min-w-0 flex-1 rounded-xl border border-[#35485d] bg-[#182c41] px-4 py-3 text-sm text-[#f5f0e8] placeholder:text-[#98a8b8] outline-none focus:border-[#caa961]" aria-label="Message"/><button type="submit" disabled={!draft.trim() || aiLoading} className="flex h-[46px] w-[48px] items-center justify-center rounded-xl bg-[#30455b] text-[#f5f0e8] disabled:opacity-40" aria-label="Send message"><Send size={18}/></button></form></div>
+              <div className="border-t border-[#2d3b4f] p-4 md:p-5"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-[#afbdcb]">Tools: customers, quotations, follow-ups, knowledge and approval drafts. Human approval required.</span><button type="button" onClick={takeToActionCenter} className="rounded-lg border border-[#b18c46] px-3 py-2 text-xs font-semibold text-[#e9c577] hover:bg-[#26384d]">Open Action Center</button></div><div className="mb-3 flex flex-wrap gap-2">{QUICK_PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => void askQuestion(prompt)} disabled={aiLoading} className="rounded-full border border-[#35485d] px-3 py-1.5 text-[11px] text-[#d5dbe0] hover:bg-[#1b2e42]">{prompt}</button>)}</div><form onSubmit={submitChat} className="flex gap-2"><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask a question or request a draft quote..." className="min-w-0 flex-1 rounded-xl border border-[#35485d] bg-[#182c41] px-4 py-3 text-sm text-[#f5f0e8] placeholder:text-[#98a8b8] outline-none focus:border-[#caa961]" aria-label="Message"/><button type="submit" disabled={!draft.trim() || aiLoading} className="flex h-[46px] w-[48px] items-center justify-center rounded-xl bg-[#30455b] text-[#f5f0e8] disabled:opacity-40" aria-label="Send message"><Send size={18}/></button></form></div>
             </div>
           )}
 
           {section === "Action Center" && (
             <div className="space-y-5">
               <div className="rounded-2xl border border-[#806f46]/50 bg-[#142539] p-6">
-                <div className="mb-3 flex items-center gap-3"><ClipboardCheck size={22} className="text-[#e0bf76]"/><h2 className="text-base font-bold">Actions with your approval</h2><Tag variant="amber">V9 Demo</Tag></div>
+                <div className="mb-3 flex items-center gap-3"><ClipboardCheck size={22} className="text-[#e0bf76]"/><h2 className="text-base font-bold">Actions with your approval</h2><Tag variant="amber">Approval required</Tag></div>
                 <p className="mb-5 max-w-3xl text-xs leading-6 text-[#c9d4df]">Turn a request into a proposed draft quotation and/or follow-up. Prices come from your saved policies or service lists, not from an AI guess. Nothing is written to customer business records until you approve. No emails or WhatsApp messages are sent.</p>
                 <form onSubmit={prepareAction} className="space-y-3">
                   <label htmlFor="action-prompt" className="block text-xs font-semibold text-[#e9c577]">What should INTRIGUE prepare?</label>
@@ -1282,10 +1282,10 @@ export default function DashboardPage() {
             <div className="space-y-5">
               {workspace && <AutomationCentreV2 workspaceId={workspace.id} canManage={isOwner || role === "admin"} />}
               {isOwner && <details className="rounded-2xl border border-[#35485d] bg-[#142539] p-5">
-                <summary className="cursor-pointer text-sm font-semibold text-[#e3c07b]">Legacy V11 demonstration queue (preserved)</summary>
+                <summary className="cursor-pointer text-sm font-semibold text-[#e3c07b]">Previous test jobs</summary>
                 <div className="mt-5 space-y-5">
               <div className="rounded-2xl border border-[#806f46]/50 bg-[#142539] p-6">
-                <div className="mb-3 flex items-center gap-3"><Zap size={22} className="text-[#e0bf76]"/><h2 className="text-base font-bold">INTRIGUE Native Automation Engine</h2><Tag variant="amber">V11 Â· Local worker test</Tag></div>
+                <div className="mb-3 flex items-center gap-3"><Zap size={22} className="text-[#e0bf76]"/><h2 className="text-base font-bold">INTRIGUE Native Automation Engine</h2><Tag variant="amber">Manual test processing</Tag></div>
                 <p className="max-w-3xl text-xs leading-6 text-[#c9d4df]">Queue a safe processing receipt for a quotation you already approved. Supabase stores the job and its history. A separate worker processes it. No email, WhatsApp, CRM update or customer action will occur.</p>
               </div>
               {automationError && <p role="alert" className="rounded-xl border border-red-400/30 bg-red-400/10 p-4 text-xs text-[#ffc2b9]">{automationError}</p>}
@@ -1314,7 +1314,7 @@ export default function DashboardPage() {
                   {j.last_error && <p className="mt-2 text-xs text-[#ffc2b9]">Error: {j.last_error}</p>}
                 </div>)}</div>
               </div>
-              <div className="rounded-xl border border-[#665632] bg-[#1b2c3f] p-5 text-xs leading-6 text-[#d9c8a7]">V11 legacy queue is kept for compatibility. The V17.1B engine above uses different tables and the V17 local worker.</div>
+              <div className="rounded-xl border border-[#665632] bg-[#1b2c3f] p-5 text-xs leading-6 text-[#d9c8a7]">Previous test jobs remain available for reference. Use the workflow manager above for new test runs.</div>
                 </div>
               </details>}
             </div>
@@ -1525,8 +1525,8 @@ export default function DashboardPage() {
             <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
               <h3 className="text-sm font-bold">Launch security gates</h3>
               <div className="mt-4 space-y-3 text-xs leading-6 text-[#bccbd9]">
-                <p>â€¢ Database RLS and Owner/Admin/Staff/Viewer permissions: configuration and interface tests completed in V14.2.</p>
-                <p>â€¢ Cross-company denied reads and writes: use the V14.3 transaction rollback test from the upgrade ZIP.</p>
+                <p>â€¢ Database access controls: configuration and interface tests have been performed; continued verification is required.</p>
+                <p>â€¢ Cross-company isolation: validate denied reads and writes with dedicated staging accounts.</p>
                 <p>â€¢ Quota rejection: use the no-provider-call rollback test. A displayed usage counter alone does not prove rejection.</p>
                 <p>â€¢ Production: confirm data retention, backups, provider processing agreements and real API-session authorization before accepting client data.</p>
               </div>
@@ -1615,7 +1615,7 @@ export default function DashboardPage() {
                     <h3 className="text-sm font-bold text-[#f3d18e]">Membership activity</h3>
                     <button type="button" onClick={()=>void loadTeamAudit()} className="rounded-lg border border-[#937b48] px-3 py-2 text-xs text-[#e7c37c]">Refresh history</button>
                   </div>
-                  <p className="mt-2 text-xs text-[#afbdcb]">Owner-only audit trail. Events start after installing V14.4.</p>
+                  <p className="mt-2 text-xs text-[#afbdcb]">Owner-only audit trail. Earlier events may not appear here.</p>
                   {teamAuditError && <p role="alert" className="mt-3 text-xs text-[#ffb3a7]">{teamAuditError}</p>}
                   {!teamAuditError && teamAudit.length===0 && <p className="mt-4 text-xs text-[#afbdcb]">No membership changes recorded yet.</p>}
                   <div className="mt-3 space-y-2">{teamAudit.map((event,i)=><div key={`${event.event_at}-${i}`} className="rounded-lg border border-[#35485d] p-3 text-xs">

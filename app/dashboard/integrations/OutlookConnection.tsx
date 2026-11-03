@@ -55,7 +55,7 @@ export default function OutlookConnection({workspaceId}:{workspaceId:string}) {
         missing_scope: 'Microsoft did not grant Mail.Send. Check delegated Microsoft Graph permissions and consent.',
         profile_failed: 'Microsoft Graph could not read the connected account profile. Check User.Read and the mailbox account.',
         access_revoked: 'Your company Owner/Admin access changed during authorization.',
-        storage_failed: 'Outlook authorization could not be stored. Verify the V16.8 Supabase migration.',
+        storage_failed: 'Outlook authorization could not be stored. Please contact your workspace administrator.',
         callback_failed: 'The Outlook callback failed. Check the Vercel function logs for /api/mail/outlook/callback.',
       };
       setError(messages[result] || 'Outlook connection failed. Check Microsoft permissions and try again.');

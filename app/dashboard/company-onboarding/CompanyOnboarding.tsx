@@ -99,7 +99,7 @@ export default function CompanyOnboarding({workspaceId,workspaceName,onImported}
     </div>
     <div className="io-card">
       <div className="io-heading"><FileArchive size={19}/><div><h3>Imported orders & work orders ({orders.length})</h3><p>Saved for internal review. Not connected to payment, shop fulfillment or workshop dispatch.</p></div></div>
-      {ordersError&&<p className="io-error" role="alert">{ordersError}. Run the V16.4 Supabase SQL migration.</p>}
+      {ordersError&&<p className="io-error" role="alert">{ordersError}. Please contact your workspace administrator.</p>}
       {!orders.length&&!ordersError&&<p className="io-subtle">No imported orders yet. A complete company database ZIP can populate this list.</p>}
       {orders.length>0&&<div className="io-order-scroll"><table className="io-table"><thead><tr><th>Reference</th><th>Kind</th><th>Item / job</th><th>Status</th><th>Value</th></tr></thead><tbody>
         {orders.map(o=><tr key={o.id}><td>{o.external_id}</td><td>{o.kind.replace('_',' ')}</td><td>{o.description}</td><td>{o.status}</td><td>{Number(o.amount).toLocaleString(undefined,{maximumFractionDigits:2})} {o.currency}</td></tr>)}

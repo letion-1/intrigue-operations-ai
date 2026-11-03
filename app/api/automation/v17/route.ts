@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
       db.from('intrigue_v17_runs').select('id,workflow_id,event_key,status,attempts,max_attempts,approved_at,approved_by,last_error,result,available_at,created_at,finished_at').eq('workspace_id',workspaceId).order('created_at',{ascending:false}).limit(100),
       db.from('intrigue_v17_run_events').select('id,run_id,event_type,details,created_at').eq('workspace_id',workspaceId).order('created_at',{ascending:false}).limit(150),
     ]);
-    if (a.error || b.error || c.error) throw new AutomationError('Workflow tables unavailable. Apply V17.1A migration.', 503);
+    if (a.error || b.error || c.error) throw new AutomationError('Workflow service is not configured. Please contact your workspace administrator.', 503);
     return json({workflows:a.data??[],runs:b.data??[],events:c.data??[],mode:'audit_only',worker:'local'});
   } catch(e) {return fail(e);}
 }
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
         workspace_id:workspaceId,name,trigger_type:'manual',action_type:'audit_event',
         enabled:false,requires_approval:true,max_attempts:3,
       }).select('id').single();
-      if (error || !data) throw new AutomationError('Could not create workflow. Check V17.1A tables.',503);
+      if (error || !data) throw new AutomationError('Could not create workflow. Please contact your workspace administrator.',503);
       return json({ok:true,workflowId:data.id},201);
     }
     if (operation === 'toggle_workflow') {
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
         .select('id,action_type,trigger_type,requires_approval').eq('id',workflowId).eq('workspace_id',workspaceId).maybeSingle();
       if (findError || !w) throw new AutomationError('Workflow not found.',404);
       if (w.action_type!=='audit_event' || w.requires_approval!==true || w.trigger_type!=='manual') {
-        throw new AutomationError('Only manual, approval-required audit workflows are enabled in V17.1B.',409);
+        throw new AutomationError('Only manual, approval-required audit workflows are currently enabled.',409);
       }
       const {data:updated,error}=await db.from('intrigue_v17_workflows')
         .update({enabled:input.enabled,updated_at:new Date().toISOString()})
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
         const {data:ok,error}=await db.rpc('intrigue_v17_cancel',{
           p_workspace_id:workspaceId,p_run_id:runId,p_actor_id:userId,
         });
-        if (error) throw new AutomationError('Unable to cancel run. Apply V17.1B SQL migration.',503);
+        if (error) throw new AutomationError('Unable to cancel run. Please contact your workspace administrator.',503);
         if (ok!==true) throw new AutomationError('Run already changed. Refresh.',409);
         return json({ok:true});
       }
@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
       const {data:ok,error}=await db.rpc('intrigue_v17_retry',{
         p_workspace_id:workspaceId,p_run_id:runId,p_actor_id:userId,
       });
-      if (error) throw new AutomationError('Unable to retry run. Apply V17.1B SQL migration.',503);
+      if (error) throw new AutomationError('Unable to retry run. Please contact your workspace administrator.',503);
       if (ok!==true) throw new AutomationError('Run already changed. Refresh.',409);
       return json({ok:true});
     }

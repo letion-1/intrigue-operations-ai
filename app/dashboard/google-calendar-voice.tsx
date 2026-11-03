@@ -25,7 +25,7 @@ export default function GoogleCalendarVoice(){
       setStatus("Google Calendar disconnected. Previously created meetings remain.");await refresh();}catch(e){setError(e instanceof Error?e.message:"Disconnect failed");}finally{setBusy(false);}}
   const update=<K extends keyof Settings>(name:K,value:Settings[K])=>setSettings(s=>({...s,[name]:value}));
   return <section className="mt-5 rounded-xl border border-[#baa05f]/60 bg-[#101f32] p-4">
-    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-[#f2dfb6]">V15.7 · Google Calendar direct booking</h3><span className="text-xs text-[#b8d3e2]">{connected?"Connected":"Not connected"} · {settings.booking_enabled?"LIVE booking enabled":"Booking disabled"}</span></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-[#f2dfb6]">Google Calendar direct booking</h3><span className="text-xs text-[#b8d3e2]">{connected?"Connected":"Not connected"} · {settings.booking_enabled?"LIVE booking enabled":"Booking disabled"}</span></div>
     <p className="mt-2 text-xs leading-5 text-[#b8c7d4]">Free/busy checking and appointment invitations from Ava. Uses Google Calendar, not Calendly. Only your company owner can authorize it. Available Monday–Friday during the hours set below.</p>
     <div className="mt-3 flex flex-wrap gap-2"><a className={button} href="/api/integrations/google-calendar/start">{connected?"Reconnect Google Calendar":"Connect Google Calendar"}</a>
       <button className={button} disabled={busy} type="button" onClick={()=>void refresh()}>Refresh Google events</button>

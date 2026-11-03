@@ -108,10 +108,10 @@ export default function AutomationCentreV2({workspaceId,canManage}:{workspaceId:
   const failures=snapshot.runs.filter(r=>r.status==='dead_letter');
   const completed=snapshot.runs.filter(r=>r.status==='succeeded').length;
   if(!canManage)return null;
-  return <section className="acv2" aria-label="Automation Centre V2">
+  return <section className="acv2" aria-label="Automation Centre">
     <div className="acv2-heading">
       <div>
-        <p className="acv2-eyebrow"><Workflow size={14}/> AUTOMATION CENTRE V2 · V17.1B</p>
+        <p className="acv2-eyebrow"><Workflow size={14}/> WORKFLOW AUTOMATION</p>
         <h2>Workflows & execution control</h2>
         <p>Workspace-scoped manual workflows, human approval, retry controls and a durable execution history.</p>
       </div>
@@ -141,7 +141,7 @@ export default function AutomationCentreV2({workspaceId,canManage}:{workspaceId:
           <div className="acv2-create-row"><input id="acv2-name" value={name} onChange={e=>setName(e.target.value)} minLength={3} maxLength={120} placeholder="Example: Quotation processing audit" required disabled={busy}/><button type="submit" className="acv2-primary" disabled={busy||name.trim().length<3}><Plus size={15}/> Create</button></div>
           <small>Trigger: manual · Action: internal audit event · Human approval: required · Initial state: disabled</small>
         </form>
-        {snapshot.workflows.length===0&&<div className="acv2-empty">No V17 workflows yet. Create your first internal test workflow above.</div>}
+        {snapshot.workflows.length===0&&<div className="acv2-empty">No workflows yet. Create your first internal test workflow above.</div>}
         <div className="acv2-list">{snapshot.workflows.map(w=><article className="acv2-item" key={w.id}>
           <div className="acv2-item-header"><div><h3>{w.name}</h3><small>Manual trigger · Audit event · {w.max_attempts} attempts · Created {when(w.created_at)}</small></div><span className={`acv2-status ${w.enabled?'acv2-status-good':''}`}>{w.enabled?'Enabled':'Disabled'}</span></div>
           <div className="acv2-item-actions"><button type="button" disabled={busy} onClick={()=>void toggle(w)}>{w.enabled?<Pause size={14}/>:<Play size={14}/>} {w.enabled?'Disable':'Enable'}</button><button type="button" disabled={busy||!w.enabled} onClick={()=>void queue(w)} className="acv2-primary"><Plus size={14}/> Queue test run</button></div>
@@ -156,7 +156,7 @@ export default function AutomationCentreV2({workspaceId,canManage}:{workspaceId:
         </article>)}</div>
       </div>}
       {tab==='history'&&<div className="acv2-section">
-        {snapshot.runs.length===0&&<div className="acv2-empty">No V17 execution history yet. Enable a workflow and queue a test run.</div>}
+        {snapshot.runs.length===0&&<div className="acv2-empty">No execution history yet. Enable a workflow and queue a test run.</div>}
         <div className="acv2-list">{snapshot.runs.map(r=>{
           const events=snapshot.events.filter(e=>e.run_id===r.id);
           return <article className="acv2-item" key={r.id}>
@@ -174,6 +174,6 @@ export default function AutomationCentreV2({workspaceId,canManage}:{workspaceId:
         })}</div>
       </div>}
     </>}
-    <p className="acv2-foot">This dashboard is backed by the V17 workflow tables. Existing V11 jobs are preserved below. A disabled workflow accepts no new test runs; previously queued runs still require review or completion.</p>
+    <p className="acv2-foot">New workflow runs are managed here. Previous test jobs remain available below. A disabled workflow accepts no new test runs; previously queued runs still require review or completion.</p>
   </section>;
 }

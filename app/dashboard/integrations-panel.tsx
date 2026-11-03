@@ -120,7 +120,7 @@ export default function IntegrationsPanel({workspaceId,onImported,onOpenCalendar
     try{
       const lines=parseDelimited(await file.text());
       if(lines.length<2)throw new Error("No contact rows found in this file.");
-      if(lines.length>501)throw new Error("V15.3 supports at most 500 rows per CSV file.");
+      if(lines.length>501)throw new Error("This importer supports at most 500 rows per CSV file.");
       const cols=lines[0].map(s=>s.trim());
       if(cols.length>50)throw new Error("Too many CSV columns (max 50).");
       const mapping={} as Record<Field,number>;

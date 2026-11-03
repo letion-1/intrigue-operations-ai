@@ -71,7 +71,7 @@ export default function ProposalComposer({ workspaceId, quoteId, companyName, cu
         .select("id,heading,introduction,scope,payment_terms,validity_days,vat_mode,vat_rate,subtotal,vat_amount,total_amount,brand_logo_data,source_line_snapshot,updated_at")
         .eq("workspace_id", workspaceId).eq("quotation_id", quoteId).maybeSingle();
       if (!active) return;
-      if (readError) setError(`Unable to load proposal: ${readError.message}. Ensure the V16.5.1 SQL migration is installed.`);
+      if (readError) setError(`Unable to load proposal: ${readError.message}. Please contact your workspace administrator if this continues.`);
       if (data) {
         const saved = data as ProposalDocument;
         setDoc(saved); setHeading(saved.heading); setIntroduction(saved.introduction);

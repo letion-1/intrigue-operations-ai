@@ -1360,6 +1360,7 @@ export default function DashboardPage() {
             customers={customers}
             enquiries={enquiries}
             canWrite={canWriteOps}
+            canManageImport={canManageCatalog}
             refresh={refresh}
           />}
 

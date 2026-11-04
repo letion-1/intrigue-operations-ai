@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ArrowLeft, CalendarClock, ClipboardList, FileText, Mail, Package, Pencil, Phone, Plus, Search, Users, X } from "lucide-react";
 import { isAutomotiveIndustry } from "./IndustryIcon";
 import "./customers-crm.css";
+import CustomerFileImport from "./CustomerFileImport";
 
 type Customer = {
   id: string;
@@ -63,18 +64,20 @@ function validate(draft: Draft): string | null {
   return null;
 }
 
-export default function CustomersCRMPanel({ workspaceId, companyName, industry, customers, enquiries, canWrite, refresh }: {
+export default function CustomersCRMPanel({ workspaceId, companyName, industry, customers, enquiries, canWrite, canManageImport, refresh }: {
   workspaceId: string;
   companyName: string;
   industry: string;
   customers: Customer[];
   enquiries: Enquiry[];
   canWrite: boolean;
+  canManageImport: boolean;
   refresh: () => Promise<unknown> | void;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const automotive = isAutomotiveIndustry(industry);
   const [activeTab, setActiveTab] = useState<"customers" | "enquiries">("customers");
+  const [showContactImport, setShowContactImport] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [returnTab, setReturnTab] = useState<"customers" | "enquiries">("customers");
@@ -376,8 +379,10 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       {canWrite && <div className="crm-toolbar-actions">
         <button className="crm-secondary" type="button" onClick={openNewEnquiry}><Plus size={16} /> New enquiry</button>
         <button className="crm-primary" type="button" onClick={openCreate}><Plus size={16} /> Add customer</button>
+        {canManageImport && <button className="crm-secondary" type="button" onClick={() => setShowContactImport(value => !value)}>Import contacts (CSV)</button>}
       </div>}
     </div>
+    {canManageImport && showContactImport && <CustomerFileImport workspaceId={workspaceId} companyName={companyName} onImported={refresh} onClose={() => setShowContactImport(false)} />}
     <div className="crm-stats">
       <div><strong>{customers.length}</strong><span>Customers</span></div>
       <button type="button" onClick={() => switchTab("enquiries")} aria-label={`View ${enquiries.length} enquiries`}><strong>{enquiries.length}</strong><span>Enquiries <span aria-hidden="true">↗</span></span></button>

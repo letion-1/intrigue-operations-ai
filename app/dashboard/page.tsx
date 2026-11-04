@@ -147,10 +147,10 @@ type AiUsage = {
 };
 const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","AI Receptionist","Action Center","Automation Center","Integrations","Calendar","Data Management","Security & Usage","Plans & Billing","Pilot Application"];
 
-type Customer = { id: string; full_name: string; email: string | null; phone: string | null; vehicle: string | null; created_at: string };
-type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string };
-type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string; quote_note?: string | null; currency?: string | null };
-type FollowUp = { id: string; customer_id: string; title: string; due_at: string; status: string; priority: string };
+type Customer = { id: string; full_name: string; email: string | null; phone: string | null; vehicle: string | null; created_at: string; updated_at: string };
+type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string; updated_at: string };
+type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string; updated_at: string; quote_note?: string | null; currency?: string | null };
+type FollowUp = { id: string; customer_id: string; title: string; due_at: string; status: string; priority: string; updated_at: string };
 type KnowledgeEntry = { id: string; title: string; category: string; content: string; created_at: string };
 type KnowledgeDocument = { id: string; filename: string; file_type: string; page_count: number; characters: number; created_at: string };
 type ActionProposal = {
@@ -405,10 +405,10 @@ export default function DashboardPage() {
       return;
     }
     const [c, e, q, t] = await Promise.all([
-      supabase.from("customers").select("id,full_name,email,phone,vehicle,created_at").eq("workspace_id", found.id).order("created_at", { ascending: false }),
-      supabase.from("enquiries").select("id,customer_id,subject,status,created_at").eq("workspace_id", found.id).order("created_at", { ascending: false }),
-      supabase.from("quotations").select("id,customer_id,description,amount,status,created_at,quote_note,currency").eq("workspace_id", found.id).order("created_at", { ascending: false }),
-      supabase.from("follow_ups").select("id,customer_id,title,due_at,status,priority").eq("workspace_id", found.id).order("due_at", { ascending: true }),
+      supabase.from("customers").select("id,full_name,email,phone,vehicle,created_at,updated_at").eq("workspace_id", found.id).order("updated_at", { ascending: false }).order("created_at", { ascending: false }),
+      supabase.from("enquiries").select("id,customer_id,subject,status,created_at,updated_at").eq("workspace_id", found.id).order("updated_at", { ascending: false }).order("created_at", { ascending: false }),
+      supabase.from("quotations").select("id,customer_id,description,amount,status,created_at,quote_note,currency,updated_at").eq("workspace_id", found.id).order("updated_at", { ascending: false }).order("created_at", { ascending: false }),
+      supabase.from("follow_ups").select("id,customer_id,title,due_at,status,priority,updated_at").eq("workspace_id", found.id).order("updated_at", { ascending: false }).order("due_at", { ascending: true }),
     ]);
     const error = c.error || e.error || q.error || t.error;
     if (error) setDbError(`Unable to load records: ${error.message}`);

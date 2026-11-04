@@ -9,7 +9,7 @@ import "./approval-stages.css"; // INTRIGUE_V1657
 import ProposalComposer from "./ProposalComposer";
 
 type Customer = { id: string; full_name: string; email: string | null };
-type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string; quote_note?: string | null; currency?: string | null };
+type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string; updated_at: string; quote_note?: string | null; currency?: string | null };
 type ApprovalStage = "requested" | "approved" | "rejected";
 type MailStage = "sending" | "submitted" | "uncertain" | "failed";
 type Line = { id: string; catalog_id: string | null; item_name: string; quantity: number; unit_price: number; line_total: number; currency: string; position: number };
@@ -87,7 +87,8 @@ export default function QuotationsStudio({ workspaceId, companyName, customers, 
     if (filter === "draft" && q.status !== "draft") return false;
     const c = byCustomer.get(q.customer_id);
     return `${c?.full_name ?? ""} ${c?.email ?? ""} ${q.description} ${q.id}`.toLowerCase().includes(query.trim().toLowerCase());
-  });
+  }).sort((a,b) => Date.parse(b.updated_at || b.created_at) - Date.parse(a.updated_at || a.created_at)
+    || b.created_at.localeCompare(a.created_at));
   let estimate: number | null = null;
   try { estimate = quoteSubtotal(rows.filter(r => r.catalogId), services); } catch { estimate = null; }
   const customer = selected ? byCustomer.get(selected.customer_id) : null;

@@ -13,6 +13,7 @@ type Customer = {
   phone: string | null;
   vehicle: string | null;
   created_at: string;
+  updated_at: string;
 };
 type Enquiry = {
   id: string;
@@ -20,9 +21,10 @@ type Enquiry = {
   subject: string;
   status: string;
   created_at: string;
+  updated_at: string;
 };
-type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string };
-type FollowUp = { id: string; customer_id: string; title: string; due_at: string; status: string; priority: string };
+type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string; updated_at: string };
+type FollowUp = { id: string; customer_id: string; title: string; due_at: string; status: string; priority: string; updated_at: string };
 type ImportedOrder = { id: string; customer_id: string | null; external_id: string; kind: string; status: string; description: string; amount: number; currency: string; created_at: string };
 // INTRIGUE V16.7 CUSTOMER EMAIL HISTORY (workspace scoped, read-only).
 type MailDelivery = {
@@ -44,6 +46,12 @@ type TimelineEntry = { id: string; date: string; kind: "enquiry" | "quotation" |
 type Draft = { full_name: string; email: string; phone: string; vehicle: string; enquiry: string };
 const emptyDraft: Draft = { full_name: "", email: "", phone: "", vehicle: "", enquiry: "" };
 
+// Newest activity first. The database is authoritative for updated_at,
+// while a newly received enquiry also brings its customer to the top.
+const activityTime = (value: string | null | undefined) => {
+  const timestamp = Date.parse(value || "");
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
 function clean(value: string, limit: number) { return value.trim().slice(0, limit); }
 function validate(draft: Draft): string | null {
   if (clean(draft.full_name, 151).length < 2 || draft.full_name.trim().length > 150) return "Enter a customer name (2–150 characters).";
@@ -94,17 +102,31 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const byId = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
+  const lastEnquiryActivityByCustomer = useMemo(() => {
+    const latest = new Map<string, number>();
+    for (const enquiry of enquiries) {
+      const activity = activityTime(enquiry.updated_at || enquiry.created_at);
+      latest.set(enquiry.customer_id, Math.max(activity, latest.get(enquiry.customer_id) || 0));
+    }
+    return latest;
+  }, [enquiries]);
   const visibleCustomers = useMemo(() => customers.filter(c =>
     [c.full_name, c.email, c.phone, automotive ? c.vehicle : ""].some(value => (value ?? "").toLowerCase().includes(search.toLowerCase().trim()))
-  ), [automotive, customers, search]);
+  ).sort((a,b) => {
+    const latestA = Math.max(activityTime(a.updated_at || a.created_at), lastEnquiryActivityByCustomer.get(a.id) || 0);
+    const latestB = Math.max(activityTime(b.updated_at || b.created_at), lastEnquiryActivityByCustomer.get(b.id) || 0);
+    return latestB - latestA || b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id);
+  }), [automotive, customers, search, lastEnquiryActivityByCustomer]);
   const visibleEnquiries = useMemo(() => enquiries.filter(e => {
     const c = byId.get(e.customer_id);
     return [e.subject, c?.full_name, c?.email, c?.phone].some(value => (value ?? "").toLowerCase().includes(search.toLowerCase().trim()));
-  }), [byId, enquiries, search]);
+  }).sort((a,b) => activityTime(b.updated_at || b.created_at) - activityTime(a.updated_at || a.created_at)
+    || b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id)), [byId, enquiries, search]);
 
   const selectedCustomer = selectedCustomerId ? byId.get(selectedCustomerId) : null;
   const customerEnquiries = useMemo(() => selectedCustomerId
-    ? enquiries.filter(e => e.customer_id === selectedCustomerId) : [], [enquiries, selectedCustomerId]);
+    ? enquiries.filter(e => e.customer_id === selectedCustomerId).sort((a,b) =>
+      activityTime(b.updated_at || b.created_at) - activityTime(a.updated_at || a.created_at)) : [], [enquiries, selectedCustomerId]);
 
   // Server and RLS remain the final authority. The workspace/customer filters
   // are applied to every query, even when the user opened a profile locally.
@@ -115,13 +137,13 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
     setProfileErrors([]);
     const [quotes, followups, orders] = await Promise.all([
       supabase.from("quotations")
-        .select("id,customer_id,description,amount,status,created_at")
+        .select("id,customer_id,description,amount,status,created_at,updated_at")
         .eq("workspace_id", workspaceId).eq("customer_id", customerId)
-        .order("created_at", { ascending: false }),
+        .order("updated_at", { ascending: false }),
       supabase.from("follow_ups")
-        .select("id,customer_id,title,due_at,status,priority")
+        .select("id,customer_id,title,due_at,status,priority,updated_at")
         .eq("workspace_id", workspaceId).eq("customer_id", customerId)
-        .order("due_at", { ascending: false }),
+        .order("updated_at", { ascending: false }),
       supabase.from("intrigue_imported_orders")
         .select("id,customer_id,external_id,kind,status,description,amount,currency,created_at")
         .eq("workspace_id", workspaceId).eq("customer_id", customerId)
@@ -245,9 +267,9 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
   const timeline = useMemo<TimelineEntry[]>(() => {
     if (!selectedCustomerId) return [];
     return [
-      ...customerEnquiries.map(e => ({ id: `enquiry-${e.id}`, date: e.created_at, kind: "enquiry" as const, title: e.subject, detail: `Enquiry · ${e.status.replace(/_/g," ")}` })),
-      ...profileQuotes.map(q => ({ id: `quotation-${q.id}`, date: q.created_at, kind: "quotation" as const, title: q.description, detail: `Quotation · ${q.status} · €${Number(q.amount).toFixed(2)}` })),
-      ...profileFollowUps.map(f => ({ id: `followup-${f.id}`, date: f.due_at, kind: "followup" as const, title: f.title, detail: `Follow-up · ${f.status.replace(/_/g," ")} · ${f.priority} priority` })),
+      ...customerEnquiries.map(e => ({ id: `enquiry-${e.id}`, date: e.updated_at || e.created_at, kind: "enquiry" as const, title: e.subject, detail: `Enquiry · ${e.status.replace(/_/g," ")}` })),
+      ...profileQuotes.map(q => ({ id: `quotation-${q.id}`, date: q.updated_at || q.created_at, kind: "quotation" as const, title: q.description, detail: `Quotation · ${q.status} · €${Number(q.amount).toFixed(2)}` })),
+      ...profileFollowUps.map(f => ({ id: `followup-${f.id}`, date: f.updated_at, kind: "followup" as const, title: f.title, detail: `Follow-up · ${f.status.replace(/_/g," ")} · ${f.priority} priority` })),
       ...profileOrders.map(o => ({ id: `order-${o.id}`, date: o.created_at, kind: "order" as const, title: o.description || o.external_id, detail: `${o.kind.replace(/_/g," ")} · ${o.status} · ${Number(o.amount).toFixed(2)} ${o.currency}` })),
       ...profileOutlook.map(m => ({
         id: `outlook-${m.id}`, date:m.submitted_at||m.created_at, kind:"email" as const,
@@ -445,7 +467,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       <div className="crm-form-actions"><button className="crm-primary" type="submit" disabled={saving}>{saving ? "Saving…" : editingId ? "Save contact changes" : "Save customer"}</button><button className="crm-secondary" type="button" onClick={() => setShowCreate(false)}>Cancel</button></div>
     </form>}
     {activeTab === "customers" && <div id="crm-customers-panel" role="tabpanel" aria-labelledby="crm-customers-tab" className="crm-panel">
-      <div className="crm-heading"><h3>Customer directory <span>({visibleCustomers.length})</span></h3><p>Contact information stays inside this company workspace.</p></div>
+      <div className="crm-heading"><h3>Customer directory <span>({visibleCustomers.length})</span></h3><p>Most recently added or updated contacts, including new enquiries, appear first. Data stays inside this company workspace.</p></div>
       <div className="crm-table-scroll"><table>
         <thead><tr><th>Name</th><th>Email</th><th>Phone</th>{automotive && <th>Vehicle</th>}{canWrite && <th>Actions</th>}</tr></thead>
         <tbody>{visibleCustomers.map(c => <tr key={c.id}>
@@ -459,7 +481,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       {!visibleCustomers.length && <div className="crm-empty-state">{customers.length ? "No customers match your search." : "No customers yet. Add one or import company records."}</div>}
     </div>}
     {activeTab === "enquiries" && <div id="crm-enquiries-panel" role="tabpanel" aria-labelledby="crm-enquiries-tab" className="crm-panel">
-      <div className="crm-heading crm-enquiries-heading"><div><h3>Enquiries <span>({visibleEnquiries.length})</span></h3><p>{automotive ? "Repair and upgrade requests" : "Customer questions and business requests"}</p></div>{canWrite && <button type="button" className="crm-primary" onClick={openNewEnquiry}><Plus size={15}/> New enquiry</button>}</div>
+      <div className="crm-heading crm-enquiries-heading"><div><h3>Enquiries <span>({visibleEnquiries.length})</span></h3><p>{automotive ? "Repair and upgrade requests" : "Customer questions and business requests"} · newest activity first</p></div>{canWrite && <button type="button" className="crm-primary" onClick={openNewEnquiry}><Plus size={15}/> New enquiry</button>}</div>
       <div className="crm-table-scroll"><table>
         <thead><tr><th>Customer</th><th>{automotive ? "Service request" : "Enquiry / request"}</th><th>Status</th><th>Received</th></tr></thead>
         <tbody>{visibleEnquiries.map(row => {

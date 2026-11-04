@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { CheckCircle2, FilePlus2, RefreshCw, ShieldCheck, XCircle } from 'lucide-react';
 import './enquiry-quotation-automation.css';
 
-type Enquiry = {id:string;customer_id:string;subject:string;created_at:string;status:string};
+type Enquiry = {id:string;customer_id:string;subject:string;created_at:string;updated_at:string;status:string};
 type Customer = {id:string;full_name:string};
 type Item = {catalog_id:string;item_name:string;quantity:number;unit_price:string;line_total:string};
 type Suggestion = {kind?:string;outcome?:string;classification_source?:string;intent?:string;intent_label?:string;suggested_action?:string;catalog_items?:Item[];total?:string;currency?:string;warnings?:string[];note?:string};
@@ -41,8 +41,8 @@ export default function EnquiryQuotationAutomation({workspaceId,canManage}:{work
 
   const load=useCallback(async()=>{
     const [e,c,s]=await Promise.all([
-      supabase.from('enquiries').select('id,customer_id,subject,status,created_at')
-        .eq('workspace_id',workspaceId).order('created_at',{ascending:false}).limit(40),
+      supabase.from('enquiries').select('id,customer_id,subject,status,created_at,updated_at')
+        .eq('workspace_id',workspaceId).order('updated_at',{ascending:false}).order('created_at',{ascending:false}).limit(40),
       supabase.from('customers').select('id,full_name').eq('workspace_id',workspaceId).limit(200),
       api()
     ]);

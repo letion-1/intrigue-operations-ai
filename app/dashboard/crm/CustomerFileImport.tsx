@@ -13,8 +13,8 @@ type ImportResult = {
 };
 
 const LABELS: Record<string,string> = {
-  full_name: 'Full name *', email: 'Email *', phone: 'Phone',
-  company_name: 'Company', vehicle: 'Vehicle',
+  full_name: 'Full name *', email: 'Email *', phone: 'Phone (optional)',
+  company_name: 'Company / organization (optional)',
 };
 
 export default function CustomerFileImport({ workspaceId, companyName, onImported, onClose }: {
@@ -75,7 +75,7 @@ export default function CustomerFileImport({ workspaceId, companyName, onImporte
         <p>V17.3A · Owner/Admin only · CSV UTF-8 · add-only · up to 200 contacts · no customer notifications</p></div>
       <button type="button" onClick={onClose} className="crm-secondary">Close</button>
     </header>
-    <p className="v173-import-tip">Export contacts from Zoho, HubSpot, Pipedrive or Excel as CSV. This first phase does not establish a live CRM connection. Only name and email are required; phone, company and vehicle are optional.</p>
+    <p className="v173-import-tip">Export contacts from Zoho, HubSpot, Pipedrive or Excel as CSV. This first phase does not establish a live CRM connection. Only name and email are required. Phone and company / organization are optional. Industry-specific details can be managed in the appropriate company modules.</p>
     <label className="v173-import-upload">1. Choose CSV file (.csv, max 1 MB)
       <input type="file" accept=".csv,text/csv" onChange={event => { void readFile(event); }} disabled={busy} />
     </label>

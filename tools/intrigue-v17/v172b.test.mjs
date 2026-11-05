@@ -68,8 +68,12 @@ test('API prevents unclassified quote save even before database gate',()=>{
   assert.match(api,/analysis\.result\?\.classification_source!=='v17\.2b'/);
   assert.match(api,/analysis\.result\?\.intent!=='sales_quote'/);
 });
-test('legacy V17.2A results remain reviewable in the UI',()=>{
+test('older unclassified results warn for manual review and cannot be saved',()=>{
   const ui=readFileSync(resolve(root,'app/dashboard/automation/EnquiryQuotationAutomation.tsx'),'utf8');
-  assert.match(ui,/Legacy V17\.2A result without intent classification/);
+  // The client UI must not expose technical version numbers, but must retain the warning.
+  assert.match(ui,/Earlier result without intent classification\. Review manually; do not send the quotation\./);
+  // The save button must require a matched, classified, explicit sales enquiry.
+  assert.match(ui,/suggestion\?\.outcome==='matched'/);
   assert.match(ui,/suggestion\?\.intent==='sales_quote'/);
+  assert.match(ui,/suggestion\?\.classification_source==='v17\.2b'/);
 });

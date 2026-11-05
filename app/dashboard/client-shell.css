@@ -1,0 +1,21 @@
+/* Sprint 1 client shell. Preserves the existing white/beige and navy/gold identities. */
+.intrigue-dashboard{--intrigue-radius:18px;letter-spacing:-.004em}
+.intrigue-dashboard .intrigue-sidebar{border-right:1px solid #c4a5683b;box-shadow:5px 0 32px #050d1918}
+.intrigue-dashboard .intrigue-sidebar-nav nav{padding-bottom:16px}
+.intrigue-dashboard .intrigue-nav-item{margin-bottom:3px;min-height:43px;border:1px solid transparent;transition:background .12s,border-color .12s,color .12s}
+.intrigue-dashboard .intrigue-nav-item:hover{border-color:#c9a55b55;background:#b49b7120}
+.intrigue-dashboard .intrigue-nav-item-active{border-color:#d5af684f}
+.intrigue-dashboard .intrigue-main-scroll>header{backdrop-filter:blur(16px);background-color:#102237e8}
+.intrigue-dashboard .intrigue-main-scroll main{max-width:1520px}
+.intrigue-dashboard .intrigue-main-scroll main>div{scroll-margin-top:100px}
+.intrigue-dashboard :is(button,select,input,textarea){font-family:inherit}
+.intrigue-dashboard :is(button,select,input,textarea):disabled{cursor:not-allowed}
+.intrigue-dashboard [role="alert"]{overflow-wrap:anywhere}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-main-scroll>header{background:#fbf8f2ed!important;border-color:#e9e0d3!important}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-sidebar{background:#f8f3eb!important}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-nav-item:hover{background:#f1e5d3!important}
+.intrigue-dashboard[data-intrigue-theme="light"] .crm-connect-note{color:#197d54}
+.intrigue-dashboard[data-intrigue-theme="light"] .crm-connect-error{color:#9e3434}
+@media (min-width:1200px){.intrigue-dashboard .intrigue-sidebar{width:282px!important}}
+@media (max-width:767px){.intrigue-dashboard .intrigue-main-scroll main{padding-inline:14px}.intrigue-dashboard .intrigue-main-scroll>header{padding-inline:12px}}
+@media (prefers-reduced-motion:reduce){.intrigue-dashboard *{transition-duration:0ms!important;animation-duration:0ms!important}}

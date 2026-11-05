@@ -85,11 +85,11 @@ export default function EnquiryQuotationAutomation({workspaceId,canManage}:{work
   };
   if(!canManage)return null;
   return <section className="v172" aria-label="Enquiry-to-quotation drafting">
-    <div className="v172-head"><div><span className="v172-eyebrow"><FilePlus2 size={14}/> V17.2C · INTELLIGENT ENQUIRY ROUTING</span>
+    <div className="v172-head"><div><span className="v172-eyebrow"><FilePlus2 size={14}/> INTELLIGENT ENQUIRY ROUTING</span>
       <h2>Understand requests before creating quotations</h2>
       <p>AI checks whether a request is a sale, exchange, refund, stock question or support issue. Only explicit new sales requests may produce catalog-priced quotation drafts. Every analysis needs approval, and nothing is sent.</p>
     </div><button type="button" disabled={busy||loading} onClick={()=>void load().then(()=>setNotice('Quotation data refreshed.')).catch(e=>setError(message(e)))}><RefreshCw size={15}/> Refresh</button></div>
-    <p className="v172-hint"><ShieldCheck size={15}/> Staging first · Human-controlled · Local worker · No automatic sending or customer-facing changes.</p>
+    <p className="v172-hint"><ShieldCheck size={15}/> Human approval required · No automatic sending or customer-facing changes.</p>
     {error&&<div className="v172-error" role="alert">{error}</div>}
     {notice&&<div className="v172-notice" role="status">{notice}</div>}
     {loading?<p className="v172-empty">Loading enquiries…</p>:enquiries.length===0?<p className="v172-empty">No enquiries found. Add a sample enquiry in the CRM first.</p>:<div className="v172-list">
@@ -107,7 +107,7 @@ export default function EnquiryQuotationAutomation({workspaceId,canManage}:{work
             {suggestion.classification_source==='v17.2b' ? <>
               <p className="v172-routing"><b>Request type:</b> {suggestion.intent_label||suggestion.intent||'Unclear'}</p>
               {suggestion.suggested_action&&<p className="v172-routing"><b>Suggested next step:</b> {suggestion.suggested_action}</p>}
-            </> : <p className="v172-warning">Legacy V17.2A result without intent classification. Review manually; do not send the quotation.</p>}
+            </> : <p className="v172-warning">Earlier result without intent classification. Review manually; do not send the quotation.</p>}
             {suggestion.catalog_items?.length?<table><thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Line</th></tr></thead>
               <tbody>{suggestion.catalog_items.map(item=><tr key={item.catalog_id}><td>{item.item_name}</td><td>{item.quantity}</td><td>{money(item.unit_price)}</td><td>{money(item.line_total)}</td></tr>)}</tbody>
               <tfoot><tr><th colSpan={3}>Subtotal (before tax)</th><th>{money(suggestion.total||'0')}</th></tr></tfoot></table>:null}
@@ -128,6 +128,6 @@ export default function EnquiryQuotationAutomation({workspaceId,canManage}:{work
         </article>;
       })}
     </div>}
-    <p className="v172-muted">Existing V17.2A results remain visible but cannot create new drafts after the V17.2B database guard. Unresolved V17.2B sales analyses can be re-analyzed with fresh approval. The local worker needs OPENROUTER_API_KEY in its own private environment.</p>
+    <p className="v172-muted">Earlier results remain visible for review. Sales enquiries with unresolved catalog matches can be re-analyzed with fresh approval. No customer messages are sent from this screen.</p>
   </section>;
 }

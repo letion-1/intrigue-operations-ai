@@ -42,9 +42,24 @@ export default function CustomerFileImport({ workspaceId, companyName, onImporte
     setSource(null); setFileName(''); setMapping({}); clearReview(); setError('');
     if (!file) return;
     try {
-      if (!file.name.toLowerCase().endsWith('.csv')) throw new Error('Export Excel as CSV UTF-8 before uploading. Direct XLSX support comes later.');
-      if (file.size > 1048576) throw new Error('Maximum file size is 1 MB.');
-      const parsed = parseCsv(await file.text());
+      const isExcel = file.name.toLowerCase().endsWith('.xlsx');
+      if (!isExcel && !file.name.toLowerCase().endsWith('.csv')) throw new Error('Upload a CSV or XLSX file.');
+      if (file.size > 2_097_152) throw new Error('Maximum file size is 2 MB.');
+      let parsed: { headers:string[]; records:Record<string,string>[] };
+      if (isExcel) {
+        // Imported only for Excel uploads, keeping the normal CRM page lightweight.
+        const { readSheet } = await import('read-excel-file/browser');
+        const sheet = await readSheet(file);
+        if (sheet.length < 2 || sheet.length > 201) throw new Error('Upload a workbook with 1 to 200 contacts on the first sheet.');
+        const headings = sheet[0].map(cell => String(cell ?? '').trim());
+        if (headings.length > 40 || !headings.some(Boolean) || new Set(headings.map(x=>x.toLowerCase())).size !== headings.length) throw new Error('Workbook headers are missing, duplicated or too wide.');
+        const records = sheet.slice(1).filter(row => row.some(cell => cell !== null && cell !== '')).map(row => {
+          const entry:Record<string,string> = {};
+          headings.forEach((heading,index)=>{entry[heading] = row[index] instanceof Date ? row[index].toISOString().slice(0,10) : String(row[index] ?? '');});
+          return entry;
+        });
+        parsed = {headers:headings,records};
+      } else parsed = parseCsv(await file.text());
       setFileName(file.name); setSource(parsed); setMapping(suggestMapping(parsed.headers));
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to read CSV file.'); }
   }
@@ -72,12 +87,12 @@ export default function CustomerFileImport({ workspaceId, companyName, onImporte
   return <section className="v173-import" aria-label="Import customer contacts">
     <header className="v173-import-head">
       <div><h3>Import contacts into {companyName}</h3>
-        <p>V17.3A · Owner/Admin only · CSV UTF-8 · add-only · up to 200 contacts · no customer notifications</p></div>
+        <p>Owner/Admin only · Preview before importing · Up to 200 contacts · No customer notifications</p></div>
       <button type="button" onClick={onClose} className="crm-secondary">Close</button>
     </header>
-    <p className="v173-import-tip">Export contacts from Zoho, HubSpot, Pipedrive or Excel as CSV. This first phase does not establish a live CRM connection. Only name and email are required. Phone and company / organization are optional. Industry-specific details can be managed in the appropriate company modules.</p>
-    <label className="v173-import-upload">1. Choose CSV file (.csv, max 1 MB)
-      <input type="file" accept=".csv,text/csv" onChange={event => { void readFile(event); }} disabled={busy} />
+    <p className="v173-import-tip">Upload CSV or Excel contacts here, or authorize a live CRM connection from Integrations. Only name and email are required. Phone and company / organization are optional. Industry-specific details can be managed in the appropriate company modules.</p>
+    <label className="v173-import-upload">1. Choose contacts file (.csv or .xlsx, max 2 MB)
+      <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={event => { void readFile(event); }} disabled={busy} />
     </label>
     {source && <>
       <p className="v173-import-meta">{fileName} · {source.records.length} records · {source.headers.length} columns</p>

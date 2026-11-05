@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { createClient } from "@/lib/supabase/client";
 import "./brand.css";
 import "./intrigue-themes.css";
+import "./client-shell.css";
 import CustomersCRMPanel from "./crm/CustomersCRMPanel";
 import QuotationsStudio from "./quotations/QuotationsStudio";
 import IndustryIcon, { isAutomotiveIndustry } from "./crm/IndustryIcon";
@@ -81,7 +82,6 @@ const NAV = [
   { label: "Get Started", icon: ClipboardCheck },
   { label: "AI Assistant", icon: Bot },
   { label: "AI Receptionist", icon: PhoneCall },
-  { label: "Action Center", icon: ClipboardCheck },
   { label: "Automation Center", icon: Zap },
   { label: "Customers", icon: Users },
   { label: "Quotations", icon: FileText },
@@ -145,7 +145,7 @@ type AiUsage = {
   chat_day_limit:number; chat_minute_limit:number; index_day_limit:number; index_minute_limit:number;
   reset_utc:string;
 };
-const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","AI Receptionist","Action Center","Automation Center","Integrations","Calendar","Data Management","Security & Usage","Plans & Billing","Pilot Application"];
+const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","AI Receptionist","Automation Center","Integrations","Calendar","Data Management","Security & Usage","Plans & Billing","Pilot Application"];
 
 type Customer = { id: string; full_name: string; email: string | null; phone: string | null; vehicle: string | null; created_at: string; updated_at: string };
 type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string; updated_at: string };
@@ -239,7 +239,7 @@ export default function DashboardPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiConnected, setAiConnected] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", text: "Welcome to INTRIGUE Operations AI. I can answer questions using records from your signed-in demo workspace. I can prepare draft actions for your approval. Nothing is saved to quotations or tasks without your approval, and I never contact customers." },
+    { role: "assistant", text: "Welcome to INTRIGUE Operations AI. I can answer questions using records from your signed-in company workspace. I can prepare draft actions for your approval. Nothing is saved to quotations or tasks without your approval, and I never contact customers." },
   ]);
 
   // Authenticated Supabase browser client. Authorization is also enforced in Postgres RLS.
@@ -362,7 +362,7 @@ export default function DashboardPage() {
     if (authError || !authData.user) {
       setWorkspace(null); setRole("viewer");
       setCustomers([]); setEnquiries([]); setQuotes([]); setTasks([]);
-      setDbError("Your session has expired. Sign in again, then refresh this page.");
+      setDbError("Your session has expired. Please sign in again.");
       setLoading(false);
       return;
     }
@@ -881,7 +881,7 @@ export default function DashboardPage() {
     else {setActionError("");setActionProposals((a.data||[]) as ActionProposal[]);setActionAudit((b.data||[]) as ActionAudit[]);}
   },[supabase,workspace]);
 
-  useEffect(() => { if (section==="Action Center") void loadActions(); },[section,loadActions]);
+  useEffect(() => { if (section==="Automation Center") void loadActions(); },[section,loadActions]);
 
   const loadAutomationJobs = useCallback(async () => {
     if (!workspace) { setAutomationJobs([]); return; }
@@ -989,7 +989,7 @@ export default function DashboardPage() {
   function takeToActionCenter() {
     // The Action Center is for actionable, supported commands only.
     setActionPrompt("");
-    setSection("Action Center");
+    setSection("Automation Center");
   }
 
   async function askQuestion(value = draft) {
@@ -1080,42 +1080,42 @@ export default function DashboardPage() {
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#bd9955]/20 text-[#e1c27f]"><IndustryIcon industry={settings.industry} size={19}/></div>
           <div className="min-w-0">
             <div className="truncate text-[13px] font-semibold text-[#f5f0e8]">{workspace?.name ?? "Your company"}</div>
-            <div className="text-[11px] text-[#9eacba]">Private staging workspace</div>
+            <div className="text-[11px] text-[#9eacba]">Private company workspace</div>
           </div>
         </div>
       </div>
       <div className="intrigue-sidebar-nav min-h-0 flex-1 overflow-y-auto overscroll-contain px-4">
         <nav className="space-y-1" aria-label="Workspace navigation">
-          {NAV.filter(item => isOwner || (role === "admin" && item.label === "Automation Center") || !OWNER_ONLY_SECTIONS.includes(item.label)).map((item) => {
-            const Icon = item.icon;
-            const selected = section === item.label;
-            const sectionTitle = ({"Overview":"WORKSPACE","Customers":"BUSINESS","AI Receptionist":"AI & AUTOMATION","Integrations":"SYSTEM"} as Record<string,string>)[item.label];
-            return (
-              <div key={item.label}>
-              {sectionTitle && <div className="mb-2 mt-5 px-3 text-[10px] font-bold tracking-[0.2em] text-[#c4a86e]">{sectionTitle}</div>}
-              <button
-                type="button"
-                onClick={() => navigate(item.label)}
-                className={`intrigue-nav-item flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] font-medium transition-colors ${selected ? "intrigue-nav-item-active" : ""}`}
-              >
-                <Icon size={18} strokeWidth={selected ? 2.4 : 1.8} />
+          {NAV.filter(item => !["Data Management","Security & Usage","Plans & Billing","Pilot Application"].includes(item.label) && (isOwner || (role === "admin" && item.label === "Automation Center") || !OWNER_ONLY_SECTIONS.includes(item.label))).map(item => {
+            const Icon=item.icon; const selected=section===item.label;
+            const group=({"Overview":"WORKSPACE","Customers":"BUSINESS","AI Assistant":"AI & AUTOMATION","Integrations":"CONNECTIONS","Team":"ADMINISTRATION"} as Record<string,string>)[item.label];
+            return <div key={item.label}>
+              {group && <div className="mb-2 mt-5 px-3 text-[10px] font-bold tracking-[0.2em] text-[#c4a86e]">{group}</div>}
+              <button type="button" onClick={()=>navigate(item.label)} aria-current={selected?'page':undefined}
+                className={`intrigue-nav-item flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] font-medium transition-colors ${selected?'intrigue-nav-item-active':''}`}>
+                <Icon size={18} strokeWidth={selected?2.4:1.8}/>
                 <span className="flex-1">{item.label === "Customers" ? "Customers & CRM" : item.label === "Quotations" ? "Quotations & Proposals" : item.label === "Service Catalog" && /retail|fashion|commerce/i.test(settings.industry) ? "Product Catalog" : item.label}</span>
-                {item.label === "AI Assistant" && !selected && <span className="h-1.5 w-1.5 rounded-full bg-[#d1ad60]"/>}
               </button>
-              </div>
-            );
+            </div>;
           })}
+          {isOwner && <details className="mt-5 border-t border-[#c5a566]/25 pt-4">
+            <summary className="cursor-pointer rounded-lg px-3 py-2 text-xs font-bold tracking-wide text-[#c4a86e]">Advanced settings</summary>
+            {["Data Management","Security & Usage","Plans & Billing","Pilot Application"].map(label=>{
+              const item=NAV.find(n=>n.label===label)!;const Icon=item.icon;
+              return <button key={label} type="button" onClick={()=>navigate(item.label)} aria-current={section===label?'page':undefined}
+                className={`intrigue-nav-item flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] ${section===label?'intrigue-nav-item-active':''}`}>
+                <Icon size={17}/><span>{label==='Pilot Application'?'Pilot request':label}</span>
+              </button>;
+            })}
+          </details>}
         </nav>
       </div>
       <div className="mt-auto p-4">
-        <div className="intrigue-development-preview rounded-xl border border-[#d9b467]/20 bg-gradient-to-br from-[#1e3248] to-[#0c1b2c] p-4">
-          <div className="mb-2 flex items-center gap-2 text-[#d5b46a]"><ShieldCheck size={17}/><span className="text-xs font-semibold">Development preview</span></div>
-          <p className="text-xs leading-5 text-[#d5dfeb]">Business records are in Supabase. Chat is read-only; Action Center drafts require your approval. Only use fictional data with unvetted model providers.</p>
-        </div>
+
 <button type="button" onClick={() => void handleSignOut()} disabled={signingOut} className="intrigue-signout-button mt-3 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:opacity-60" aria-label="Log out of INTRIGUE"><LogOut size={15}/>{signingOut ? "Logging out…" : "Log out"}</button>
         <div className="mt-4 flex items-center gap-3 px-2 py-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#344358] text-xs font-bold text-[#f5f0e8]">IS</div>
-          <div className="min-w-0"><div className="text-xs font-semibold text-[#f5f0e8]">INTRIGUE STUDIOS</div><div className="text-[11px] text-[#9eacba]">Developer workspace</div></div>
+          <div className="min-w-0"><div className="text-xs font-semibold text-[#f5f0e8]">{workspace?.name ?? "Your workspace"}</div><div className="text-[11px] text-[#9eacba]">{role === "owner" ? "Company owner" : role === "admin" ? "Administrator" : "Team member"}</div></div>
         </div>
       </div>
     </>
@@ -1139,7 +1139,7 @@ export default function DashboardPage() {
             <span className="text-sm font-semibold">{section === "Service Catalog" && /retail|fashion|commerce/i.test(settings.industry) ? "Product Catalog" : section}</span>
           </div>
           <div className="flex items-center gap-3 md:gap-5">
-            <span className="hidden items-center gap-1.5 rounded-full bg-[#654e24]/40 px-3 py-1.5 text-[11px] font-bold text-[#e7c37c] sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-[#ddb96d]"/>STAGING DATA</span>
+            <span className="hidden items-center gap-1.5 rounded-full bg-[#654e24]/40 px-3 py-1.5 text-[11px] font-bold text-[#e7c37c] sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-[#ddb96d]"/>WORKSPACE</span>
             <button type="button" onClick={toggleAppearance} aria-label={appearance === "dark" ? "Switch to light appearance" : "Switch to dark appearance"} title={appearance === "dark" ? "Light mode" : "Dark mode"} className="rounded-xl border border-[#415064] p-2 text-[#d9c18b] transition hover:bg-[#26384d]">
               {appearance === "dark" ? <Sun size={18}/> : <Moon size={18}/>}
             </button>
@@ -1149,8 +1149,8 @@ export default function DashboardPage() {
               </button>
               {activityOpen && <div role="dialog" aria-label="Notifications" className="intrigue-activity-popover absolute right-0 top-12 z-50 w-[min(345px,85vw)] rounded-2xl border border-[#45566b] bg-[#13263b] p-4 shadow-2xl">
                 <div className="flex items-center justify-between gap-4"><h3 className="text-sm font-semibold text-[#f1d189]">Activity & notifications</h3><button onClick={() => setActivityOpen(false)} type="button" aria-label="Close notifications" className="rounded-lg p-1 hover:bg-[#26384d]"><X size={17}/></button></div>
-                <p className="mt-3 text-sm text-[#d9e2eb]">No business notifications are connected yet.</p>
-                <p className="mt-2 text-xs leading-5 text-[#aebed0]">Contract signatures, quotation approvals, missed appointments and integration alerts will appear here after the secure event service is enabled. This panel does not claim to monitor those events yet.</p>
+                <p className="mt-3 text-sm text-[#d9e2eb]">Notifications appear here when connected services report an event.</p>
+                <p className="mt-2 text-xs leading-5 text-[#aebed0]">Your current alerts and activity settings are managed in Integrations and Settings.</p>
               </div>}
             </div>
             <button type="button" className="intrigue-signout-button inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:opacity-60" onClick={() => void handleSignOut()} disabled={signingOut} aria-label="Log out of INTRIGUE" title="Log out">
@@ -1163,9 +1163,9 @@ export default function DashboardPage() {
         <main className="mx-auto max-w-[1430px] px-5 pb-12 pt-8 md:px-9">
           <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.26em] text-[#d4b469]">{workspace?.name.toUpperCase() ?? "NEW COMPANY"}  /  PRIVATE STAGING</div>
+              <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.26em] text-[#d4b469]">{workspace?.name.toUpperCase() ?? "NEW COMPANY"}  /  WORKSPACE</div>
               <h1 className="brand-display text-[34px] font-medium leading-none tracking-[-0.04em] md:text-[46px]">{section === "Overview" ? "Your operations, in focus." : (section === "Service Catalog" && /retail|fashion|commerce/i.test(settings.industry) ? "Product Catalog" : section)}</h1>
-              <p className="mt-1.5 text-sm text-[#afbdcb]">{section === "Overview" ? "An intelligent view of everything moving your business forward." : "Saved records from your private staging workspace."}</p>
+              <p className="mt-1.5 text-sm text-[#afbdcb]">{section === "Overview" ? "An intelligent view of everything moving your business forward." : "Workspace data and tools for your team."}</p>
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => navigate("Quotations")} className="flex items-center gap-2 rounded-xl border border-[#415064] bg-[#142539] px-4 py-2.5 text-xs font-semibold text-[#f0e9dc] shadow-sm hover:bg-[#1b2e42]"><Plus size={16}/>View quotes</button>
@@ -1237,7 +1237,7 @@ export default function DashboardPage() {
                   <div className="mt-4 text-[10px] text-[#9eacba]">AI answers use current database records. The model cannot modify business records.</div>
                 </div>
               </div>
-              <div className="rounded-xl border border-dashed border-[#516071] bg-[#0f1e2d] px-4 py-3 text-xs text-[#abb8c3]"><strong>Demo workspace:</strong> Figures reflect fictional records stored in your Supabase database. AI is read-only in this phase.</div>
+
             </div>
           )}
 
@@ -1252,35 +1252,21 @@ export default function DashboardPage() {
           {section === "AI Assistant" && (
             <div className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-[#2c3b4d] bg-[#0f2032] shadow-sm">
               <div className="flex items-center gap-3 border-b border-[#2d3b4f] p-5"><div className="rounded-xl bg-[#263447] p-3 text-[#e0bf76]"><Bot size={22}/></div><div><div className="text-sm font-bold">INTRIGUE Assistant</div><div className="text-[11px] text-[#afbdcb]">Tool-calling agent Â· Reads records and prepares approval proposals</div></div><span className="ml-auto"><Tag variant={aiConnected ? "emerald" : "amber"}>{aiConnected ? "AI configured" : "API key missing"}</Tag></span></div>
-              <div className="flex h-[440px] flex-col gap-4 overflow-y-auto bg-[#0d1c2b] p-5 md:p-6" aria-live="polite">{messages.map((message, index) => <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`${message.proposalId?"w-full max-w-[90%]":"max-w-[85%]"} space-y-3`}><div className={`whitespace-pre-wrap rounded-2xl px-4 py-3 text-[13px] leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#30455b] text-[#f5f0e8]" : "rounded-tl-sm border border-[#304153] bg-[#142539] text-[#f0e9dc]"}`}>{message.text}</div>{message.toolsUsed?.length ? <p className="text-[11px] text-[#d6bc80]">Tools: {message.toolsUsed.join(" Â· ")}</p> : null}{message.proposalId && (actionProposals.find(p=>p.id===message.proposalId) ? <ProposalReviewCard proposal={actionProposals.find(p=>p.id===message.proposalId)!} customer={customerName(actionProposals.find(p=>p.id===message.proposalId)!.customer_id)} busy={actionBusy} onDecide={(id,decision)=>void decideAction(id,decision)} onEdit={editAction}/> : <button type="button" className="text-xs text-[#e9c577] underline" onClick={()=>navigate("Action Center")}>Open proposal in Action Center</button>)}</div></div>)}{aiLoading && <p className="text-xs text-[#d8c18e]">{chatActionBusy?"Preparing a verified proposal...":"Calling authorized business tools..."}</p>}{actionError && <p role="alert" className="rounded-lg border border-red-400/40 bg-red-400/10 p-3 text-xs text-[#ffc2b9]">Action: {actionError}</p>}{actionMessage && <p role="status" className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs text-[#b3ead0]">{actionMessage}</p>}</div>
-              <div className="border-t border-[#2d3b4f] p-4 md:p-5"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-[#afbdcb]">Tools: customers, quotations, follow-ups, knowledge and approval drafts. Human approval required.</span><button type="button" onClick={takeToActionCenter} className="rounded-lg border border-[#b18c46] px-3 py-2 text-xs font-semibold text-[#e9c577] hover:bg-[#26384d]">Open Action Center</button></div><div className="mb-3 flex flex-wrap gap-2">{QUICK_PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => void askQuestion(prompt)} disabled={aiLoading} className="rounded-full border border-[#35485d] px-3 py-1.5 text-[11px] text-[#d5dbe0] hover:bg-[#1b2e42]">{prompt}</button>)}</div><form onSubmit={submitChat} className="flex gap-2"><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask a question or request a draft quote..." className="min-w-0 flex-1 rounded-xl border border-[#35485d] bg-[#182c41] px-4 py-3 text-sm text-[#f5f0e8] placeholder:text-[#98a8b8] outline-none focus:border-[#caa961]" aria-label="Message"/><button type="submit" disabled={!draft.trim() || aiLoading} className="flex h-[46px] w-[48px] items-center justify-center rounded-xl bg-[#30455b] text-[#f5f0e8] disabled:opacity-40" aria-label="Send message"><Send size={18}/></button></form></div>
-            </div>
-          )}
-
-          {section === "Action Center" && (
-            <div className="space-y-5">
-              <div className="rounded-2xl border border-[#806f46]/50 bg-[#142539] p-6">
-                <div className="mb-3 flex items-center gap-3"><ClipboardCheck size={22} className="text-[#e0bf76]"/><h2 className="text-base font-bold">Actions with your approval</h2><Tag variant="amber">Approval required</Tag></div>
-                <p className="mb-5 max-w-3xl text-xs leading-6 text-[#c9d4df]">Turn a request into a proposed draft quotation and/or follow-up. Prices come from your saved policies or service lists, not from an AI guess. Nothing is written to customer business records until you approve. No emails or WhatsApp messages are sent.</p>
-                <form onSubmit={prepareAction} className="space-y-3">
-                  <label htmlFor="action-prompt" className="block text-xs font-semibold text-[#e9c577]">What should INTRIGUE prepare?</label>
-                  <textarea id="action-prompt" className={`${inputClass} min-h-[100px] resize-y`} value={actionPrompt} maxLength={1000} onChange={e=>setActionPrompt(e.target.value)} placeholder="Example: Prepare a quotation for a known customer using a verified service price. For document questions, use Knowledge Base → Analyze with AI." />
-                  <button className={newButtonClass} type="submit" disabled={actionBusy || !workspace || actionPrompt.trim().length<10}>{actionBusy?"Working...":"Prepare proposal"}</button>
-                </form>
-                <p className="mt-3 text-[11px] text-[#aab9c8]">This is an approval workflow for supported quotation or follow-up requests, not a company document analysis tool. The current demo parser supports specific service and date patterns only; it does not import records from uploaded documents.</p>
-                {actionError && <p role="alert" className="mt-4 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs text-[#ffc2b9]">{actionError}</p>}
-                {actionMessage && <p role="status" className="mt-4 rounded-lg border border-emerald-400/25 bg-emerald-400/10 p-3 text-xs text-[#b3ead0]">{actionMessage}</p>}
-              </div>
-              <div className="flex items-center justify-between gap-3"><h3 className="text-base font-semibold">Approval queue</h3><button type="button" className="rounded-lg border border-[#35485d] px-3 py-2 text-xs text-[#e7c37c]" onClick={()=>void loadActions()}>Refresh queue</button></div>
-              {actionProposals.length===0 && <div className="rounded-2xl border border-dashed border-[#45576a] p-7 text-sm text-[#afbdcb]">No proposals yet. Submit your first request above.</div>}
-              {actionProposals.map(p=><ProposalReviewCard key={p.id} proposal={p} customer={customerName(p.customer_id)} busy={actionBusy} onDecide={(id,decision)=>void decideAction(id,decision)} onEdit={editAction}/>)}
-              {actionAudit.length>0 && <div className="rounded-xl border border-[#35485d] bg-[#142539] p-5"><h3 className="mb-3 text-sm font-semibold">Recent audit history</h3>{actionAudit.slice(0,8).map(row=><p key={row.id} className="border-t border-[#35485d] py-2 text-xs text-[#bac9d6]">{row.decision} Â· {niceDate(row.created_at)} Â· Proposal {row.proposal_id.slice(0,8)}</p>)}</div>}
+              <div className="flex h-[440px] flex-col gap-4 overflow-y-auto bg-[#0d1c2b] p-5 md:p-6" aria-live="polite">{messages.map((message, index) => <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`${message.proposalId?"w-full max-w-[90%]":"max-w-[85%]"} space-y-3`}><div className={`whitespace-pre-wrap rounded-2xl px-4 py-3 text-[13px] leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#30455b] text-[#f5f0e8]" : "rounded-tl-sm border border-[#304153] bg-[#142539] text-[#f0e9dc]"}`}>{message.text}</div>{message.toolsUsed?.length ? <p className="text-[11px] text-[#d6bc80]">Tools: {message.toolsUsed.join(" Â· ")}</p> : null}{message.proposalId && (actionProposals.find(p=>p.id===message.proposalId) ? <ProposalReviewCard proposal={actionProposals.find(p=>p.id===message.proposalId)!} customer={customerName(actionProposals.find(p=>p.id===message.proposalId)!.customer_id)} busy={actionBusy} onDecide={(id,decision)=>void decideAction(id,decision)} onEdit={editAction}/> : <button type="button" className="text-xs text-[#e9c577] underline" onClick={()=>navigate("Automation Center")}>View approval queue</button>)}</div></div>)}{aiLoading && <p className="text-xs text-[#d8c18e]">{chatActionBusy?"Preparing a verified proposal...":"Calling authorized business tools..."}</p>}{actionError && <p role="alert" className="rounded-lg border border-red-400/40 bg-red-400/10 p-3 text-xs text-[#ffc2b9]">Action: {actionError}</p>}{actionMessage && <p role="status" className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs text-[#b3ead0]">{actionMessage}</p>}</div>
+              <div className="border-t border-[#2d3b4f] p-4 md:p-5"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-[#afbdcb]">Tools: customers, quotations, follow-ups, knowledge and approval drafts. Human approval required.</span><button type="button" onClick={takeToActionCenter} className="rounded-lg border border-[#b18c46] px-3 py-2 text-xs font-semibold text-[#e9c577] hover:bg-[#26384d]">View approvals</button></div><div className="mb-3 flex flex-wrap gap-2">{QUICK_PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => void askQuestion(prompt)} disabled={aiLoading} className="rounded-full border border-[#35485d] px-3 py-1.5 text-[11px] text-[#d5dbe0] hover:bg-[#1b2e42]">{prompt}</button>)}</div><form onSubmit={submitChat} className="flex gap-2"><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask a question or request a draft quote..." className="min-w-0 flex-1 rounded-xl border border-[#35485d] bg-[#182c41] px-4 py-3 text-sm text-[#f5f0e8] placeholder:text-[#98a8b8] outline-none focus:border-[#caa961]" aria-label="Message"/><button type="submit" disabled={!draft.trim() || aiLoading} className="flex h-[46px] w-[48px] items-center justify-center rounded-xl bg-[#30455b] text-[#f5f0e8] disabled:opacity-40" aria-label="Send message"><Send size={18}/></button></form></div>
             </div>
           )}
 
           {section === "Automation Center" && (
             <div className="space-y-5">
               {workspace && <AutomationCentreV2 workspaceId={workspace.id} canManage={isOwner || role === "admin"} />}
+              {isOwner && actionProposals.length > 0 && <details className="rounded-2xl border border-[#35485d] bg-[#142539] p-5">
+                <summary className="cursor-pointer text-sm font-semibold text-[#e3c07b]">Other pending approvals ({actionProposals.filter(p=>p.status === "pending").length})</summary>
+                <div className="mt-4 space-y-3">
+                  <p className="text-xs opacity-70">Approval requests created through the AI assistant. All actions require confirmation.</p>
+                  {actionProposals.map(proposal=><ProposalReviewCard key={proposal.id} proposal={proposal} customer={customerName(proposal.customer_id)} busy={actionBusy} onDecide={(id,decision)=>void decideAction(id,decision)} onEdit={editAction}/>)}
+                </div>
+              </details>}
               {isOwner && <details className="rounded-2xl border border-[#35485d] bg-[#142539] p-5">
                 <summary className="cursor-pointer text-sm font-semibold text-[#e3c07b]">Previous test jobs</summary>
                 <div className="mt-5 space-y-5">
@@ -1293,13 +1279,13 @@ export default function DashboardPage() {
               <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold">Approved quotations available for processing</h3><button type="button" onClick={()=>{void loadActions();void loadAutomationJobs();}} disabled={automationBusy} className="rounded-lg border border-[#806f46] px-3 py-2 text-xs text-[#e9c577]">Refresh</button></div>
                 <div className="space-y-3">
-                  {actionProposals.filter(p=>p.status==="approved" && !!p.quotation_id).length===0 && <p className="text-xs text-[#afbdcb]">No approved quotations yet. Approve a quote in AI Assistant or Action Center first.</p>}
+                  {actionProposals.filter(p=>p.status==="approved" && !!p.quotation_id).length===0 && <p className="text-xs text-[#afbdcb]">No approved quotations yet. Approve a quote in AI Assistant first.</p>}
                   {actionProposals.filter(p=>p.status==="approved" && !!p.quotation_id).map(p=>{
                     const job=automationJobs.find(j=>j.proposal_id===p.id);
                     return <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#34475b] bg-[#0e2032] p-4">
                       <div><p className="text-sm font-semibold">{customerName(p.customer_id)} Â· {p.quote_description || "Approved quotation"}</p><p className="mt-1 text-xs text-[#afbdcb]">{money(Number(p.quote_amount))} Â· Quote {p.quotation_id?.slice(0,8)}</p></div>
                       {job ? <Tag variant={job.status==="completed"?"emerald":job.status==="needs_review"?"amber":"blue"}>{job.status.replaceAll("_"," ")}</Tag> :
-                        <button type="button" disabled={automationBusy} onClick={()=>void queueDemoJob(p.id)} className="rounded-lg bg-[#c9a552] px-4 py-2.5 text-xs font-bold text-[#111b29] disabled:opacity-50">Queue demo job</button>}
+                        <button type="button" disabled={automationBusy} onClick={()=>void queueDemoJob(p.id)} className="rounded-lg bg-[#c9a552] px-4 py-2.5 text-xs font-bold text-[#111b29] disabled:opacity-50">Queue internal job</button>}
                     </div>;
                   })}
                 </div>

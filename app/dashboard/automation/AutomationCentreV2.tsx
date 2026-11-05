@@ -119,11 +119,11 @@ export default function AutomationCentreV2({workspaceId,canManage}:{workspaceId:
         <p>Workspace-scoped manual workflows, human approval, retry controls and a durable execution history.</p>
       </div>
       <div className="acv2-actions">
-        <span className="acv2-pill"><ShieldCheck size={14}/> Audit-only mode</span>
+        <span className="acv2-pill"><ShieldCheck size={14}/> Internal processing</span>
         <button type="button" disabled={busy||loading} onClick={()=>void load().then(()=>setNotice('Workflow data refreshed.')).catch(e=>setError(message(e)))}><RefreshCw size={15}/> Refresh</button>
       </div>
     </div>
-    <p className="acv2-safety"><CircleAlert size={16}/> Customer emails, CRM updates, external calls, calendar bookings and automatic triggers are <strong>not enabled</strong> here. The local worker must be started manually.</p>
+    <p className="acv2-safety"><CircleAlert size={16}/> Customer emails, CRM updates, external calls, calendar bookings and automatic triggers are <strong>not enabled</strong> here. Background processing is configured by your company administrator.</p>
     {error&&<p className="acv2-error" role="alert">{error}</p>}
     {notice&&<p className="acv2-notice" role="status">{notice}</p>}
     <div className="acv2-stats">
@@ -140,7 +140,7 @@ export default function AutomationCentreV2({workspaceId,canManage}:{workspaceId:
     {loading?<div className="acv2-empty">Loading workspace workflows…</div>:<>
       {tab==='workflows'&&<div className="acv2-section">
         <form className="acv2-create" onSubmit={e=>void create(e)}>
-          <label htmlFor="acv2-name">Create an internal test workflow</label>
+          <label htmlFor="acv2-name">Create an internal workflow</label>
           <div className="acv2-create-row"><input id="acv2-name" value={name} onChange={e=>setName(e.target.value)} minLength={3} maxLength={120} placeholder="Example: Quotation processing audit" required disabled={busy}/><button type="submit" className="acv2-primary" disabled={busy||name.trim().length<3}><Plus size={15}/> Create</button></div>
           <small>Trigger: manual · Action: internal audit event · Human approval: required · Initial state: disabled</small>
         </form>
@@ -178,6 +178,6 @@ export default function AutomationCentreV2({workspaceId,canManage}:{workspaceId:
       </div>}
     </>}
     <EnquiryQuotationAutomation workspaceId={workspaceId} canManage={canManage} />
-    <p className="acv2-foot">New workflow runs are managed here. Previous test jobs remain available below. A disabled workflow accepts no new test runs; previously queued runs still require review or completion.</p>
+    <p className="acv2-foot">New workflow runs are managed here. Processing history remain available below. A disabled workflow accepts no new test runs; previously queued runs still require review or completion.</p>
   </section>;
 }

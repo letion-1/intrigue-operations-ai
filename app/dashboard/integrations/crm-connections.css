@@ -1,0 +1,15 @@
+.crm-connect{padding:clamp(18px,3vw,30px);border:1px solid #b89e6b55;border-radius:20px;background:var(--intrigue-surface,#142539);color:var(--intrigue-ivory,#f5f0e8)}
+.crm-connect-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.crm-connect-heading h2{font-size:22px;font-weight:700;letter-spacing:-.035em}
+.crm-connect-heading p,.crm-connect-card p,.crm-connect-foot{font-size:13px;line-height:1.65;opacity:.83}
+.crm-connect-kicker{font-size:10px!important;letter-spacing:.18em;color:#d0aa62;font-weight:800}
+.crm-connect-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:14px;margin-top:22px}
+.crm-connect-card{border-radius:16px;border:1px solid #9e8e7559;padding:18px;background:rgba(128,128,128,.055);min-width:0}
+.crm-connect-title{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.crm-connect-title h3{font-size:16px;font-weight:700}
+.crm-connect-active,.crm-connect-inactive{font-size:11px;border-radius:999px;padding:5px 9px;border:1px solid #a1a1a175}.crm-connect-active{color:#5ccb9c;border-color:#5ccb9c77}
+.crm-connect-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.crm-connect button{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:10px;border:1px solid #be9b5c;background:#d2ad65;color:#172336;font-size:12px;font-weight:700;padding:10px 13px}.crm-connect button:disabled{opacity:.48;cursor:not-allowed}.crm-connect button.crm-connect-secondary{background:transparent;color:inherit}
+.crm-connect-card>p{margin:9px 0 0}.crm-connect-card>small,.crm-connect-review small{display:block;font-size:11px;opacity:.7;margin-top:12px}
+.crm-connect-review{border-top:1px solid #a9a9a945;margin-top:15px;padding-top:15px;font-size:12px}.crm-connect-review strong{font-size:13px}.crm-connect-review label{display:grid;gap:7px;margin-top:14px}.crm-connect-review input{border:1px solid #a5a5a577;border-radius:8px;background:transparent;padding:10px;color:inherit;max-width:100%}
+.crm-connect-contact-list{max-height:165px;overflow:auto;margin-top:10px}.crm-connect-contact-list>div{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #9a9a9a25;flex-wrap:wrap}
+.crm-connect-contact-list small{margin:0}.crm-connect-error,.crm-connect-note{display:flex;gap:8px;align-items:center;font-size:12px;border-radius:12px;padding:12px;margin-top:12px}.crm-connect-error{color:#ffb5b5;background:#a4333325}.crm-connect-note{color:#62c7a0;background:#2b9c7922}.crm-connect-foot{margin-top:20px}
+.intrigue-dashboard[data-intrigue-theme="light"] .crm-connect{background:#fffdf9;color:#172336}.intrigue-dashboard[data-intrigue-theme="light"] .crm-connect-card{background:#fbf8f2}.intrigue-dashboard[data-intrigue-theme="light"] .crm-connect-inactive{color:#645947}

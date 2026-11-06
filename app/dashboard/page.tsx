@@ -19,6 +19,7 @@ import ReceptionistPanel from "./ai-receptionist/ReceptionistPanel";
 import DataManagementPanel from "./data-management/DataManagementPanel";
 import AutomationCentreV2 from "./automation/AutomationCentreV2";
 import CompanyOnboarding from "./company-onboarding/CompanyOnboarding";
+import { uiText, availableUiLocale, uiDirection, ASSISTANT_INTRO } from "@/lib/intrigue-ui-language";
 import {
   Activity,
   ArrowRight,
@@ -256,6 +257,7 @@ export default function DashboardPage() {
     { role: "assistant", text: "Welcome to INTRIGUE Operations AI. I can answer questions using records from your signed-in company workspace. I can prepare draft actions for your approval. Nothing is saved to quotations or tasks without your approval, and I never contact customers." },
   ]);
 
+
   // Authenticated Supabase browser client. Authorization is also enforced in Postgres RLS.
   const supabase = useMemo(() => createClient(), []);
   const [signingOut, setSigningOut] = useState(false);
@@ -278,6 +280,27 @@ export default function DashboardPage() {
   const canManageCatalog = role === "owner" || role === "admin";
   const canWriteOps = canManageCatalog || role === "staff";
   const [settings, setSettings] = useState<Omit<CompanySettings,"workspace_id">>(EMPTY_SETTINGS);
+  const [savedUiLocale, setSavedUiLocale] = useState<string>('en');
+  const [settingsReadyId, setSettingsReadyId] = useState<string|null>(null);
+  const locale = availableUiLocale(savedUiLocale);
+  const t = (text:string) => uiText(locale,text);
+  useEffect(()=>{document.documentElement.lang=locale;document.documentElement.dir=uiDirection(locale);},[locale]);
+  useEffect(() => {
+    // This effect must appear AFTER locale is declared: TypeScript cannot read
+    // a block-scoped value before it is initialized.
+    // Only update the untouched initial greeting; do not rewrite conversations.
+    setMessages(previous => {
+      if (previous.length !== 1 || previous[0].role !== 'assistant') return previous;
+      const text = previous[0].text;
+      if (!Object.values(ASSISTANT_INTRO).includes(text)) return previous;
+      const next = ASSISTANT_INTRO[locale];
+      return text === next ? previous : [{ role: 'assistant', text: next }];
+    });
+  }, [locale]);
+  const [onboardingSteps,setOnboardingSteps] = useState<Record<number,'skipped'|'completed'>>({});
+  const [progressLoaded,setProgressLoaded] = useState(false);
+  const [progressBusy,setProgressBusy] = useState(false);
+  const [progressError,setProgressError] = useState('');
   const [services,setServices]=useState<ServiceRow[]>([]);
   const [serviceBusy,setServiceBusy]=useState(false);
   const [serviceError,setServiceError]=useState("");
@@ -460,7 +483,9 @@ export default function DashboardPage() {
     if (!workspace) return;
     const {data,error} = await supabase.from("workspace_settings").select("*")
       .eq("workspace_id",workspace.id).maybeSingle();
-    if (error) { setSettingsError(error.message); return; }
+    if (error) { setSettingsError(error.message);setSettingsReadyId(workspace.id); return; }
+    setSavedUiLocale(data?.preferred_language || "en");
+    setSettingsReadyId(workspace.id);
     setSettings(data ? {
       industry:data.industry,description:data.description,contact_email:data.contact_email,
       phone:data.phone,website:data.website,business_hours:data.business_hours,
@@ -469,6 +494,42 @@ export default function DashboardPage() {
     } : EMPTY_SETTINGS);
   },[supabase,workspace]);
   useEffect(()=>{if(workspace) void loadSettings();},[workspace,loadSettings]);
+  useEffect(()=>{
+    let current=true;
+    setProgressLoaded(false); setOnboardingSteps({}); setProgressError('');
+    if(!workspace || !isOwner) { setProgressLoaded(true); return; }
+    void (async()=>{
+      const {data,error}=await supabase.from('intrigue_onboarding_progress')
+        .select('step,status').eq('workspace_id',workspace.id);
+      if(!current)return;
+      if(error){setProgressError('Tutorial progress unavailable: '+error.message);}
+      else {const next:Record<number,'skipped'|'completed'>={};
+        for(const row of data||[]) if(row.status==='skipped'||row.status==='completed') next[Number(row.step)]=row.status;
+        setOnboardingSteps(next);
+      }
+      setProgressLoaded(true);
+    })();
+    return ()=>{current=false;};
+  },[supabase,workspace?.id,isOwner]);
+  async function saveTutorialStep(step:number,status:'skipped'|'completed'):Promise<boolean>{
+    if(!workspace || !isOwner || progressBusy || !progressLoaded)return false;
+    setProgressBusy(true);setProgressError('');
+    const {error}=await supabase.from('intrigue_onboarding_progress').upsert({
+      workspace_id:workspace.id, step, status,
+    },{onConflict:'workspace_id,step'});
+    setProgressBusy(false);
+    if(error){setProgressError(t('Unable to save tutorial progress')+': '+error.message);return false;}
+    setOnboardingSteps(prev=>({...prev,[step]:status}));
+    return true;
+  }
+  async function skipTutorialStep(){
+    if(guideStep===null)return;
+    const step=guideStep;
+    if(await saveTutorialStep(step,'skipped')) {openGuide(step+1);}
+  }
+  async function finishTutorial(){
+    if(await saveTutorialStep(6,'completed')) {setGuideStep(null);navigate('Get Started');}
+  }
 
   // Read-only, owner-scoped quota summary from a security-definer database RPC.
   const loadAiUsage = useCallback(async () => {
@@ -588,10 +649,24 @@ export default function DashboardPage() {
     const saveResult=await supabase.from("workspace_settings").upsert({workspace_id:workspace.id,...settings},{onConflict:"workspace_id"});
     if(saveResult.error)setSettingsError(saveResult.error.message);
     else {
-      setSettingsMessage("Company and AI settings saved.");
+      setSettingsMessage(t("Company and AI settings saved."));
+      const languageChanged = settings.preferred_language !== savedUiLocale;
+      setSavedUiLocale(settings.preferred_language);
+      const readyStep1=!!settings.description.trim() && !!settings.business_hours.trim();
+      const readyStep4=!!settings.ai_role.trim() && !!settings.ai_guidance.trim();
+      if(guideStep===1 && readyStep1)await saveTutorialStep(1,'completed');
+      if(guideStep===4 && readyStep4)await saveTutorialStep(4,'completed');
       await refresh();
-      if(guideStep===1)openGuide(2);
-      else if(guideStep===4)openGuide(5);
+      if(languageChanged){
+        if(guideStep===1 && readyStep1 || guideStep===4 && readyStep4){
+          try{window.sessionStorage.setItem('intrigue-guide-resume:'+workspace.id, String(guideStep===1?2:5));}catch{/* Session storage disabled */}
+        }
+        setSettingsMessage(t('Language saved. Reloading your workspace…'));
+        window.location.reload();
+        return;
+      }
+      if(guideStep===1 && readyStep1)openGuide(2);
+      else if(guideStep===4 && readyStep4)openGuide(5);
     }
     setSettingsBusy(false);
   }
@@ -660,7 +735,7 @@ export default function DashboardPage() {
     else {
       setServiceForm({id:"",name:"",description:"",price:"",currency:settings.currency,is_active:true});
       setShowServiceForm(false);await loadServices();
-      if(guideStep===3)openGuide(4);
+      if(guideStep===3){void saveTutorialStep(3,'completed');openGuide(4);}
     }
     setServiceBusy(false);
   }
@@ -1004,6 +1079,19 @@ export default function DashboardPage() {
   const inputClass = "w-full rounded-xl border border-[#35485d] bg-[#182c41] px-3 py-2.5 text-sm text-[#f5f0e8] outline-none focus:border-[#caa961]";
   const newButtonClass = "rounded-xl bg-[#c9a552] px-4 py-2.5 text-xs font-semibold text-[#111b29] hover:bg-[#e4c47b] disabled:opacity-50";
 
+  const guideActualDone=[
+    Boolean(settings.description.trim()&&settings.business_hours.trim()),
+    knowledgeEntries.length>0||documents.length>0,
+    services.length>0,
+    Boolean(settings.ai_role.trim()&&settings.ai_guidance.trim()),
+    teamMembers.length>1,
+    onboardingSteps[6]==='completed',
+  ];
+  const guideState=(step:number):'completed'|'skipped'|'pending'=>
+    guideActualDone[step-1] || onboardingSteps[step]==='completed' ? 'completed' : onboardingSteps[step]==='skipped' ? 'skipped' : 'pending';
+  const guideHandled=[1,2,3,4,5,6].filter(step=>guideState(step)!=='pending').length;
+  const guideCompleted=[1,2,3,4,5,6].filter(step=>guideState(step)==='completed').length;
+  const guideSkipped=guideHandled-guideCompleted;
   const GUIDE_TITLES = [
     'Complete business profile','Upload company knowledge and data',
     'Review products and pricing','Configure your AI Assistant',
@@ -1015,6 +1103,14 @@ export default function DashboardPage() {
     setGuideStep(n);
     navigate(GUIDE_DESTINATIONS[n-1]);
   }
+  useEffect(()=>{
+    if(!workspace || !isOwner)return;
+    try{
+      const key='intrigue-guide-resume:'+workspace.id;
+      const next=Number(window.sessionStorage.getItem(key));
+      if(next>=1&&next<=6){window.sessionStorage.removeItem(key);setGuideStep(next);setSection(GUIDE_DESTINATIONS[next-1]);}
+    }catch{/* Session storage disabled */}
+  },[workspace?.id,isOwner]);
   useEffect(()=>{
     if(guideStep!==4 || section!=='Settings')return;
     const frame=window.requestAnimationFrame(()=>document.getElementById('intrigue-ai-config')?.scrollIntoView({behavior:'smooth',block:'start'}));
@@ -1082,12 +1178,12 @@ export default function DashboardPage() {
   // During first hydration, hide temporary dark styling and generic company
   // placeholders. Reveal the full interface only after local theme and first
   // workspace lookup are resolved. Subsequent refreshes keep the shell mounted.
-  if (!appearanceReady || !workspaceResolvedOnce) {
+  if (!appearanceReady || !workspaceResolvedOnce || (!!workspace && settingsReadyId!==workspace.id)) {
     return <div className="intrigue-rc22-boot" data-theme={appearanceReady ? appearance : 'pending'} role="status" aria-live="polite" aria-busy="true">
       <div className="intrigue-rc22-boot-inner">
         <span className="intrigue-rc22-boot-wordmark">INTRIGUE <small>STUDIOS</small></span>
         <div className="intrigue-rc22-boot-progress" aria-hidden="true"><span/></div>
-        <p>Preparing your secure workspace…</p>
+        <p>{t("Preparing your secure workspace…")}</p>
       </div>
     </div>;
   }
@@ -1100,19 +1196,19 @@ export default function DashboardPage() {
     return <div className="intrigue-dashboard flex min-h-screen items-center justify-center bg-[#0b1827] px-5 py-12 text-[#f5f0e8]">
       <div className="w-full max-w-xl rounded-3xl border border-[#93733c]/60 bg-[#142539] p-7 shadow-2xl md:p-10">
         <div className="mb-5 inline-flex rounded-xl border border-[#b99a60]/30 bg-[#c9a552]/10 p-3 text-[#e9c577]"><ShieldCheck size={27}/></div>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#d5b46a]">INTRIGUE STUDIOS  |  Workspace access</p>
-        <h1 className="brand-display mt-3 text-4xl">Your access has been removed.</h1>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#d5b46a]">{t("INTRIGUE STUDIOS  |  Workspace access")}</p>
+        <h1 className="brand-display mt-3 text-4xl">{t("Your access has been removed.")}</h1>
         <p className="mt-4 text-sm leading-7 text-[#c7d4df]">
           Your account no longer has permission to view <strong className="text-[#f5f0e8]">{accessNotice.company_name}</strong>.
           If you think this was a mistake, contact the company administrator to request a new invitation.
         </p>
-        <p className="mt-3 text-xs text-[#9eacba]">Your INTRIGUE login still exists, but this company's data is no longer available to you.</p>
+        <p className="mt-3 text-xs text-[#9eacba]">{t("Your INTRIGUE login still exists, but this company's data is no longer available to you.")}</p>
         <div className="mt-7 flex flex-wrap gap-3">
-          {contactEmail && <a href={`mailto:${contactEmail}?subject=${encodeURIComponent("INTRIGUE workspace access")}`} className="rounded-xl bg-[#c9a552] px-5 py-3 text-sm font-semibold text-[#0b1827]">Contact company administrator</a>}
-          <button type="button" onClick={() => void refresh()} className="rounded-xl border border-[#506077] px-5 py-3 text-sm text-[#f5f0e8]">Check access again</button>
-          <button type="button" onClick={async () => { await supabase.auth.signOut(); window.location.assign("/auth/login"); }} className="rounded-xl border border-[#506077] px-5 py-3 text-sm text-[#f5f0e8]">Sign out</button>
+          {contactEmail && <a href={`mailto:${contactEmail}?subject=${encodeURIComponent("INTRIGUE workspace access")}`} className="rounded-xl bg-[#c9a552] px-5 py-3 text-sm font-semibold text-[#0b1827]">{t("Contact company administrator")}</a>}
+          <button type="button" onClick={() => void refresh()} className="rounded-xl border border-[#506077] px-5 py-3 text-sm text-[#f5f0e8]">{t("Check access again")}</button>
+          <button type="button" onClick={async () => { await supabase.auth.signOut(); window.location.assign("/auth/login"); }} className="rounded-xl border border-[#506077] px-5 py-3 text-sm text-[#f5f0e8]">{t("Sign out")}</button>
         </div>
-        {!contactEmail && <p className="mt-4 text-xs text-[#b8c7d4]">For contact details, reach the company owner through your usual communication channel.</p>}
+        {!contactEmail && <p className="mt-4 text-xs text-[#b8c7d4]">{t("For contact details, reach the company owner through your usual communication channel.")}</p>}
       </div>
     </div>;
   }
@@ -1126,7 +1222,7 @@ export default function DashboardPage() {
         <div className="min-w-0">
           <div className="brand-wordmark whitespace-nowrap text-[18px] font-medium leading-5 tracking-[0.16em] text-[#f2eadb]">INTRIGUE</div>
           <div className="mt-1 text-[9px] font-semibold tracking-[0.31em] text-[#cba75b]">STUDIOS</div>
-          <div className="mt-1.5 text-[9px] uppercase tracking-[0.14em] text-[#9daebb]">Operations Intelligence</div>
+          <div className="mt-1.5 text-[9px] uppercase tracking-[0.14em] text-[#9daebb]">{t("Operations Intelligence")}</div>
         </div>
       </div>
       <div className="mx-4 mb-7 rounded-xl border border-[#d9b467]/20 bg-[#ffffff]/[0.035] px-3.5 py-3">
@@ -1134,7 +1230,7 @@ export default function DashboardPage() {
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#bd9955]/20 text-[#e1c27f]"><IndustryIcon industry={settings.industry} size={19}/></div>
           <div className="min-w-0">
             <div className="truncate text-[13px] font-semibold text-[#f5f0e8]">{workspace?.name ?? "Your company"}</div>
-            <div className="text-[11px] text-[#9eacba]">Private company workspace</div>
+            <div className="text-[11px] text-[#9eacba]">{t("Private company workspace")}</div>
           </div>
         </div>
       </div>
@@ -1144,21 +1240,21 @@ export default function DashboardPage() {
             const Icon=item.icon; const selected=section===item.label;
             const group=({"Overview":"WORKSPACE","Customers":"BUSINESS","AI Assistant":"AI & AUTOMATION","Integrations":"CONNECTIONS","Team":"ADMINISTRATION"} as Record<string,string>)[item.label];
             return <div key={item.label}>
-              {group && <div className="mb-2 mt-5 px-3 text-[10px] font-bold tracking-[0.2em] text-[#c4a86e]">{group}</div>}
+              {group && <div className="mb-2 mt-5 px-3 text-[10px] font-bold tracking-[0.2em] text-[#c4a86e]">{t(group)}</div>}
               <button type="button" onClick={()=>navigate(item.label)} aria-current={selected?'page':undefined}
                 className={`intrigue-nav-item flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] font-medium transition-colors ${selected?'intrigue-nav-item-active':''}`}>
                 <Icon size={18} strokeWidth={selected?2.4:1.8}/>
-                <span className="flex-1">{item.label === "Customers" ? "Customers & CRM" : item.label === "Quotations" ? "Quotations & Proposals" : item.label === "Service Catalog" && /retail|fashion|commerce/i.test(settings.industry) ? "Product Catalog" : item.label}</span>
+                <span className="flex-1">{t(item.label === "Customers" ? "Customers & CRM" : item.label === "Quotations" ? "Quotations & Proposals" : item.label === "Service Catalog" && /retail|fashion|commerce/i.test(settings.industry) ? "Product Catalog" : item.label)}</span>
               </button>
             </div>;
           })}
           {isOwner && <details className="mt-5 border-t border-[#c5a566]/25 pt-4">
-            <summary className="cursor-pointer rounded-lg px-3 py-2 text-xs font-bold tracking-wide text-[#c4a86e]">Advanced settings</summary>
+            <summary className="cursor-pointer rounded-lg px-3 py-2 text-xs font-bold tracking-wide text-[#c4a86e]">{t("Advanced settings")}</summary>
             {["Data Management","Security & Usage","Plans & Billing","Pilot Application"].map(label=>{
               const item=NAV.find(n=>n.label===label)!;const Icon=item.icon;
               return <button key={label} type="button" onClick={()=>navigate(item.label)} aria-current={section===label?'page':undefined}
                 className={`intrigue-nav-item flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] ${section===label?'intrigue-nav-item-active':''}`}>
-                <Icon size={17}/><span>{label==='Pilot Application'?'Pilot request':label}</span>
+                <Icon size={17}/><span>{t(label==='Pilot Application'?'Pilot request':label)}</span>
               </button>;
             })}
           </details>}
@@ -1166,17 +1262,17 @@ export default function DashboardPage() {
       </div>
       <div className="mt-auto p-4">
 
-<button type="button" onClick={() => void handleSignOut()} disabled={signingOut} className="intrigue-signout-button mt-3 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:opacity-60" aria-label="Log out of INTRIGUE"><LogOut size={15}/>{signingOut ? "Logging out…" : "Log out"}</button>
+<button type="button" onClick={() => void handleSignOut()} disabled={signingOut} className="intrigue-signout-button mt-3 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:opacity-60" aria-label="Log out of INTRIGUE"><LogOut size={15}/>{t(signingOut ? "Logging out…" : "Log out")}</button>
         <div className="mt-4 flex items-center gap-3 px-2 py-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#344358] text-xs font-bold text-[#f5f0e8]">IS</div>
-          <div className="min-w-0"><div className="text-xs font-semibold text-[#f5f0e8]">{workspace?.name ?? "Your workspace"}</div><div className="text-[11px] text-[#9eacba]">{role === "owner" ? "Company owner" : role === "admin" ? "Administrator" : "Team member"}</div></div>
+          <div className="min-w-0"><div className="text-xs font-semibold text-[#f5f0e8]">{workspace?.name ?? "Your workspace"}</div><div className="text-[11px] text-[#9eacba]">{t(role === "owner" ? "Company owner" : role === "admin" ? "Administrator" : "Team member")}</div></div>
         </div>
       </div>
     </>
   );
 
   return (
-    <div data-intrigue-theme={appearance} className="intrigue-dashboard intrigue-glass min-h-screen bg-[#0b1827] font-sans text-[#f2efe8] lg:flex lg:h-dvh lg:overflow-hidden">
+    <div lang={locale} dir={uiDirection(locale)} data-intrigue-theme={appearance} className="intrigue-dashboard intrigue-glass min-h-screen bg-[#0b1827] font-sans text-[#f2efe8] lg:flex lg:h-dvh lg:overflow-hidden">
       <aside className="intrigue-sidebar hidden h-dvh w-[258px] shrink-0 flex-col overflow-hidden bg-[#0a1624] lg:flex">{sidebar}</aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-50 flex bg-[#030810]/85 lg:hidden">
@@ -1188,12 +1284,12 @@ export default function DashboardPage() {
         <header className="sticky top-0 z-30 flex h-[76px] items-center justify-between border-b border-[#2c3b4d] bg-[#0f2032] px-5 md:px-9">
           <div className="flex items-center gap-3">
             <button type="button" className="rounded-lg p-2 hover:bg-[#26384d] lg:hidden" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={22}/></button>
-            <span className="hidden text-[13px] text-[#9eacba] sm:block">Workspace</span>
+            <span className="hidden text-[13px] text-[#9eacba] sm:block">{t("Workspace")}</span>
             <ChevronRight className="hidden text-[#d5dfeb] sm:block" size={15}/>
-            <span className="text-sm font-semibold">{section === "Service Catalog" && /retail|fashion|commerce/i.test(settings.industry) ? "Product Catalog" : section}</span>
+            <span className="text-sm font-semibold">{t(section === "Service Catalog" && /retail|fashion|commerce/i.test(settings.industry) ? "Product Catalog" : section)}</span>
           </div>
           <div className="flex items-center gap-3 md:gap-5">
-            <span className="hidden items-center gap-1.5 rounded-full bg-[#654e24]/40 px-3 py-1.5 text-[11px] font-bold text-[#e7c37c] sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-[#ddb96d]"/>WORKSPACE</span>
+            <span className="hidden items-center gap-1.5 rounded-full bg-[#654e24]/40 px-3 py-1.5 text-[11px] font-bold text-[#e7c37c] sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-[#ddb96d]"/>{t("WORKSPACE")}</span>
             <button type="button" onClick={toggleAppearance} aria-label={appearance === "dark" ? "Switch to light appearance" : "Switch to dark appearance"} title={appearance === "dark" ? "Light mode" : "Dark mode"} className="rounded-xl border border-[#415064] p-2 text-[#d9c18b] transition hover:bg-[#26384d]">
               {appearance === "dark" ? <Sun size={18}/> : <Moon size={18}/>}
             </button>
@@ -1202,13 +1298,13 @@ export default function DashboardPage() {
                 <Bell size={18}/>
               </button>
               {activityOpen && <div role="dialog" aria-label="Notifications" className="intrigue-activity-popover absolute right-0 top-12 z-50 w-[min(345px,85vw)] rounded-2xl border border-[#45566b] bg-[#13263b] p-4 shadow-2xl">
-                <div className="flex items-center justify-between gap-4"><h3 className="text-sm font-semibold text-[#f1d189]">Activity & notifications</h3><button onClick={() => setActivityOpen(false)} type="button" aria-label="Close notifications" className="rounded-lg p-1 hover:bg-[#26384d]"><X size={17}/></button></div>
-                <p className="mt-3 text-sm text-[#d9e2eb]">Notifications appear here when connected services report an event.</p>
-                <p className="mt-2 text-xs leading-5 text-[#aebed0]">Your current alerts and activity settings are managed in Integrations and Settings.</p>
+                <div className="flex items-center justify-between gap-4"><h3 className="text-sm font-semibold text-[#f1d189]">{t("Activity & notifications")}</h3><button onClick={() => setActivityOpen(false)} type="button" aria-label="Close notifications" className="rounded-lg p-1 hover:bg-[#26384d]"><X size={17}/></button></div>
+                <p className="mt-3 text-sm text-[#d9e2eb]">{t("Notifications appear here when connected services report an event.")}</p>
+                <p className="mt-2 text-xs leading-5 text-[#aebed0]">{t("Your current alerts and activity settings are managed in Integrations and Settings.")}</p>
               </div>}
             </div>
             <button type="button" className="intrigue-signout-button inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:opacity-60" onClick={() => void handleSignOut()} disabled={signingOut} aria-label="Log out of INTRIGUE" title="Log out">
-              <LogOut size={16}/><span className="hidden sm:inline">{signingOut ? "Logging out…" : "Log out"}</span>
+              <LogOut size={16}/><span className="hidden sm:inline">{t(signingOut ? "Logging out…" : "Log out")}</span>
             </button>
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#80642f] text-xs font-bold text-[#f5f0e8]">IS</div>
           </div>
@@ -1218,33 +1314,33 @@ export default function DashboardPage() {
           <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.26em] text-[#d4b469]">{workspace?.name.toUpperCase() ?? "NEW COMPANY"}  /  WORKSPACE</div>
-              <h1 className="brand-display text-[34px] font-medium leading-none tracking-[-0.04em] md:text-[46px]">{section === "Overview" ? "Your operations, in focus." : (section === "Service Catalog" && /retail|fashion|commerce/i.test(settings.industry) ? "Product Catalog" : section)}</h1>
+              <h1 className="brand-display text-[34px] font-medium leading-none tracking-[-0.04em] md:text-[46px]">{section === "Overview" ? "Your operations, in focus." : (t(section === "Service Catalog" && /retail|fashion|commerce/i.test(settings.industry) ? "Product Catalog" : section))}</h1>
               <p className="mt-1.5 text-sm text-[#afbdcb]">{section === "Overview" ? "An intelligent view of everything moving your business forward." : "Workspace data and tools for your team."}</p>
             </div>
             <div className="flex gap-2">
-              <button type="button" onClick={() => navigate("Quotations")} className="flex items-center gap-2 rounded-xl border border-[#415064] bg-[#142539] px-4 py-2.5 text-xs font-semibold text-[#f0e9dc] shadow-sm hover:bg-[#1b2e42]"><Plus size={16}/>View quotes</button>
-              {isOwner && <button type="button" onClick={() => navigate("AI Assistant")} className="flex items-center gap-2 rounded-xl bg-[#c9a552] px-4 py-2.5 text-xs font-semibold text-[#111b29] hover:bg-[#e4c47b]"><Sparkles size={16}/>Ask AI</button>}
+              <button type="button" onClick={() => navigate("Quotations")} className="flex items-center gap-2 rounded-xl border border-[#415064] bg-[#142539] px-4 py-2.5 text-xs font-semibold text-[#f0e9dc] shadow-sm hover:bg-[#1b2e42]"><Plus size={16}/>{t("View quotes")}</button>
+              {isOwner && <button type="button" onClick={() => navigate("AI Assistant")} className="flex items-center gap-2 rounded-xl bg-[#c9a552] px-4 py-2.5 text-xs font-semibold text-[#111b29] hover:bg-[#e4c47b]"><Sparkles size={16}/>{t("Ask AI")}</button>}
             </div>
           </div>
 
-          {dbError && <div role="alert" className="mb-6 rounded-xl border border-red-400/40 bg-red-500/10 p-4 text-sm text-red-200">{dbError} <button type="button" onClick={()=>void refresh()} className="ml-3 underline">Retry</button></div>}
-          {loading && <div className="rounded-2xl border border-[#304153] bg-[#142539] p-8 text-sm text-[#afbdcb]">Loading your Supabase workspace...</div>}
+          {dbError && <div role="alert" className="mb-6 rounded-xl border border-red-400/40 bg-red-500/10 p-4 text-sm text-red-200">{dbError} <button type="button" onClick={()=>void refresh()} className="ml-3 underline">{t("Retry")}</button></div>}
+          {loading && <div className="rounded-2xl border border-[#304153] bg-[#142539] p-8 text-sm text-[#afbdcb]">{t("Loading your Supabase workspace...")}</div>}
           {!loading && joinToken && <div className="mb-6 rounded-2xl border border-[#a18343]/60 bg-[#142539] p-6">
-            <h2 className="text-lg font-semibold text-[#f2d486]">Team invitation</h2>
-            <p className="mt-2 text-sm text-[#d5dfeb]">Join the invited workspace using the account whose verified email matches the invitation. Team access follows the role assigned by your company owner.</p>
+            <h2 className="text-lg font-semibold text-[#f2d486]">{t("Team invitation")}</h2>
+            <p className="mt-2 text-sm text-[#d5dfeb]">{t("Join the invited workspace using the account whose verified email matches the invitation. Team access follows the role assigned by your company owner.")}</p>
             <button type="button" disabled={teamBusy} onClick={()=>void acceptInvite()} className="mt-4 rounded-xl bg-[#c9a552] px-4 py-2.5 text-sm font-semibold text-[#111b29] disabled:opacity-50">{teamBusy?"Joining...":"Accept invitation"}</button>
             {teamError && <p role="alert" className="mt-3 text-sm text-[#ffb3a7]">{teamError}</p>}
           </div>}
           {!loading && !workspace && !dbError && !joinToken && (
             <div className="rounded-2xl border border-[#a18343]/40 bg-[#142539] p-8">
-              <h2 className="brand-display text-4xl text-[#f5f0e8]">Create your company workspace.</h2>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-[#afbdcb]">Every newly registered company starts with an empty, private workspace. Other company records remain private. For testing, enter a fictional company name and do not upload real customer data.</p>
+              <h2 className="brand-display text-4xl text-[#f5f0e8]">{t("Create your company workspace.")}</h2>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-[#afbdcb]">{t("Every newly registered company starts with an empty, private workspace. Other company records remain private. For testing, enter a fictional company name and do not upload real customer data.")}</p>
               <form onSubmit={createCompany} className="mt-6 flex max-w-xl flex-col gap-3 sm:flex-row">
-                <label htmlFor="v13-company-name" className="sr-only">Company name</label>
+                <label htmlFor="v13-company-name" className="sr-only">{t("Company name")}</label>
                 <input id="v13-company-name" type="text" required minLength={2} maxLength={100} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="e.g. Demo Garage Two" className="min-w-0 flex-1 rounded-xl border border-[#51627a] bg-[#101e31] px-4 py-3 text-sm text-[#f5f0e8] outline-none focus:border-[#c9a552]" />
                 <button type="submit" disabled={busy || companyName.trim().length < 2} className="rounded-xl bg-[#c9a552] px-5 py-3 text-sm font-bold text-[#111b29] disabled:opacity-50">{busy ? "Creating..." : "Create company"}</button>
               </form>
-              <p className="mt-4 text-xs text-[#d5b46a]">To join an existing company, accept a verified-email team invitation instead of creating a new workspace.</p>
+              <p className="mt-4 text-xs text-[#d5b46a]">{t("To join an existing company, accept a verified-email team invitation instead of creating a new workspace.")}</p>
             </div>
           )}
           {!loading && workspace && <>
@@ -1252,17 +1348,19 @@ export default function DashboardPage() {
             <section className="intrigue-setup-guide mb-6 rounded-2xl border border-[#b9975c] bg-[#142539] p-5" aria-label="Guided company setup">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[#d6ae67]">Guided setup / Step {guideStep} of 6</div>
-                  <h2 className="mt-1 text-lg font-semibold">{GUIDE_TITLES[guideStep-1]}</h2>
-                  <p className="mt-2 text-xs opacity-80">Your information is saved in your company workspace. Move between steps whenever you need.</p>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[#d6ae67]">{t("Guided company setup")} / {guideStep}/6</div>
+                  <h2 className="mt-1 text-lg font-semibold">{t(GUIDE_TITLES[guideStep-1])}</h2>
+                  <p className="mt-2 text-xs opacity-80">{t("Your information is saved in your company workspace. Move between steps whenever you need.")}</p>
                 </div>
-                <button type="button" className="rounded-lg border border-[#977b4a] px-3 py-2 text-xs" onClick={()=>{setGuideStep(null);navigate('Get Started');}}>Exit tutorial</button>
+                <button type="button" className="rounded-lg border border-[#977b4a] px-3 py-2 text-xs" onClick={()=>{setGuideStep(null);navigate('Get Started');}}>{t("Exit tutorial")}</button>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <button type="button" disabled={guideStep===1} onClick={()=>openGuide(guideStep-1)} className="rounded-lg border border-[#927648] px-4 py-2 text-xs disabled:opacity-40">Previous step</button>
-                {guideStep<6 && <button type="button" onClick={()=>openGuide(guideStep+1)} className="rounded-lg bg-[#c9a552] px-4 py-2 text-xs font-semibold text-[#122036]">Continue to step {guideStep+1}</button>}
-                {guideStep===6 && <button type="button" onClick={()=>{setGuideStep(null);navigate('Get Started');}} className="rounded-lg bg-[#c9a552] px-4 py-2 text-xs font-semibold text-[#122036]">Finish tutorial</button>}
+                <button type="button" disabled={guideStep===1} onClick={()=>openGuide(guideStep-1)} className="rounded-lg border border-[#927648] px-4 py-2 text-xs disabled:opacity-40">{t("Previous step")}</button>
+                {guideStep<6 && <button type="button" disabled={progressBusy||!progressLoaded} onClick={()=>{void skipTutorialStep();}} className="rounded-lg border border-[#927648] px-4 py-2 text-xs disabled:opacity-40">{t('Skip this step')}</button>}
+                {guideStep<6 && <button type="button" disabled={guideState(guideStep)==='pending'||progressBusy||!progressLoaded} onClick={()=>openGuide(guideStep+1)} className="rounded-lg bg-[#c9a552] px-4 py-2 text-xs font-semibold text-[#122036] disabled:opacity-40">{t('Continue')} {guideStep+1} →</button>}
+                {guideStep===6 && <button type="button" disabled={progressBusy||!progressLoaded} onClick={()=>{void finishTutorial();}} className="rounded-lg bg-[#c9a552] px-4 py-2 text-xs font-semibold text-[#122036]">{t('Finish tutorial')}</button>}
               </div>
+              {progressError && <p role="alert" className="mt-3 text-xs text-red-300">{progressError}</p>}
             </section>
           )}
 
@@ -1273,10 +1371,10 @@ export default function DashboardPage() {
                 <div className="absolute right-20 top-16 h-44 w-44 rounded-full border-[28px] border-[#d5b264]/10"/>
                 <img src="https://intriguestudios.de/intrigue-logo.png" alt="" aria-hidden="true" className="pointer-events-none absolute -right-8 -top-24 hidden h-[410px] w-[360px] object-contain opacity-[0.24] lg:block" />
                 <div className="relative z-10 max-w-xl">
-                  <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-[#e5c47c]/10 px-3 py-1.5 text-[11px] font-semibold text-[#f2d486]"><Zap size={13}/>INTELLIGENCE, BY DESIGN</div>
-                  <h2 className="brand-display text-[34px] font-medium leading-[1.05] tracking-[-0.02em] md:text-[51px]">One system. Infinite clarity.</h2>
-                  <p className="mt-3 max-w-md text-[13px] leading-6 text-[#d3d8dd]/80">Your clients, knowledge and workflows in one intelligent workspace. Designed to help your business move with precision.</p>
-                  {isOwner && <button type="button" onClick={() => navigate("AI Assistant")} className="mt-6 flex items-center gap-2 rounded-xl bg-[#d1ad60] px-4 py-2.5 text-xs font-bold text-[#182234] hover:bg-[#f0d38c]">Meet your AI assistant <ArrowRight size={15}/></button>}
+                  <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-[#e5c47c]/10 px-3 py-1.5 text-[11px] font-semibold text-[#f2d486]"><Zap size={13}/>{t("INTELLIGENCE, BY DESIGN")}</div>
+                  <h2 className="brand-display text-[34px] font-medium leading-[1.05] tracking-[-0.02em] md:text-[51px]">{t("One system. Infinite clarity.")}</h2>
+                  <p className="mt-3 max-w-md text-[13px] leading-6 text-[#d3d8dd]/80">{t("Your clients, knowledge and workflows in one intelligent workspace. Designed to help your business move with precision.")}</p>
+                  {isOwner && <button type="button" onClick={() => navigate("AI Assistant")} className="mt-6 flex items-center gap-2 rounded-xl bg-[#d1ad60] px-4 py-2.5 text-xs font-bold text-[#182234] hover:bg-[#f0d38c]">{t("Meet your AI assistant")} <ArrowRight size={15}/></button>}
                 </div>
               </div>
 
@@ -1298,15 +1396,15 @@ export default function DashboardPage() {
 
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(310px,1fr)]">
                 <div className="rounded-2xl border border-[#304153] bg-[#142539] shadow-sm">
-                  <div className="flex items-center justify-between border-b border-[#2d3b4f] px-5 py-5 md:px-6"><div><h3 className="text-[15px] font-bold">Recent inquiries</h3><p className="mt-1 text-xs text-[#9eacba]">Customers that need your attention</p></div><button type="button" onClick={() => navigate("Customers")} className="flex items-center gap-1 text-xs font-semibold text-[#e0bf76] hover:underline">View all <ArrowUpRight size={15}/></button></div>
-                  <div className="intrigue-inquiries-overview min-w-0"><table className="w-full table-fixed text-left"><thead><tr className="border-b border-[#2d3b4f] bg-[#192b3e]/70 text-[11px] uppercase tracking-[0.04em] text-[#9eacba]"><th className="px-6 py-3 font-semibold">Customer</th><th className="px-3 py-3 font-semibold">Request</th><th className="px-3 py-3 font-semibold">Status</th><th className="px-4 py-3 font-semibold">Received</th></tr></thead><tbody>{enquiries.slice(0, 5).map((row) => <tr key={row.id} className="border-b border-[#2d3b4f] last:border-0"><td className="px-6 py-4"><div className="text-xs font-bold text-[#f5f0e8]">{customerName(row.customer_id)}</div><div className="mt-1 text-[11px] text-[#9eacba]">{customerContext(row.customer_id)}</div></td><td className="px-3 py-4 text-xs text-[#d5dbe0]">{row.subject}</td><td className="px-3 py-4"><Tag variant={row.status === "follow_up" ? "amber" : row.status === "scheduled" ? "emerald" : row.status === "new" ? "blue" : "slate"}>{statusText(row.status)}</Tag></td><td className="px-4 py-4 text-[11px] text-[#9eacba]">{niceDate(row.created_at)}</td></tr>)}</tbody></table></div>
+                  <div className="flex items-center justify-between border-b border-[#2d3b4f] px-5 py-5 md:px-6"><div><h3 className="text-[15px] font-bold">{t("Recent inquiries")}</h3><p className="mt-1 text-xs text-[#9eacba]">{t("Customers that need your attention")}</p></div><button type="button" onClick={() => navigate("Customers")} className="flex items-center gap-1 text-xs font-semibold text-[#e0bf76] hover:underline">{t("View all")} <ArrowUpRight size={15}/></button></div>
+                  <div className="intrigue-inquiries-overview min-w-0"><table className="w-full table-fixed text-left"><thead><tr className="border-b border-[#2d3b4f] bg-[#192b3e]/70 text-[11px] uppercase tracking-[0.04em] text-[#9eacba]"><th className="px-6 py-3 font-semibold">{t("Customer")}</th><th className="px-3 py-3 font-semibold">{t("Request")}</th><th className="px-3 py-3 font-semibold">{t("Status")}</th><th className="px-4 py-3 font-semibold">{t("Received")}</th></tr></thead><tbody>{enquiries.slice(0, 5).map((row) => <tr key={row.id} className="border-b border-[#2d3b4f] last:border-0"><td className="px-6 py-4"><div className="text-xs font-bold text-[#f5f0e8]">{customerName(row.customer_id)}</div><div className="mt-1 text-[11px] text-[#9eacba]">{customerContext(row.customer_id)}</div></td><td className="px-3 py-4 text-xs text-[#d5dbe0]">{row.subject}</td><td className="px-3 py-4"><Tag variant={row.status === "follow_up" ? "amber" : row.status === "scheduled" ? "emerald" : row.status === "new" ? "blue" : "slate"}>{statusText(row.status)}</Tag></td><td className="px-4 py-4 text-[11px] text-[#9eacba]">{niceDate(row.created_at)}</td></tr>)}</tbody></table></div>
                 </div>
                 <div className="rounded-2xl border border-[#304153] bg-[#142539] p-5 shadow-sm md:p-6">
-                  <div className="mb-1 flex items-center gap-2"><Sparkles size={19} className="text-[#e0bb72]"/><h3 className="text-[15px] font-bold">Ask your business</h3></div>
-                  <p className="mb-5 text-xs leading-5 text-[#9eacba]">Ask your AI about customers, quotations and follow-ups saved in Supabase.</p>
-                  <div className="mb-4 rounded-xl border border-[#3f3a2b] bg-[#182b3e] p-4"><div className="mb-2 flex items-center gap-2 text-xs font-bold text-[#f5f0e8]"><Bot size={17} className="text-[#e0bf76]"/>INTRIGUE Assistant</div><p className="text-xs leading-6 text-[#d5dbe0]">You have <strong>{pendingTasks.length} pending follow-ups</strong> and <strong>{money(quotePipeline)}</strong> in unapproved quotations. What would you like to review first?</p></div>
-                  {isOwner && <div className="space-y-2">{QUICK_PROMPTS.map((prompt) => <button type="button" key={prompt} onClick={() => void askQuestion(prompt)} disabled={aiLoading} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#35485d] px-3.5 py-3 text-left text-xs font-medium text-[#d5dbe0] hover:border-[#caa961] hover:bg-[#2c3949]/50">{prompt}<ArrowRight size={15} className="shrink-0 text-[#9eacba]"/></button>)}</div>}
-                  <div className="mt-4 text-[10px] text-[#9eacba]">AI answers use current database records. The model cannot modify business records.</div>
+                  <div className="mb-1 flex items-center gap-2"><Sparkles size={19} className="text-[#e0bb72]"/><h3 className="text-[15px] font-bold">{t("Ask your business")}</h3></div>
+                  <p className="mb-5 text-xs leading-5 text-[#9eacba]">{t("Ask your AI about customers, quotations and follow-ups saved in Supabase.")}</p>
+                  <div className="mb-4 rounded-xl border border-[#3f3a2b] bg-[#182b3e] p-4"><div className="mb-2 flex items-center gap-2 text-xs font-bold text-[#f5f0e8]"><Bot size={17} className="text-[#e0bf76]"/>INTRIGUE Assistant</div><p className="text-xs leading-6 text-[#d5dbe0]">{t("You have")} <strong>{pendingTasks.length} {t("pending follow-ups")}</strong> {t("and")} <strong>{money(quotePipeline)}</strong> {t("in unapproved quotations. What would you like to review first?")}</p></div>
+                  {isOwner && <div className="space-y-2">{QUICK_PROMPTS.map((prompt) => <button type="button" key={prompt} onClick={() => void askQuestion(prompt)} disabled={aiLoading} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#35485d] px-3.5 py-3 text-left text-xs font-medium text-[#d5dbe0] hover:border-[#caa961] hover:bg-[#2c3949]/50">{t(prompt)}<ArrowRight size={15} className="shrink-0 text-[#9eacba]"/></button>)}</div>}
+                  <div className="mt-4 text-[10px] text-[#9eacba]">{t("AI answers use current database records. The model cannot modify business records.")}</div>
                 </div>
               </div>
 
@@ -1323,9 +1421,9 @@ export default function DashboardPage() {
 
           {section === "AI Assistant" && (
             <div className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-[#2c3b4d] bg-[#0f2032] shadow-sm">
-              <div className="flex items-center gap-3 border-b border-[#2d3b4f] p-5"><div className="rounded-xl bg-[#263447] p-3 text-[#e0bf76]"><Bot size={22}/></div><div><div className="text-sm font-bold">INTRIGUE Assistant</div><div className="text-[11px] text-[#afbdcb]">Tool-calling agent  |  Reads records and prepares approval proposals</div></div><span className="ml-auto"><Tag variant={aiConnected ? "emerald" : "amber"}>{aiConnected ? "AI configured" : "API key missing"}</Tag></span></div>
-              <div className="flex h-[440px] flex-col gap-4 overflow-y-auto bg-[#0d1c2b] p-5 md:p-6" aria-live="polite">{messages.map((message, index) => <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`${message.proposalId?"w-full max-w-[90%]":"max-w-[85%]"} space-y-3`}><div className={`whitespace-pre-wrap rounded-2xl px-4 py-3 text-[13px] leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#30455b] text-[#f5f0e8]" : "rounded-tl-sm border border-[#304153] bg-[#142539] text-[#f0e9dc]"}`}>{message.text}</div>{message.toolsUsed?.length ? <p className="text-[11px] text-[#d6bc80]">Tools: {message.toolsUsed.join("  |  ")}</p> : null}{message.proposalId && (actionProposals.find(p=>p.id===message.proposalId) ? <ProposalReviewCard proposal={actionProposals.find(p=>p.id===message.proposalId)!} customer={customerName(actionProposals.find(p=>p.id===message.proposalId)!.customer_id)} busy={actionBusy} onDecide={(id,decision)=>void decideAction(id,decision)} onEdit={editAction}/> : <button type="button" className="text-xs text-[#e9c577] underline" onClick={()=>navigate("Automation Center")}>View approval queue</button>)}</div></div>)}{aiLoading && <p className="text-xs text-[#d8c18e]">{chatActionBusy?"Preparing a verified proposal...":"Calling authorized business tools..."}</p>}{actionError && <p role="alert" className="rounded-lg border border-red-400/40 bg-red-400/10 p-3 text-xs text-[#ffc2b9]">Action: {actionError}</p>}{actionMessage && <p role="status" className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs text-[#b3ead0]">{actionMessage}</p>}</div>
-              <div className="border-t border-[#2d3b4f] p-4 md:p-5"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-[#afbdcb]">Tools: customers, quotations, follow-ups, knowledge and approval drafts. Human approval required.</span><button type="button" onClick={takeToActionCenter} className="rounded-lg border border-[#b18c46] px-3 py-2 text-xs font-semibold text-[#e9c577] hover:bg-[#26384d]">View approvals</button></div><div className="mb-3 flex flex-wrap gap-2">{QUICK_PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => void askQuestion(prompt)} disabled={aiLoading} className="rounded-full border border-[#35485d] px-3 py-1.5 text-[11px] text-[#d5dbe0] hover:bg-[#1b2e42]">{prompt}</button>)}</div><form onSubmit={submitChat} className="flex gap-2"><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask a question or request a draft quote..." className="min-w-0 flex-1 rounded-xl border border-[#35485d] bg-[#182c41] px-4 py-3 text-sm text-[#f5f0e8] placeholder:text-[#98a8b8] outline-none focus:border-[#caa961]" aria-label="Message"/><button type="submit" disabled={!draft.trim() || aiLoading} className="flex h-[46px] w-[48px] items-center justify-center rounded-xl bg-[#30455b] text-[#f5f0e8] disabled:opacity-40" aria-label="Send message"><Send size={18}/></button></form></div>
+              <div className="flex items-center gap-3 border-b border-[#2d3b4f] p-5"><div className="rounded-xl bg-[#263447] p-3 text-[#e0bf76]"><Bot size={22}/></div><div><div className="text-sm font-bold">INTRIGUE Assistant</div><div className="text-[11px] text-[#afbdcb]">{t("Tool-calling agent  |  Reads records and prepares approval proposals")}</div></div><span className="ml-auto"><Tag variant={aiConnected ? "emerald" : "amber"}>{t(aiConnected ? "AI configured" : "API key missing")}</Tag></span></div>
+              <div className="flex h-[440px] flex-col gap-4 overflow-y-auto bg-[#0d1c2b] p-5 md:p-6" aria-live="polite">{messages.map((message, index) => <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`${message.proposalId?"w-full max-w-[90%]":"max-w-[85%]"} space-y-3`}><div className={`whitespace-pre-wrap rounded-2xl px-4 py-3 text-[13px] leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#30455b] text-[#f5f0e8]" : "rounded-tl-sm border border-[#304153] bg-[#142539] text-[#f0e9dc]"}`}>{message.text}</div>{message.toolsUsed?.length ? <p className="text-[11px] text-[#d6bc80]">{t("Tools:")} {message.toolsUsed.join("  |  ")}</p> : null}{message.proposalId && (actionProposals.find(p=>p.id===message.proposalId) ? <ProposalReviewCard proposal={actionProposals.find(p=>p.id===message.proposalId)!} customer={customerName(actionProposals.find(p=>p.id===message.proposalId)!.customer_id)} busy={actionBusy} onDecide={(id,decision)=>void decideAction(id,decision)} onEdit={editAction}/> : <button type="button" className="text-xs text-[#e9c577] underline" onClick={()=>navigate("Automation Center")}>{t("View approval queue")}</button>)}</div></div>)}{aiLoading && <p className="text-xs text-[#d8c18e]">{chatActionBusy?"Preparing a verified proposal...":"Calling authorized business tools..."}</p>}{actionError && <p role="alert" className="rounded-lg border border-red-400/40 bg-red-400/10 p-3 text-xs text-[#ffc2b9]">{t("Action:")} {actionError}</p>}{actionMessage && <p role="status" className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs text-[#b3ead0]">{actionMessage}</p>}</div>
+              <div className="border-t border-[#2d3b4f] p-4 md:p-5"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-[#afbdcb]">{t("Tools: customers, quotations, follow-ups, knowledge and approval drafts. Human approval required.")}</span><button type="button" onClick={takeToActionCenter} className="rounded-lg border border-[#b18c46] px-3 py-2 text-xs font-semibold text-[#e9c577] hover:bg-[#26384d]">{t("View approvals")}</button></div><div className="mb-3 flex flex-wrap gap-2">{QUICK_PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => void askQuestion(prompt)} disabled={aiLoading} className="rounded-full border border-[#35485d] px-3 py-1.5 text-[11px] text-[#d5dbe0] hover:bg-[#1b2e42]">{t(prompt)}</button>)}</div><form onSubmit={submitChat} className="flex gap-2"><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={t("Ask a question or request a draft quote...")} className="min-w-0 flex-1 rounded-xl border border-[#35485d] bg-[#182c41] px-4 py-3 text-sm text-[#f5f0e8] placeholder:text-[#98a8b8] outline-none focus:border-[#caa961]" aria-label="Message"/><button type="submit" disabled={!draft.trim() || aiLoading} className="flex h-[46px] w-[48px] items-center justify-center rounded-xl bg-[#30455b] text-[#f5f0e8] disabled:opacity-40" aria-label="Send message"><Send size={18}/></button></form></div>
             </div>
           )}
 
@@ -1335,44 +1433,44 @@ export default function DashboardPage() {
               {isOwner && actionProposals.length > 0 && <details className="rounded-2xl border border-[#35485d] bg-[#142539] p-5">
                 <summary className="cursor-pointer text-sm font-semibold text-[#e3c07b]">Other pending approvals ({actionProposals.filter(p=>p.status === "pending").length})</summary>
                 <div className="mt-4 space-y-3">
-                  <p className="text-xs opacity-70">Approval requests created through the AI assistant. All actions require confirmation.</p>
+                  <p className="text-xs opacity-70">{t("Approval requests created through the AI assistant. All actions require confirmation.")}</p>
                   {actionProposals.map(proposal=><ProposalReviewCard key={proposal.id} proposal={proposal} customer={customerName(proposal.customer_id)} busy={actionBusy} onDecide={(id,decision)=>void decideAction(id,decision)} onEdit={editAction}/>)}
                 </div>
               </details>}
               {isOwner && <details className="rounded-2xl border border-[#35485d] bg-[#142539] p-5">
-                <summary className="cursor-pointer text-sm font-semibold text-[#e3c07b]">Previous test jobs</summary>
+                <summary className="cursor-pointer text-sm font-semibold text-[#e3c07b]">{t("Previous test jobs")}</summary>
                 <div className="mt-5 space-y-5">
               <div className="rounded-2xl border border-[#806f46]/50 bg-[#142539] p-6">
-                <div className="mb-3 flex items-center gap-3"><Zap size={22} className="text-[#e0bf76]"/><h2 className="text-base font-bold">INTRIGUE Native Automation Engine</h2><Tag variant="amber">Manual test processing</Tag></div>
-                <p className="max-w-3xl text-xs leading-6 text-[#c9d4df]">Queue a safe processing receipt for a quotation you already approved. Supabase stores the job and its history. A separate worker processes it. No email, WhatsApp, CRM update or customer action will occur.</p>
+                <div className="mb-3 flex items-center gap-3"><Zap size={22} className="text-[#e0bf76]"/><h2 className="text-base font-bold">{t("INTRIGUE Native Automation Engine")}</h2><Tag variant="amber">{t("Manual test processing")}</Tag></div>
+                <p className="max-w-3xl text-xs leading-6 text-[#c9d4df]">{t("Queue a safe processing receipt for a quotation you already approved. Supabase stores the job and its history. A separate worker processes it. No email, WhatsApp, CRM update or customer action will occur.")}</p>
               </div>
               {automationError && <p role="alert" className="rounded-xl border border-red-400/30 bg-red-400/10 p-4 text-xs text-[#ffc2b9]">{automationError}</p>}
               {automationMessage && <p role="status" className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-xs text-[#b3ead0]">{automationMessage}</p>}
               <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold">Approved quotations available for processing</h3><button type="button" onClick={()=>{void loadActions();void loadAutomationJobs();}} disabled={automationBusy} className="rounded-lg border border-[#806f46] px-3 py-2 text-xs text-[#e9c577]">Refresh</button></div>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold">{t("Approved quotations available for processing")}</h3><button type="button" onClick={()=>{void loadActions();void loadAutomationJobs();}} disabled={automationBusy} className="rounded-lg border border-[#806f46] px-3 py-2 text-xs text-[#e9c577]">{t("Refresh")}</button></div>
                 <div className="space-y-3">
-                  {actionProposals.filter(p=>p.status==="approved" && !!p.quotation_id).length===0 && <p className="text-xs text-[#afbdcb]">No approved quotations yet. Approve a quote in AI Assistant first.</p>}
+                  {actionProposals.filter(p=>p.status==="approved" && !!p.quotation_id).length===0 && <p className="text-xs text-[#afbdcb]">{t("No approved quotations yet. Approve a quote in AI Assistant first.")}</p>}
                   {actionProposals.filter(p=>p.status==="approved" && !!p.quotation_id).map(p=>{
                     const job=automationJobs.find(j=>j.proposal_id===p.id);
                     return <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#34475b] bg-[#0e2032] p-4">
                       <div><p className="text-sm font-semibold">{customerName(p.customer_id)}  |  {p.quote_description || "Approved quotation"}</p><p className="mt-1 text-xs text-[#afbdcb]">{money(Number(p.quote_amount))}  |  Quote {p.quotation_id?.slice(0,8)}</p></div>
                       {job ? <Tag variant={job.status==="completed"?"emerald":job.status==="needs_review"?"amber":"blue"}>{job.status.replaceAll("_"," ")}</Tag> :
-                        <button type="button" disabled={automationBusy} onClick={()=>void queueDemoJob(p.id)} className="rounded-lg bg-[#c9a552] px-4 py-2.5 text-xs font-bold text-[#111b29] disabled:opacity-50">Queue internal job</button>}
+                        <button type="button" disabled={automationBusy} onClick={()=>void queueDemoJob(p.id)} className="rounded-lg bg-[#c9a552] px-4 py-2.5 text-xs font-bold text-[#111b29] disabled:opacity-50">{t("Queue internal job")}</button>}
                     </div>;
                   })}
                 </div>
               </div>
               <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold">Job history</h3><span className="text-xs text-[#aebdcb]">{automationJobs.length} visible jobs</span></div>
-                {automationJobs.length===0 && <p className="text-xs text-[#afbdcb]">No jobs queued. Use the button above to add the first one.</p>}
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold">{t("Job history")}</h3><span className="text-xs text-[#aebdcb]">{automationJobs.length} {t("visible jobs")}</span></div>
+                {automationJobs.length===0 && <p className="text-xs text-[#afbdcb]">{t("No jobs queued. Use the button above to add the first one.")}</p>}
                 <div className="space-y-3">{automationJobs.map(j=><div key={j.id} className="rounded-xl border border-[#34475b] bg-[#0e2032] p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold">Job {j.id.slice(0,8)}  |  Quote {j.quotation_id.slice(0,8)}</p><Tag variant={j.status==="completed"?"emerald":j.status==="needs_review"?"amber":"blue"}>{j.status.replaceAll("_"," ")}</Tag></div>
-                  <p className="mt-2 text-[11px] text-[#afbdcb]">Attempts: {j.attempts}/{j.max_attempts}  |  Created {niceDate(j.created_at)}</p>
+                  <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold">{t("Job")} {j.id.slice(0,8)}  |  Quote {j.quotation_id.slice(0,8)}</p><Tag variant={j.status==="completed"?"emerald":j.status==="needs_review"?"amber":"blue"}>{j.status.replaceAll("_"," ")}</Tag></div>
+                  <p className="mt-2 text-[11px] text-[#afbdcb]">{t("Attempts:")} {j.attempts}/{j.max_attempts}  |  Created {niceDate(j.created_at)}</p>
                   {j.result?.message && <p className="mt-2 text-xs text-[#b3ead0]">{j.result.message}</p>}
-                  {j.last_error && <p className="mt-2 text-xs text-[#ffc2b9]">Error: {j.last_error}</p>}
+                  {j.last_error && <p className="mt-2 text-xs text-[#ffc2b9]">{t("Error:")} {j.last_error}</p>}
                 </div>)}</div>
               </div>
-              <div className="rounded-xl border border-[#665632] bg-[#1b2c3f] p-5 text-xs leading-6 text-[#d9c8a7]">Previous test jobs remain available for reference. Use the workflow manager above for new test runs.</div>
+              <div className="rounded-xl border border-[#665632] bg-[#1b2c3f] p-5 text-xs leading-6 text-[#d9c8a7]">{t("Previous test jobs remain available for reference. Use the workflow manager above for new test runs.")}</div>
                 </div>
               </details>}
             </div>
@@ -1380,36 +1478,44 @@ export default function DashboardPage() {
 
           {section === "Get Started" && <div className="space-y-5">
             <div className="rounded-2xl border border-[#9c8046]/50 bg-[#142539] p-7">
-              <h2 className="brand-display text-3xl">Your guided workspace setup</h2>
-              <p className="mt-2 text-sm text-[#afbdcb]">Follow the steps in order. Each step opens the right page, and you can return here any time. Team invitation is optional.</p>
-              <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-[#28394b]"><div className="h-full bg-[#c9a552]" style={{width:`${Math.round(([Boolean(settings.description.trim()&&settings.business_hours.trim()),knowledgeEntries.length>0||documents.length>0,services.length>0,Boolean(settings.ai_role.trim()&&settings.ai_guidance.trim())].filter(Boolean).length/4)*100)}%`}}/></div>
-              <p className="mt-2 text-xs text-[#d9bd7d]">{[Boolean(settings.description.trim()&&settings.business_hours.trim()),knowledgeEntries.length>0||documents.length>0,services.length>0,Boolean(settings.ai_role.trim()&&settings.ai_guidance.trim())].filter(Boolean).length} of 4 essential steps complete</p>
-              <button type="button" className={`${newButtonClass} mt-4`} onClick={()=>openGuide(1)}>Start guided tutorial</button>
+              <h2 className="brand-display text-3xl">{t('Your guided workspace setup')}</h2>
+              <p className="mt-2 text-sm text-[#afbdcb]">{t('Follow the steps in order. Each step opens the right page, and you can return here any time. Team invitation is optional.')}</p>
+              <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-[#28394b]"><div className="h-full bg-[#c9a552]" style={{width:`${Math.round(guideHandled/6*100)}%`}}/></div>
+              <p className="mt-2 text-xs text-[#d9bd7d]">{guideHandled}/6 {t('Review')} · {guideCompleted} {t('Completed')} · {guideSkipped} {t('Skipped')}</p>
+              <button type="button" className={`${newButtonClass} mt-4`} onClick={()=>openGuide([1,2,3,4,5,6].find(step=>guideState(step)==='pending')??1)}>{t('Start guided tutorial')}</button>
+              {progressError && <p role="alert" className="mt-3 text-xs text-red-300">{progressError}</p>}
             </div>
             <div className="grid gap-3 md:grid-cols-2">{[
-              {label:'1. Complete business profile',done:Boolean(settings.description.trim()&&settings.business_hours.trim()),help:'Company name, currency, language, industry, contact details and hours.'},
-              {label:'2. Upload company knowledge and data',done:knowledgeEntries.length>0||documents.length>0,help:'Import TXT, CSV, JSON or ZIP, or write information for direct saving.'},
-              {label:'3. Products and pricing',done:services.length>0,help:'Verify the imported catalog or add items manually.'},
-              {label:'4. Configure AI Assistant',done:Boolean(settings.ai_role.trim()&&settings.ai_guidance.trim()),help:'Assistant name, language preference, role and guidance.'},
-              {label:'5. Invite your team (optional)',done:teamMembers.length>1,help:'Add Admin, Staff or Viewer members, or skip.'},
-              {label:'6. Review setup',done:false,help:'Review each module before enabling client workflows.'},
-            ].map((step,i)=><button key={step.label} type="button" onClick={()=>openGuide(i+1)} className="rounded-xl border border-[#35485d] bg-[#142539] p-5 text-left hover:border-[#c9a552]"><span className="flex items-center gap-2 text-sm font-semibold"><CheckCircle2 className={step.done?'text-[#b3ead0]':'text-[#71869b]'} size={17}/>{step.label}</span><span className="mt-2 block text-xs text-[#afbdcb]">{step.help}</span><span className="mt-3 block text-xs text-[#e7c37c]">{step.done?'Completed. Review':'Open step'} {'>'}</span></button>)}</div>
-            <p className="text-xs text-[#e6cc8d]">Test mode: use fictional records until cross-company API and quota security checks pass.</p>
+              {label:'1. Complete business profile',help:'Company name, currency, language, industry, contact details and hours.'},
+              {label:'2. Upload company knowledge and data',help:'Import TXT, CSV, JSON or ZIP, or write information for direct saving.'},
+              {label:'3. Products and pricing',help:'Verify the imported catalog or add items manually.'},
+              {label:'4. Configure AI Assistant',help:'Assistant name, language preference, role and guidance.'},
+              {label:'5. Invite your team (optional)',help:'Add Admin, Staff or Viewer members, or skip.'},
+              {label:'6. Review setup',help:'Review each module before enabling client workflows.'},
+            ].map((step,i)=>{
+              const state=guideState(i+1);
+              return <button key={step.label} type="button" onClick={()=>openGuide(i+1)} className="rounded-xl border border-[#35485d] bg-[#142539] p-5 text-left hover:border-[#c9a552]">
+                <span className="flex items-center gap-2 text-sm font-semibold"><CheckCircle2 className={state==='completed'?'text-[#b3ead0]':state==='skipped'?'text-[#e7c37c]':'text-[#71869b]'} size={17}/>{t(step.label)}</span>
+                <span className="mt-2 block text-xs text-[#afbdcb]">{t(step.help)}</span>
+                <span className="mt-3 block text-xs text-[#e7c37c]">{state==='completed'?t('Completed. Review'):state==='skipped'?t('Skipped. Review'):t('Open step')} →</span>
+              </button>
+            })}</div>
+            <p className="text-xs text-[#e6cc8d]">{t("Test mode: use fictional records until cross-company API and quota security checks pass.")}</p>
           </div>}
 
           {section === "Service Catalog" && <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#35485d] bg-[#142539] p-6"><div><h2 className="text-lg font-semibold">{/retail|fashion|commerce/i.test(settings.industry) ? "Your products & prices" : "Your services & prices"}</h2><p className="mt-1 text-xs text-[#afbdcb]">Workspace-specific catalog. Your AI can look up active services; quotations still require the existing approval flow.</p></div>
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#35485d] bg-[#142539] p-6"><div><h2 className="text-lg font-semibold">{/retail|fashion|commerce/i.test(settings.industry) ? "Your products & prices" : "Your services & prices"}</h2><p className="mt-1 text-xs text-[#afbdcb]">{t("Workspace-specific catalog. Your AI can look up active services; quotations still require the existing approval flow.")}</p></div>
               {canManageCatalog && <button type="button" className={newButtonClass} onClick={()=>{setShowServiceForm(v=>!v);setServiceForm({id:"",name:"",description:"",price:"",currency:settings.currency,is_active:true});}}><Plus size={14} className="mr-1 inline"/>{/retail|fashion|commerce/i.test(settings.industry) ? "New product" : "New service"}</button>}</div>
             {serviceError && <p role="alert" className="rounded-lg border border-red-400/40 p-3 text-sm text-[#ffb3a7]">{serviceError}</p>}
             {canManageCatalog && showServiceForm && <form onSubmit={saveService} className="grid gap-3 rounded-2xl border border-[#927b4e] bg-[#142539] p-5 md:grid-cols-2">
               <label className="text-xs text-[#e7c37c]">{/retail|fashion|commerce/i.test(settings.industry) ? "Product name" : "Service name"}<input required minLength={2} maxLength={120} className={`${inputClass} mt-2`} value={serviceForm.name} onChange={e=>setServiceForm({...serviceForm,name:e.target.value})}/></label>
-              <label className="text-xs text-[#e7c37c]">Price<input type="number" min="0" max="999999999" step="0.01" required className={`${inputClass} mt-2`} value={serviceForm.price} onChange={e=>setServiceForm({...serviceForm,price:e.target.value})}/></label>
-              <label className="text-xs text-[#e7c37c]">Currency<select className={`${inputClass} mt-2`} value={serviceForm.currency} onChange={e=>setServiceForm({...serviceForm,currency:e.target.value})}>{["EUR","USD","GBP","KES"].map(x=><option key={x}>{x}</option>)}</select></label>
-              <label className="flex items-center gap-2 text-xs text-[#e7c37c]"><input type="checkbox" checked={serviceForm.is_active} onChange={e=>setServiceForm({...serviceForm,is_active:e.target.checked})}/>Active service</label>
-              <label className="text-xs text-[#e7c37c] md:col-span-2">Description<textarea maxLength={1000} className={`${inputClass} mt-2 min-h-20`} value={serviceForm.description} onChange={e=>setServiceForm({...serviceForm,description:e.target.value})}/></label>
-              <div className="flex gap-2 md:col-span-2"><button disabled={serviceBusy} className={newButtonClass} type="submit">{serviceBusy?"Saving...":serviceForm.id?"Save changes":"Add service"}</button><button type="button" onClick={()=>setShowServiceForm(false)} className="rounded-xl border border-[#526076] px-4 py-2 text-xs">Cancel</button></div>
+              <label className="text-xs text-[#e7c37c]">{t("Price")}<input type="number" min="0" max="999999999" step="0.01" required className={`${inputClass} mt-2`} value={serviceForm.price} onChange={e=>setServiceForm({...serviceForm,price:e.target.value})}/></label>
+              <label className="text-xs text-[#e7c37c]">{t("Currency")}<select className={`${inputClass} mt-2`} value={serviceForm.currency} onChange={e=>setServiceForm({...serviceForm,currency:e.target.value})}>{["EUR","USD","GBP","KES"].map(x=><option key={x}>{x}</option>)}</select></label>
+              <label className="flex items-center gap-2 text-xs text-[#e7c37c]"><input type="checkbox" checked={serviceForm.is_active} onChange={e=>setServiceForm({...serviceForm,is_active:e.target.checked})}/>{t("Active service")}</label>
+              <label className="text-xs text-[#e7c37c] md:col-span-2">{t("Description")}<textarea maxLength={1000} className={`${inputClass} mt-2 min-h-20`} value={serviceForm.description} onChange={e=>setServiceForm({...serviceForm,description:e.target.value})}/></label>
+              <div className="flex gap-2 md:col-span-2"><button disabled={serviceBusy} className={newButtonClass} type="submit">{serviceBusy?"Saving...":serviceForm.id?"Save changes":"Add service"}</button><button type="button" onClick={()=>setShowServiceForm(false)} className="rounded-xl border border-[#526076] px-4 py-2 text-xs">{t("Cancel")}</button></div>
             </form>}
-            <div className="grid gap-3 md:grid-cols-2">{services.map(item=><article key={item.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-5"><div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold">{item.name}</h3><Tag variant={item.is_active?"emerald":"slate"}>{item.is_active?"Active":"Inactive"}</Tag></div><p className="mt-2 text-lg font-semibold text-[#e4c47b]">{new Intl.NumberFormat("en-GB",{style:"currency",currency:item.currency}).format(Number(item.price))}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">{item.description||"No description yet"}</p>{canManageCatalog && <div className="mt-4 flex gap-2"><button type="button" className="rounded-lg border border-[#8b764d] px-3 py-2 text-xs" onClick={()=>{setServiceForm({id:item.id,name:item.name,description:item.description,price:String(item.price),currency:item.currency,is_active:item.is_active});setShowServiceForm(true);}}>Edit</button><button type="button" disabled={serviceBusy} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]" onClick={()=>void removeService(item.id)}>Delete</button></div>}</article>)}{services.length===0 && <p className="rounded-2xl border border-[#35485d] bg-[#142539] p-7 text-sm text-[#afbdcb]">No services yet. {canManageCatalog?"Add the first service to begin.":"Ask your owner or admin to add services."}</p>}</div>
+            <div className="grid gap-3 md:grid-cols-2">{services.map(item=><article key={item.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-5"><div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold">{item.name}</h3><Tag variant={item.is_active?"emerald":"slate"}>{item.is_active?"Active":"Inactive"}</Tag></div><p className="mt-2 text-lg font-semibold text-[#e4c47b]">{new Intl.NumberFormat("en-GB",{style:"currency",currency:item.currency}).format(Number(item.price))}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">{item.description||"No description yet"}</p>{canManageCatalog && <div className="mt-4 flex gap-2"><button type="button" className="rounded-lg border border-[#8b764d] px-3 py-2 text-xs" onClick={()=>{setServiceForm({id:item.id,name:item.name,description:item.description,price:String(item.price),currency:item.currency,is_active:item.is_active});setShowServiceForm(true);}}>{t("Edit")}</button><button type="button" disabled={serviceBusy} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]" onClick={()=>void removeService(item.id)}>{t("Delete")}</button></div>}</article>)}{services.length===0 && <p className="rounded-2xl border border-[#35485d] bg-[#142539] p-7 text-sm text-[#afbdcb]">{t("No services yet.")} {canManageCatalog?"Add the first service to begin.":"Ask your owner or admin to add services."}</p>}</div>
           </div>}
 
           {section === "Customers" && <CustomersCRMPanel
@@ -1434,26 +1540,27 @@ export default function DashboardPage() {
           />}
 
           {section === "Follow-ups" && <div className="space-y-4">
-            {canWriteOps && <div className="flex justify-end"><button type="button" className={newButtonClass} onClick={()=>setShowFollowForm(!showFollowForm)}><Plus size={14} className="mr-1 inline"/>New follow-up</button></div>}
-            {canWriteOps && showFollowForm && <form onSubmit={addFollowUp} className="grid gap-3 rounded-2xl border border-[#35485d] bg-[#142539] p-5 md:grid-cols-3"><select className={inputClass} required value={followForm.customerId} onChange={e=>setFollowForm({...followForm,customerId:e.target.value})} aria-label="Select customer"><option value="">Select customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select><input className={inputClass} required maxLength={300} placeholder="Follow-up task" aria-label="Follow-up task" value={followForm.title} onChange={e=>setFollowForm({...followForm,title:e.target.value})}/><input className={inputClass} required type="date" aria-label="Due date" value={followForm.date} onChange={e=>setFollowForm({...followForm,date:e.target.value})}/><button disabled={busy || !customers.length} className={`${newButtonClass} md:col-span-3`}>Save follow-up</button></form>}
-            <div className="grid gap-4 md:grid-cols-2">{tasks.map(task=><div key={task.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 shadow-sm"><div className="mb-4 flex items-start justify-between gap-3"><div className="text-base font-bold">{customerName(task.customer_id)}</div><Tag variant={task.status==="done"?"emerald":"amber"}>{task.status==="done"?"Completed":task.priority==="high"?"High priority":"Pending"}</Tag></div><p className="text-sm font-medium text-[#f0e9dc]">{task.title}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">Due {niceDate(task.due_at)}  |  {customerContext(task.customer_id)}</p>{canWriteOps && task.status==="pending" && <button type="button" disabled={busy} onClick={()=>completeFollowUp(task.id)} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#9f7b39] px-3 py-2 text-xs text-[#e1c178] hover:bg-[#304153]"><CheckCircle2 size={15}/>Mark complete</button>}</div>)}</div>
-            {tasks.length===0 && <p className="rounded-xl border border-[#35485d] p-6 text-sm text-[#afbdcb]">No follow-up tasks yet.</p>}
+            {canWriteOps && <div className="flex justify-end"><button type="button" className={newButtonClass} onClick={()=>setShowFollowForm(!showFollowForm)}><Plus size={14} className="mr-1 inline"/>{t("New follow-up")}</button></div>}
+            {canWriteOps && showFollowForm && <form onSubmit={addFollowUp} className="grid gap-3 rounded-2xl border border-[#35485d] bg-[#142539] p-5 md:grid-cols-3"><select className={inputClass} required value={followForm.customerId} onChange={e=>setFollowForm({...followForm,customerId:e.target.value})} aria-label="Select customer"><option value="">{t("Select customer")}</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select><input className={inputClass} required maxLength={300} placeholder="Follow-up task" aria-label="Follow-up task" value={followForm.title} onChange={e=>setFollowForm({...followForm,title:e.target.value})}/><input className={inputClass} required type="date" aria-label="Due date" value={followForm.date} onChange={e=>setFollowForm({...followForm,date:e.target.value})}/><button disabled={busy || !customers.length} className={`${newButtonClass} md:col-span-3`}>{t("Save follow-up")}</button></form>}
+            <div className="grid gap-4 md:grid-cols-2">{tasks.map(task=><div key={task.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 shadow-sm"><div className="mb-4 flex items-start justify-between gap-3"><div className="text-base font-bold">{customerName(task.customer_id)}</div><Tag variant={task.status==="done"?"emerald":"amber"}>{task.status==="done"?"Completed":task.priority==="high"?"High priority":"Pending"}</Tag></div><p className="text-sm font-medium text-[#f0e9dc]">{task.title}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">{t("Due")} {niceDate(task.due_at)}  |  {customerContext(task.customer_id)}</p>{canWriteOps && task.status==="pending" && <button type="button" disabled={busy} onClick={()=>completeFollowUp(task.id)} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#9f7b39] px-3 py-2 text-xs text-[#e1c178] hover:bg-[#304153]"><CheckCircle2 size={15}/>{t("Mark complete")}</button>}</div>)}</div>
+            {tasks.length===0 && <p className="rounded-xl border border-[#35485d] p-6 text-sm text-[#afbdcb]">{t("No follow-up tasks yet.")}</p>}
           </div>}
 
           {section === "Knowledge Base" && workspace && (
             <div className="space-y-5 intrigue-khub">
               {isOwner ? <CompanyOnboarding
+                locale={locale}
                 workspaceId={workspace.id}
                 workspaceName={workspace.name}
-                onImported={() => { void refresh(); void loadKnowledge(); void loadServices(); void loadDocuments(); if(guideStep===2)openGuide(3); }}
-              /> : <section className="rounded-2xl border p-6"><h2 className="font-bold">Company Knowledge (read-only)</h2><p className="mt-2 text-sm">Only the company owner can import or update business records.</p></section>}
+                onImported={() => { void refresh(); void loadKnowledge(); void loadServices(); void loadDocuments(); if(guideStep===2){void saveTutorialStep(2,'completed');openGuide(3);} }}
+              /> : <section className="rounded-2xl border p-6"><h2 className="font-bold">{t("Company Knowledge (read-only)")}</h2><p className="mt-2 text-sm">{t("Only the company owner can import or update business records.")}</p></section>}
               <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
                 <div className="flex items-center gap-2"><BookOpen size={18}/><h3 className="font-semibold">Saved company knowledge ({knowledgeEntries.length})</h3></div>
-                {!knowledgeEntries.length && <p className="mt-3 text-sm">No saved entries yet. Upload or type company information above to populate this automatically.</p>}
+                {!knowledgeEntries.length && <p className="mt-3 text-sm">{t("No saved entries yet. Upload or type company information above to populate this automatically.")}</p>}
                 <div className="mt-4 grid gap-3 md:grid-cols-2">{knowledgeEntries.map(entry => <article key={entry.id} className="intrigue-khub-file rounded-xl border p-4">
                   <p className="text-xs opacity-70">{entry.category}</p><h4 className="mt-2 font-semibold">{entry.title}</h4>
                   <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-6">{entry.content}</p>
-                  {isOwner && <button type="button" className="intrigue-khub-delete mt-4 rounded-lg border px-3 py-2 text-xs" onClick={() => { void deleteKnowledge(entry.id); }}>Delete</button>}
+                  {isOwner && <button type="button" className="intrigue-khub-delete mt-4 rounded-lg border px-3 py-2 text-xs" onClick={() => { void deleteKnowledge(entry.id); }}>{t("Delete")}</button>}
                 </article>)}</div>
               </section>
               {documents.length > 0 && <section className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
@@ -1467,7 +1574,7 @@ export default function DashboardPage() {
           {section === "Calendar" && workspace && isOwner && (
             <div className="space-y-5">
               <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-5">
-                <h2 className="text-lg font-semibold text-[#f4efe5]">Calendar & booking</h2>
+                <h2 className="text-lg font-semibold text-[#f4efe5]">{t("Calendar & booking")}</h2>
                 <p className="mt-2 text-sm text-[#b8c7d4]">Review upcoming appointments, working hours and the booking connections for this company. Provider authorization remains owner-controlled.</p>
               </div>
               <CalendarConnections />
@@ -1480,8 +1587,8 @@ export default function DashboardPage() {
               <div className="rounded-2xl border border-[#a18343]/55 bg-[#142539] p-6 md:p-8">
                 <div className="mb-4 flex items-center gap-3"><CreditCard size={23} className="text-[#e0bf76]"/><h2 className="text-lg font-bold">Plans & Billing  |  Private Preview</h2></div>
                 <p className="max-w-3xl text-sm leading-6 text-[#c6d2df]">Explore possible launch tiers and register your company's interest. This preview does not collect payment information, create subscriptions, process invoices, or change your current access or AI request limits.</p>
-                <div className="mt-5 flex flex-wrap gap-2"><Tag variant="amber">No charges enabled</Tag><Tag variant="slate">No plans activated</Tag><Tag variant="blue">Company owner only</Tag></div>
-                {planLoading && <p role="status" className="mt-4 text-xs text-[#bbcbd8]">Loading your plan interest...</p>}
+                <div className="mt-5 flex flex-wrap gap-2"><Tag variant="amber">{t("No charges enabled")}</Tag><Tag variant="slate">{t("No plans activated")}</Tag><Tag variant="blue">{t("Company owner only")}</Tag></div>
+                {planLoading && <p role="status" className="mt-4 text-xs text-[#bbcbd8]">{t("Loading your plan interest...")}</p>}
                 {planInterest && <p className="mt-5 text-sm text-[#b3ead0]">Interest on file: <strong className="capitalize">{planInterest.requested_tier}</strong>  |  Submitted {niceDate(planInterest.requested_at)}. You can update your interest below.</p>}
               </div>
               <div className="grid gap-4 lg:grid-cols-3">
@@ -1489,7 +1596,7 @@ export default function DashboardPage() {
                   <div className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-[#c8a65f]">{plan.audience}</div>
                   <h3 className="brand-display text-3xl">{plan.name}</h3>
                   <p className="mt-3 flex-1 text-sm leading-6 text-[#abbccd]">{plan.details}</p>
-                  <p className="my-5 border-t border-[#37485b] pt-4 text-xs text-[#d0bc8f]">Pricing by proposal  |  Not yet available for purchase</p>
+                  <p className="my-5 border-t border-[#37485b] pt-4 text-xs text-[#d0bc8f]">{t("Pricing by proposal  |  Not yet available for purchase")}</p>
                   <button type="button" disabled={planSaving || planLoading || !workspace} onClick={()=>void savePlanInterest(plan.tier)} className={`${newButtonClass} w-full`}>{planSaving?"Saving...":planInterest?.requested_tier===plan.tier?"Update interest":"Register interest"}</button>
                 </article>)}
               </div>
@@ -1499,8 +1606,8 @@ export default function DashboardPage() {
                 <strong className="text-[#f0d18e]">What this does not do:</strong> Your selection is an expression of interest only. No billing integration, payment provider, invoices, subscription benefits, AI quota changes, or company-wide usage enforcement are activated.
               </div>
               <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#46576a] bg-[#142539] p-5">
-                <div><h3 className="text-sm font-semibold">Request a guided pilot evaluation</h3><p className="mt-2 text-xs leading-5 text-[#aebfcf]">Define your business goal and success criteria for manual review. No automatic trial or subscription.</p></div>
-                <button type="button" className={newButtonClass} onClick={()=>navigate("Pilot Application")}>Open pilot application (next)</button>
+                <div><h3 className="text-sm font-semibold">{t("Request a guided pilot evaluation")}</h3><p className="mt-2 text-xs leading-5 text-[#aebfcf]">Define your business goal and success criteria for manual review. No automatic trial or subscription.</p></div>
+                <button type="button" className={newButtonClass} onClick={()=>navigate("Pilot Application")}>{t("Open pilot application (next)")}</button>
               </div>
               {aiUsage && <p className="text-xs text-[#aebfcf]">AI requests today for this company's owner account: <strong className="text-[#e7c37c]">{aiUsage.chat_today} / {aiUsage.chat_day_limit}</strong>. The limit remains per owner account, not pooled across staff.</p>}
             </div>
@@ -1509,13 +1616,13 @@ export default function DashboardPage() {
           {section === "Pilot Application" && isOwner && (
             <div className="space-y-5">
               <div className="rounded-2xl border border-[#a18343]/50 bg-[#142539] p-6 md:p-8">
-                <div className="mb-3 flex items-center gap-3"><ClipboardCheck className="text-[#e0bf76]" size={24}/><h2 className="text-lg font-bold">Apply for a guided pilot</h2></div>
+                <div className="mb-3 flex items-center gap-3"><ClipboardCheck className="text-[#e0bf76]" size={24}/><h2 className="text-lg font-bold">{t("Apply for a guided pilot")}</h2></div>
                 <p className="max-w-3xl text-sm leading-6 text-[#b7c7d5]">Tell INTRIGUE STUDIOS what you want to evaluate. A submitted request is for discussion only. It does not activate payments, extend AI quotas, enable automation workers or authorize production customer data.</p>
-                <div className="mt-4 flex flex-wrap gap-2"><Tag variant="amber">Private preview</Tag><Tag variant="blue">Owner only</Tag><Tag variant="slate">Manual review</Tag></div>
+                <div className="mt-4 flex flex-wrap gap-2"><Tag variant="amber">{t("Private preview")}</Tag><Tag variant="blue">{t("Owner only")}</Tag><Tag variant="slate">{t("Manual review")}</Tag></div>
                 <div className="mt-5 grid gap-3 text-xs md:grid-cols-3">
-                  <div className="rounded-xl border border-[#46586a] bg-[#0e2235] p-3"><strong className="text-[#e7c37c]">1  |  Submitted</strong><p className="mt-1 text-[#b7c7d5]">Your request is stored privately for operator review.</p></div>
-                  <div className="rounded-xl border border-[#46586a] bg-[#0e2235] p-3"><strong className="text-[#e7c37c]">2  |  Contacted</strong><p className="mt-1 text-[#b7c7d5]">An operator has marked the request for follow-up, not activated service.</p></div>
-                  <div className="rounded-xl border border-[#46586a] bg-[#0e2235] p-3"><strong className="text-[#e7c37c]">3  |  Closed</strong><p className="mt-1 text-[#b7c7d5]">The review is complete; no billing or trial is started.</p></div>
+                  <div className="rounded-xl border border-[#46586a] bg-[#0e2235] p-3"><strong className="text-[#e7c37c]">1  |  Submitted</strong><p className="mt-1 text-[#b7c7d5]">{t("Your request is stored privately for operator review.")}</p></div>
+                  <div className="rounded-xl border border-[#46586a] bg-[#0e2235] p-3"><strong className="text-[#e7c37c]">2  |  Contacted</strong><p className="mt-1 text-[#b7c7d5]">{t("An operator has marked the request for follow-up, not activated service.")}</p></div>
+                  <div className="rounded-xl border border-[#46586a] bg-[#0e2235] p-3"><strong className="text-[#e7c37c]">3  |  Closed</strong><p className="mt-1 text-[#b7c7d5]">{t("The review is complete; no billing or trial is started.")}</p></div>
                 </div>
                 {pilotRequest && <div className="mt-5 rounded-xl border border-[#40566a] bg-[#102234] p-4 text-sm">
                   <p>Current request: <strong className="capitalize text-[#efcd85]">{pilotRequest.status.replaceAll("_"," ")}</strong>  |  First submitted {niceDate(pilotRequest.submitted_at)}</p>
@@ -1529,34 +1636,34 @@ export default function DashboardPage() {
                 </div>}
               </div>
               <form onSubmit={submitPilotRequest} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 md:p-8">
-                <h3 className="mb-5 text-sm font-semibold">Your evaluation request</h3>
+                <h3 className="mb-5 text-sm font-semibold">{t("Your evaluation request")}</h3>
                 <fieldset disabled={pilotSaving || pilotLoading || (!!pilotRequest && pilotRequest.status!=="submitted")} className="grid gap-4 md:grid-cols-2 disabled:opacity-65">
-                  <label className="text-xs font-medium text-[#e6c17b]">Contact name
+                  <label className="text-xs font-medium text-[#e6c17b]">{t("Contact name")}
                     <input required minLength={2} maxLength={100} autoComplete="name" className={`${inputClass} mt-2`} value={pilotForm.contact_name} onChange={e=>setPilotForm(v=>({...v,contact_name:e.target.value}))}/>
                   </label>
-                  <label className="text-xs font-medium text-[#e6c17b]">Business contact email
+                  <label className="text-xs font-medium text-[#e6c17b]">{t("Business contact email")}
                     <input required type="email" maxLength={254} autoComplete="email" className={`${inputClass} mt-2`} value={pilotForm.contact_email} onChange={e=>setPilotForm(v=>({...v,contact_email:e.target.value}))}/>
                   </label>
-                  <label className="text-xs font-medium text-[#e6c17b]">Expected team size
+                  <label className="text-xs font-medium text-[#e6c17b]">{t("Expected team size")}
                     <input required type="number" min={1} max={1000} step={1} className={`${inputClass} mt-2`} value={pilotForm.estimated_seats} onChange={e=>setPilotForm(v=>({...v,estimated_seats:Number(e.target.value)}))}/>
                   </label>
-                  <label className="text-xs font-medium text-[#e6c17b]">Preferred start date (optional)
+                  <label className="text-xs font-medium text-[#e6c17b]">{t("Preferred start date (optional)")}
                     <input type="date" className={`${inputClass} mt-2`} value={pilotForm.preferred_start} onChange={e=>setPilotForm(v=>({...v,preferred_start:e.target.value}))}/>
                   </label>
-                  <label className="text-xs font-medium text-[#e6c17b] md:col-span-2">What would you like to automate or improve?
+                  <label className="text-xs font-medium text-[#e6c17b] md:col-span-2">{t("What would you like to automate or improve?")}
                     <textarea required minLength={20} maxLength={1200} rows={4} className={`${inputClass} mt-2 resize-y`} placeholder="Describe a fictional or non-sensitive example workflow..." value={pilotForm.intended_use} onChange={e=>setPilotForm(v=>({...v,intended_use:e.target.value}))}/>
                   </label>
-                  <label className="text-xs font-medium text-[#e6c17b] md:col-span-2">How would you measure success?
+                  <label className="text-xs font-medium text-[#e6c17b] md:col-span-2">{t("How would you measure success?")}
                     <textarea required minLength={10} maxLength={800} rows={3} className={`${inputClass} mt-2 resize-y`} placeholder="For example: reduce manual follow-up work during a controlled demo..." value={pilotForm.success_criteria} onChange={e=>setPilotForm(v=>({...v,success_criteria:e.target.value}))}/>
                   </label>
-                  <label className="text-xs font-medium text-[#e6c17b] md:col-span-2">Additional notes (optional)
+                  <label className="text-xs font-medium text-[#e6c17b] md:col-span-2">{t("Additional notes (optional)")}
                     <textarea maxLength={500} rows={2} className={`${inputClass} mt-2 resize-y`} value={pilotForm.request_notes} onChange={e=>setPilotForm(v=>({...v,request_notes:e.target.value}))}/>
                   </label>
                 </fieldset>
                 {pilotError && <p role="alert" className="mt-4 rounded-lg border border-red-400/40 p-3 text-xs text-[#ffb3a7]">{pilotError}</p>}
                 {pilotSuccess && <p role="status" className="mt-4 rounded-lg border border-emerald-400/30 p-3 text-xs text-[#b3ead0]">{pilotSuccess}</p>}
-                {pilotLoading && <p role="status" className="mt-4 text-xs text-[#b7c7d5]">Loading your request...</p>}
-                {pilotRequest && pilotRequest.status!=="submitted" && <p className="mt-4 text-xs text-[#e7c37c]">This request is already in review or closed; contact INTRIGUE STUDIOS to make changes.</p>}
+                {pilotLoading && <p role="status" className="mt-4 text-xs text-[#b7c7d5]">{t("Loading your request...")}</p>}
+                {pilotRequest && pilotRequest.status!=="submitted" && <p className="mt-4 text-xs text-[#e7c37c]">{t("This request is already in review or closed; contact INTRIGUE STUDIOS to make changes.")}</p>}
                 <button type="submit" disabled={pilotSaving || pilotLoading || (!!pilotRequest && pilotRequest.status!=="submitted")} className={`${newButtonClass} mt-5`}>{pilotSaving?"Saving...":pilotRequest?"Update submitted request":"Submit pilot request"}</button>
                 <p className="mt-4 text-xs leading-5 text-[#b7c7d5]">For staging, use fictional use cases only. This form does not send an email automatically or start a pilot.</p>
               </form>
@@ -1565,7 +1672,7 @@ export default function DashboardPage() {
 
           {section === "Security & Usage" && isOwner && <div className="space-y-5">
             <div className="rounded-2xl border border-[#997b45]/50 bg-[#142539] p-6 md:p-8">
-              <div className="flex items-center gap-3"><ShieldCheck size={24} className="text-[#e1bd72]"/><h2 className="text-lg font-bold">AI usage and safeguards</h2></div>
+              <div className="flex items-center gap-3"><ShieldCheck size={24} className="text-[#e1bd72]"/><h2 className="text-lg font-bold">{t("AI usage and safeguards")}</h2></div>
               <p className="mt-3 text-sm leading-6 text-[#b7c7d5]">These are request allowances for the signed-in owner, not billing amounts or model-token costs. All limits are enforced atomically by Supabase before contacting the AI provider.</p>
               <div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={()=>void loadAiUsage()} disabled={usageBusy} className="rounded-lg border border-[#967b48] px-4 py-2 text-xs font-semibold text-[#e7c37c] disabled:opacity-50">{usageBusy?"Refreshing...":"Refresh usage"}</button><Tag variant="amber">Staging  |  No real client data</Tag></div>
               {usageError && <p role="alert" className="mt-4 rounded-xl border border-red-400/40 p-4 text-xs text-[#ffc2b9]">{usageError}</p>}
@@ -1583,7 +1690,7 @@ export default function DashboardPage() {
               </div><p className="mt-4 text-xs text-[#bdc8d4]">Daily limits reset at {aiUsage.reset_utc} UTC. This screen never allows staff to reset or edit counters.</p></>}
             </div>
             <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-              <h3 className="text-sm font-bold">Launch security gates</h3>
+              <h3 className="text-sm font-bold">{t("Launch security gates")}</h3>
               <div className="mt-4 space-y-3 text-xs leading-6 text-[#bccbd9]">
                 <p>- Database access controls: configuration and interface tests have been performed; continued verification is required.</p>
                 <p>- Cross-company isolation: validate denied reads and writes with dedicated staging accounts.</p>
@@ -1596,93 +1703,93 @@ export default function DashboardPage() {
           {section === "Settings" && <div className="space-y-5">
             <AccountDeletionPanel />
             <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-7 shadow-sm">
-              <div className="flex items-center gap-3"><Settings className="text-[#e0bf76]" size={22}/><h2 className="text-lg font-bold">Company & assistant setup</h2></div>
-              <p className="mt-2 text-sm text-[#afbdcb]">Configure your business identity, service hours and AI preferences. All data stays in your workspace.</p>
+              <div className="flex items-center gap-3"><Settings className="text-[#e0bf76]" size={22}/><h2 className="text-lg font-bold">{t("Company & assistant setup")}</h2></div>
+              <p className="mt-2 text-sm text-[#afbdcb]">{t("Configure your business identity, service hours and AI preferences. All data stays in your workspace.")}</p>
               <div className="mt-4 text-xs text-[#b3ead0]">Workspace: {workspace.name}  |  Your access: {role}</div>
-              {!isOwner ? <p className="mt-5 rounded-xl border border-[#526076] p-4 text-sm text-[#afbdcb]">Team members have read-only access. Ask the company owner to change these settings.</p> :
+              {!isOwner ? <p className="mt-5 rounded-xl border border-[#526076] p-4 text-sm text-[#afbdcb]">{t("Team members have read-only access. Ask the company owner to change these settings.")}</p> :
               <form onSubmit={saveSettings} className="mt-6 space-y-5">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="text-xs text-[#e7c37c]">Company name<input className={`${inputClass} mt-2`} value={companyEditName} maxLength={100} minLength={2} required onChange={e=>setCompanyEditName(e.target.value)}/></label>
-                  <label className="text-xs text-[#e7c37c]">Industry<select className={`${inputClass} mt-2`} value={settings.industry} onChange={e=>setSettings({...settings,industry:e.target.value})}>{["Automotive","Real Estate","Retail","Hospitality","Healthcare","Professional Services","Technology","Logistics","Other"].map(x=><option key={x}>{x}</option>)}</select></label>
-                  <label className="text-xs text-[#e7c37c]">Business email<input className={`${inputClass} mt-2`} type="email" maxLength={254} value={settings.contact_email} onChange={e=>setSettings({...settings,contact_email:e.target.value})}/></label>
-                  <label className="text-xs text-[#e7c37c]">Telephone<input className={`${inputClass} mt-2`} maxLength={60} value={settings.phone} onChange={e=>setSettings({...settings,phone:e.target.value})}/></label>
-                  <label className="text-xs text-[#e7c37c]">Website<input className={`${inputClass} mt-2`} maxLength={255} placeholder="https://example.com" value={settings.website} onChange={e=>setSettings({...settings,website:e.target.value})}/></label>
-                  <label className="text-xs text-[#e7c37c]">Business timezone<select className={`${inputClass} mt-2`} value={settings.timezone} onChange={e=>setSettings({...settings,timezone:e.target.value})}>{["Europe/Berlin","Europe/London","Africa/Nairobi","America/New_York","America/Los_Angeles","UTC"].map(x=><option key={x}>{x}</option>)}</select></label>
-                  <label className="text-xs text-[#e7c37c]">Currency<select className={`${inputClass} mt-2`} value={settings.currency} onChange={e=>setSettings({...settings,currency:e.target.value})}>{["EUR","USD","GBP","KES"].map(x=><option key={x}>{x}</option>)}</select></label>
-                  <label className="text-xs text-[#e7c37c]">Preferred customer communication language<select className={`${inputClass} mt-2`} value={settings.preferred_language} onChange={e=>setSettings({...settings,preferred_language:e.target.value})}>{COMPANY_LANGUAGES.map(([code,label])=><option key={code} value={code}>{label}</option>)}</select><span className="mt-1 block text-[11px] opacity-70">Used as AI response guidance. The dashboard interface remains in English.</span></label>
-                  <label className="text-xs text-[#e7c37c]">Business hours<input className={`${inputClass} mt-2`} maxLength={350} placeholder="Mon-Fri 09:00-18:00" value={settings.business_hours} onChange={e=>setSettings({...settings,business_hours:e.target.value})}/></label>
+                  <label className="text-xs text-[#e7c37c]">{t("Company name")}<input className={`${inputClass} mt-2`} value={companyEditName} maxLength={100} minLength={2} required onChange={e=>setCompanyEditName(e.target.value)}/></label>
+                  <label className="text-xs text-[#e7c37c]">{t("Industry")}<select className={`${inputClass} mt-2`} value={settings.industry} onChange={e=>setSettings({...settings,industry:e.target.value})}>{["Automotive","Real Estate","Retail","Hospitality","Healthcare","Professional Services","Technology","Logistics","Other"].map(x=><option key={x}>{x}</option>)}</select></label>
+                  <label className="text-xs text-[#e7c37c]">{t("Business email")}<input className={`${inputClass} mt-2`} type="email" maxLength={254} value={settings.contact_email} onChange={e=>setSettings({...settings,contact_email:e.target.value})}/></label>
+                  <label className="text-xs text-[#e7c37c]">{t("Telephone")}<input className={`${inputClass} mt-2`} maxLength={60} value={settings.phone} onChange={e=>setSettings({...settings,phone:e.target.value})}/></label>
+                  <label className="text-xs text-[#e7c37c]">{t("Website")}<input className={`${inputClass} mt-2`} maxLength={255} placeholder="https://example.com" value={settings.website} onChange={e=>setSettings({...settings,website:e.target.value})}/></label>
+                  <label className="text-xs text-[#e7c37c]">{t("Business timezone")}<select className={`${inputClass} mt-2`} value={settings.timezone} onChange={e=>setSettings({...settings,timezone:e.target.value})}>{["Europe/Berlin","Europe/London","Africa/Nairobi","America/New_York","America/Los_Angeles","UTC"].map(x=><option key={x}>{x}</option>)}</select></label>
+                  <label className="text-xs text-[#e7c37c]">{t("Currency")}<select className={`${inputClass} mt-2`} value={settings.currency} onChange={e=>setSettings({...settings,currency:e.target.value})}>{["EUR","USD","GBP","KES"].map(x=><option key={x}>{x}</option>)}</select></label>
+                  <label className="text-xs text-[#e7c37c]">{t("Preferred customer communication language")}<select className={`${inputClass} mt-2`} value={settings.preferred_language} onChange={e=>setSettings({...settings,preferred_language:e.target.value})}>{COMPANY_LANGUAGES.map(([code,label])=><option key={code} value={code}>{label}</option>)}</select><span className="mt-1 block text-[11px] opacity-70">{t("The selected language applies to your workspace and AI. Some specialist screens are not translated yet.")}</span></label>
+                  <label className="text-xs text-[#e7c37c]">{t("Business hours")}<input className={`${inputClass} mt-2`} maxLength={350} placeholder="Mon-Fri 09:00-18:00" value={settings.business_hours} onChange={e=>setSettings({...settings,business_hours:e.target.value})}/></label>
                 </div>
-                <label className="block text-xs text-[#e7c37c]">What does your company do?<textarea className={`${inputClass} mt-2 min-h-24`} maxLength={1000} value={settings.description} onChange={e=>setSettings({...settings,description:e.target.value})}/></label>
+                <label className="block text-xs text-[#e7c37c]">{t("What does your company do?")}<textarea className={`${inputClass} mt-2 min-h-24`} maxLength={1000} value={settings.description} onChange={e=>setSettings({...settings,description:e.target.value})}/></label>
                 <div id="intrigue-ai-config" className="scroll-mt-32 border-t border-[#35485d] pt-5">
-                  <h3 className="flex items-center gap-2 text-base font-bold"><Bot size={18} className="text-[#d9bd7d]"/>AI Assistant configuration</h3>
+                  <h3 className="flex items-center gap-2 text-base font-bold"><Bot size={18} className="text-[#d9bd7d]"/>{t("AI Assistant configuration")}</h3>
                   <p className="mt-1 text-xs text-[#afbdcb]">These preferences are included in the owner AI agent's system context. Security limits, tool permissions and human approval are unchanged.</p>
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    <label className="text-xs text-[#e7c37c]">Assistant name<input className={`${inputClass} mt-2`} minLength={2} maxLength={80} value={settings.ai_name} onChange={e=>setSettings({...settings,ai_name:e.target.value})}/></label>
-                    <label className="text-xs text-[#e7c37c]">Communication style<select className={`${inputClass} mt-2`} value={settings.ai_tone} onChange={e=>setSettings({...settings,ai_tone:e.target.value})}>{["Professional","Friendly","Concise","Formal"].map(x=><option key={x}>{x}</option>)}</select></label>
-                    <label className="text-xs text-[#e7c37c] sm:col-span-2">Business role<input className={`${inputClass} mt-2`} maxLength={160} minLength={4} value={settings.ai_role} onChange={e=>setSettings({...settings,ai_role:e.target.value})}/></label>
+                    <label className="text-xs text-[#e7c37c]">{t("Assistant name")}<input className={`${inputClass} mt-2`} minLength={2} maxLength={80} value={settings.ai_name} onChange={e=>setSettings({...settings,ai_name:e.target.value})}/></label>
+                    <label className="text-xs text-[#e7c37c]">{t("Communication style")}<select className={`${inputClass} mt-2`} value={settings.ai_tone} onChange={e=>setSettings({...settings,ai_tone:e.target.value})}>{["Professional","Friendly","Concise","Formal"].map(x=><option key={x}>{x}</option>)}</select></label>
+                    <label className="text-xs text-[#e7c37c] sm:col-span-2">{t("Business role")}<input className={`${inputClass} mt-2`} maxLength={160} minLength={4} value={settings.ai_role} onChange={e=>setSettings({...settings,ai_role:e.target.value})}/></label>
                   </div>
-                  <label className="mt-4 block text-xs text-[#e7c37c]">Additional assistant guidance<textarea className={`${inputClass} mt-2 min-h-24`} maxLength={1000} placeholder="Preferred terminology and response style. Do not include secrets or private customer information." value={settings.ai_guidance} onChange={e=>setSettings({...settings,ai_guidance:e.target.value})}/></label>
+                  <label className="mt-4 block text-xs text-[#e7c37c]">{t("Additional assistant guidance")}<textarea className={`${inputClass} mt-2 min-h-24`} maxLength={1000} placeholder="Preferred terminology and response style. Do not include secrets or private customer information." value={settings.ai_guidance} onChange={e=>setSettings({...settings,ai_guidance:e.target.value})}/></label>
                 </div>
                 {settingsError && <p role="alert" className="text-xs text-[#ffb3a7]">{settingsError}</p>}
                 {settingsMessage && <p role="status" className="text-xs text-[#b1ead0]">{settingsMessage}</p>}
-                <button type="submit" disabled={settingsBusy} className={newButtonClass}>{settingsBusy?"Saving...":"Save company & AI settings"}</button>
+                <button type="submit" disabled={settingsBusy} className={newButtonClass}>{t(settingsBusy?"Saving...":"Save company & AI settings")}</button>
               </form>}
             </div>
             <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-6">
-              <h3 className="text-base font-semibold">Onboarding checklist</h3>
-              <p className="mt-1 text-xs text-[#afbdcb]">Follow these steps before activating client-facing workflows.</p>
+              <h3 className="text-base font-semibold">{t("Onboarding checklist")}</h3>
+              <p className="mt-1 text-xs text-[#afbdcb]">{t("Follow these steps before activating client-facing workflows.")}</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {[
                   ["Create company",true],["Configure business profile",Boolean(settings.description.trim()&&settings.business_hours.trim())],
                   ["Add services and pricing",services.length>0],["Add company knowledge",knowledgeEntries.length>0||documents.length>0],["Review AI preferences",Boolean(settings.ai_role.trim())],
                   ["Invite staff (optional)",teamMembers.length>1],["Pass production security tests",false],
-                ].map(([label,done])=><div key={String(label)} className="flex items-center gap-2 rounded-lg border border-[#35485d] p-3 text-xs"><CheckCircle2 size={16} className={done?"text-[#b3ead0]":"text-[#708093]"}/>{label}</div>)}
+                ].map(([label,done])=><div key={String(label)} className="flex items-center gap-2 rounded-lg border border-[#35485d] p-3 text-xs"><CheckCircle2 size={16} className={done?"text-[#b3ead0]":"text-[#708093]"}/>{t(String(label))}</div>)}
               </div>
-              <button type="button" onClick={()=>navigate("Get Started")} className="mt-4 rounded-lg border border-[#937b48] px-3 py-2 text-xs text-[#e7c37c]">Open guided setup</button>
+              <button type="button" onClick={()=>navigate("Get Started")} className="mt-4 rounded-lg border border-[#937b48] px-3 py-2 text-xs text-[#e7c37c]">{t("Open guided setup")}</button>
             </div>
           </div>}
 
           {section === "Team" && <div className="space-y-5">
             <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-7">
-              <div className="flex items-center gap-3"><UserPlus className="text-[#e0bf76]" size={22}/><h2 className="text-lg font-bold">Team members</h2></div>
-              <p className="mt-2 text-sm leading-6 text-[#afbdcb]">Invite colleagues as Admin, Staff or Viewer. Admins manage services; Staff can add enquiries and follow-ups; Viewers only read. AI, actions, settings and invitations remain owner-only.</p>
+              <div className="flex items-center gap-3"><UserPlus className="text-[#e0bf76]" size={22}/><h2 className="text-lg font-bold">{t("Team members")}</h2></div>
+              <p className="mt-2 text-sm leading-6 text-[#afbdcb]">{t("Invite colleagues as Admin, Staff or Viewer. Admins manage services; Staff can add enquiries and follow-ups; Viewers only read. AI, actions, settings and invitations remain owner-only.")}</p>
               {!isOwner ? <p className="mt-5 text-sm text-[#b3ead0]">Your role is {role}. Only the workspace owner manages invitations and roles.</p> : <>
                 <form onSubmit={createInvite} className="mt-5 flex flex-col gap-3 sm:flex-row">
                   <input className={inputClass} type="email" placeholder="colleague@company.com" aria-label="Team member email" required maxLength={254} value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)}/>
-                  <select className={`${inputClass} sm:max-w-40`} aria-label="Invitation role" value={selectedInviteRole} onChange={e=>setSelectedInviteRole(e.target.value as "admin"|"staff"|"viewer")}><option value="viewer">Viewer</option><option value="staff">Staff</option><option value="admin">Admin</option></select>
+                  <select className={`${inputClass} sm:max-w-40`} aria-label="Invitation role" value={selectedInviteRole} onChange={e=>setSelectedInviteRole(e.target.value as "admin"|"staff"|"viewer")}><option value="viewer">{t("Viewer")}</option><option value="staff">{t("Staff")}</option><option value="admin">{t("Admin")}</option></select>
                   <button className={newButtonClass} type="submit" disabled={teamBusy}>{teamBusy?"Creating...":"Create invitation link"}</button>
                 </form>
                 {inviteLink && <div className="mt-4 rounded-xl border border-[#937b48] bg-[#17293d] p-4">
-                  <p className="mb-2 text-xs font-semibold text-[#e7c37c]">Copy this link now. It is shown only once.</p>
+                  <p className="mb-2 text-xs font-semibold text-[#e7c37c]">{t("Copy this link now. It is shown only once.")}</p>
                   <p className="break-all text-xs text-[#d5dfeb]">{inviteLink}</p>
-                  <button type="button" onClick={()=>void navigator.clipboard.writeText(inviteLink)} className="mt-3 rounded-lg bg-[#c9a552] px-3 py-2 text-xs font-semibold text-[#111b29]">Copy invitation</button>
-                  <p className="mt-2 text-[11px] text-[#afbdcb]">Share it only with the invited person. They must verify the exact invited email, sign in, then open this link and accept.</p>
+                  <button type="button" onClick={()=>void navigator.clipboard.writeText(inviteLink)} className="mt-3 rounded-lg bg-[#c9a552] px-3 py-2 text-xs font-semibold text-[#111b29]">{t("Copy invitation")}</button>
+                  <p className="mt-2 text-[11px] text-[#afbdcb]">{t("Share it only with the invited person. They must verify the exact invited email, sign in, then open this link and accept.")}</p>
                 </div>}
                 {teamError && <p role="alert" className="mt-4 text-sm text-[#ffb3a7]">{teamError}</p>}
                 {teamMessage && <p role="status" className="mt-4 text-xs text-[#b3ead0]">{teamMessage}</p>}
-                <h3 className="mt-7 text-sm font-bold">Active members</h3>
+                <h3 className="mt-7 text-sm font-bold">{t("Active members")}</h3>
                 <div className="mt-3 space-y-2">{teamMembers.map(m=><div key={m.member_user_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#35485d] bg-[#102034] p-4">
                   <div><p className="text-sm font-semibold">{m.email}</p><p className="mt-1 text-xs text-[#afbdcb]">{m.role}  |  Joined {niceDate(m.joined_at)}</p></div>
-                  {m.role!=="owner" && <div className="flex items-center gap-2"><select aria-label={`Role for ${m.email}`} disabled={teamBusy} className="rounded-lg border border-[#526076] bg-[#182c41] px-2 py-2 text-xs" value={m.role==="member"?"viewer":m.role} onChange={e=>void updateTeamRole(m.member_user_id,e.target.value as "admin"|"staff"|"viewer")}><option value="viewer">Viewer</option><option value="staff">Staff</option><option value="admin">Admin</option></select><button type="button" disabled={teamBusy} onClick={()=>void removeMember(m.member_user_id)} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]">Remove access</button></div>}
+                  {m.role!=="owner" && <div className="flex items-center gap-2"><select aria-label={`Role for ${m.email}`} disabled={teamBusy} className="rounded-lg border border-[#526076] bg-[#182c41] px-2 py-2 text-xs" value={m.role==="member"?"viewer":m.role} onChange={e=>void updateTeamRole(m.member_user_id,e.target.value as "admin"|"staff"|"viewer")}><option value="viewer">{t("Viewer")}</option><option value="staff">{t("Staff")}</option><option value="admin">{t("Admin")}</option></select><button type="button" disabled={teamBusy} onClick={()=>void removeMember(m.member_user_id)} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]">{t("Remove access")}</button></div>}
                 </div>)}</div>
-                <h3 className="mt-7 text-sm font-bold">Pending invitations</h3>
-                {teamInvites.length===0 && <p className="mt-3 text-xs text-[#afbdcb]">No pending invitations.</p>}
+                <h3 className="mt-7 text-sm font-bold">{t("Pending invitations")}</h3>
+                {teamInvites.length===0 && <p className="mt-3 text-xs text-[#afbdcb]">{t("No pending invitations.")}</p>}
                 <div className="mt-3 space-y-2">{teamInvites.map(i=><div key={i.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#35485d] bg-[#102034] p-4">
                   <div><p className="text-sm font-semibold">{i.invited_email}</p><p className="mt-1 text-xs text-[#afbdcb]">{i.role}  |  Expires {niceDate(i.expires_at)}</p></div>
-                  <button type="button" disabled={teamBusy} onClick={()=>void revokeInvite(i.id)} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]">Revoke</button>
+                  <button type="button" disabled={teamBusy} onClick={()=>void revokeInvite(i.id)} className="rounded-lg border border-[#795557] px-3 py-2 text-xs text-[#f3c2b9]">{t("Revoke")}</button>
                 </div>)}</div>
                 <div className="mt-8 rounded-xl border border-[#35485d] bg-[#102034] p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h3 className="text-sm font-bold text-[#f3d18e]">Membership activity</h3>
-                    <button type="button" onClick={()=>void loadTeamAudit()} className="rounded-lg border border-[#937b48] px-3 py-2 text-xs text-[#e7c37c]">Refresh history</button>
+                    <h3 className="text-sm font-bold text-[#f3d18e]">{t("Membership activity")}</h3>
+                    <button type="button" onClick={()=>void loadTeamAudit()} className="rounded-lg border border-[#937b48] px-3 py-2 text-xs text-[#e7c37c]">{t("Refresh history")}</button>
                   </div>
-                  <p className="mt-2 text-xs text-[#afbdcb]">Owner-only audit trail. Earlier events may not appear here.</p>
+                  <p className="mt-2 text-xs text-[#afbdcb]">{t("Owner-only audit trail. Earlier events may not appear here.")}</p>
                   {teamAuditError && <p role="alert" className="mt-3 text-xs text-[#ffb3a7]">{teamAuditError}</p>}
-                  {!teamAuditError && teamAudit.length===0 && <p className="mt-4 text-xs text-[#afbdcb]">No membership changes recorded yet.</p>}
+                  {!teamAuditError && teamAudit.length===0 && <p className="mt-4 text-xs text-[#afbdcb]">{t("No membership changes recorded yet.")}</p>}
                   <div className="mt-3 space-y-2">{teamAudit.map((event,i)=><div key={`${event.event_at}-${i}`} className="rounded-lg border border-[#35485d] p-3 text-xs">
                     <div className="flex flex-wrap items-center justify-between gap-2"><strong>{event.event_type==="role_changed"?"Role changed":event.event_type==="removed"?"Access removed":"Member joined"}</strong><span className="text-[#afbdcb]">{new Date(event.event_at).toLocaleString()}</span></div>
                     <p className="mt-1 break-all">{event.member_email}{event.old_role||event.new_role?`  |  ${event.old_role||"none"}  -> ${event.new_role||"none"}`:""}</p>
-                    <p className="mt-1 break-all text-[#afbdcb]">By: {event.actor_email}</p>
+                    <p className="mt-1 break-all text-[#afbdcb]">{t("By:")} {event.actor_email}</p>
                   </div>)}</div>
                 </div>
               </>}

@@ -54,8 +54,8 @@ test('onboarding bypasses AI for recognizable TXT, preserves workspace ownership
 });
 test('guided onboarding has explicit step 2 knowledge, navigation and successful continuation',()=>{
  const s=get('app/dashboard/page.tsx');assert.match(s,/'Upload company knowledge and data'/);
- assert.match(s,/if\(guideStep===1\)openGuide\(2\)/);assert.match(s,/if\(guideStep===2\)openGuide\(3\)/);
- assert.match(s,/if\(guideStep===3\)openGuide\(4\)/);assert.match(s,/Continue to step/);
+ assert.match(s,/if\(guideStep===1 && readyStep1\)openGuide\(2\)/);assert.match(s,/if\(guideStep===2\).*?openGuide\(3\)/);
+ assert.match(s,/if\(guideStep===3\).*?openGuide\(4\)/);assert.match(s,/Skip this step/);
 });
 test('language has database allowlist and company-only context',()=>{
  const sql=get('sql/INTRIGUE_SPRINT1_RC23_ONBOARDING_LANGUAGE.sql');assert.match(sql,/ALTER TABLE public\.workspace_settings/);

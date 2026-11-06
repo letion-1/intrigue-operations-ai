@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormE
 import { createClient } from '@/lib/supabase/client';
 import { Database, FileArchive, FileUp, PenLine, RotateCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import './company-onboarding.css';
+import { uiText } from '@/lib/intrigue-ui-language';
 
 type Kind='files'|'write';
 type Counts=Record<string,{added:number;skipped:number}>;
@@ -14,7 +15,8 @@ const categories:[string,string][]=[
   ['enquiries','Enquiries'],['quotations','Quotations'],['follow_ups','Follow-ups'],
   ['orders','Orders'],['work_orders','Work orders'],
 ];
-export default function CompanyOnboarding({workspaceId,workspaceName,onImported}:{workspaceId:string;workspaceName:string;onImported:()=>void}){
+export default function CompanyOnboarding({workspaceId,workspaceName,onImported,locale='en'}:{workspaceId:string;workspaceName:string;onImported:()=>void;locale?:string}){
+  const t=(message:string)=>uiText(locale,message);
   const supabase=useMemo(()=>createClient(),[]);
   const [mode,setMode]=useState<Kind>('files');
   const [files,setFiles]=useState<File[]>([]);
@@ -63,50 +65,50 @@ export default function CompanyOnboarding({workspaceId,workspaceName,onImported}
   return <div className="intrigue-onboard" aria-label="Automatic company onboarding">
     <div className="io-card">
       <div className="io-heading"><Database size={22}/><div>
-        <h2>Company Knowledge & Data Onboarding</h2>
-        <p>Both methods automatically extract business information and save supported records into your company workspace.</p>
+        <h2>{t("Company Knowledge & Data Onboarding")}</h2>
+        <p>{t("Both methods automatically extract business information and save supported records into your company workspace.")}</p>
       </div></div>
-      <div className="io-active">Import destination: <strong>{workspaceName}</strong>. A document naming a different company will be blocked.</div>
+      <div className="io-active">Import destination: <strong>{workspaceName}</strong>{t(". A document naming a different company will be blocked.")}</div>
       <div className="io-options" role="group" aria-label="Choose onboarding method">
         <button type="button" aria-pressed={mode==='files'} className={mode==='files'?'io-option io-selected':'io-option'} onClick={()=>selectMode('files')}>
-          <FileUp size={21}/><strong>1. Upload company files</strong><span>Read a complete company dataset or multiple documents.</span>
+          <FileUp size={21}/><strong>{t("1. Upload company files")}</strong><span>{t("Read a complete company dataset or multiple documents.")}</span>
         </button>
         <button type="button" aria-pressed={mode==='write'} className={mode==='write'?'io-option io-selected':'io-option'} onClick={()=>selectMode('write')}>
-          <PenLine size={21}/><strong>2. Write company details</strong><span>Type business information for AI to structure and save.</span>
+          <PenLine size={21}/><strong>{t("2. Write company details")}</strong><span>{t("Type business information for AI to structure and save.")}</span>
         </button>
       </div>
       <form onSubmit={e=>{void save(e);}} className="io-form">
         {mode==='files'? <>
-          <label className="io-label" htmlFor="io-upload">Company data files</label>
+          <label className="io-label" htmlFor="io-upload">{t("Company data files")}</label>
           <input id="io-upload" type="file" multiple accept=".zip,.json,.csv,.txt,.md" onChange={chooseFiles} disabled={working}/>
           {files.length>0&&<p className="io-subtle"><FileArchive size={14}/> {files.map(f=>f.name).join(', ')}</p>}
-          <p className="io-subtle">Structured ZIP, JSON, CSV and labeled TXT/Markdown are saved without an AI call. Free-form documents can use AI or the knowledge-only option below. Maximum 5 MB. PDF extraction is not available here.</p>
+          <p className="io-subtle">{t("Structured ZIP, JSON, CSV and labeled TXT/Markdown are saved without an AI call. Free-form documents can use AI or the knowledge-only option below. Maximum 5 MB. PDF extraction is not available here.")}</p>
         </> : <>
-          <label className="io-label" htmlFor="io-notes">Company profile, customers, catalog, policies and existing work</label>
+          <label className="io-label" htmlFor="io-notes">{t("Company profile, customers, catalog, policies and existing work")}</label>
           <textarea id="io-notes" rows={12} maxLength={15000} disabled={working} value={notes} onChange={e=>setNotes(e.target.value)}
             placeholder={'Company name: '+workspaceName+'\nIndustry:\nWhat we sell / do:\nVerified products and prices:\nCustomer details (only if explicitly provided):\nCurrent enquiries, orders or work orders:\nShipping, returns and support policies:\nBusiness hours and contacts:'}/>
-          <p className="io-subtle">Use labels such as Company:, PRODUCT CATALOG:, CUSTOMERS:, COMPANY POLICIES:, and SUPPORT HOURS: for fast, direct extraction. Unsupported fields are never invented.</p>
+          <p className="io-subtle">{t("Use labels such as Company:, PRODUCT CATALOG:, CUSTOMERS:, COMPANY POLICIES:, and SUPPORT HOURS: for fast, direct extraction. Unsupported fields are never invented.")}</p>
         </>}
-        <label className="io-knowledge-choice"><input type="checkbox" checked={knowledgeOnly} disabled={working} onChange={e=>setKnowledgeOnly(e.target.checked)}/> Save as company knowledge only (no AI extraction or CRM/catalog creation)</label>
+        <label className="io-knowledge-choice"><input type="checkbox" checked={knowledgeOnly} disabled={working} onChange={e=>setKnowledgeOnly(e.target.checked)}/> {t("Save as company knowledge only (no AI extraction or CRM/catalog creation)")}</label>
         <button type="submit" className="io-submit" disabled={working||(mode==='files'?!files.length:notes.trim().length<20)}>
-          {working?<><RotateCw className="io-spinner" size={17}/> Extracting and saving…</>:<><Database size={17}/> Analyze & automatically save to INTRIGUE</>}
+          {working?<><RotateCw className="io-spinner" size={17}/> {t("Extracting and saving…")}</>:<><Database size={17}/> {t("Analyze & automatically save to INTRIGUE")}</>}
         </button>
-        <p className="io-subtle">Save happens in one database transaction. Existing records are merged, not erased. Quotes remain unsent drafts; no messages, payments or bookings are triggered.</p>
+        <p className="io-subtle">{t("Save happens in one database transaction. Existing records are merged, not erased. Quotes remain unsent drafts; no messages, payments or bookings are triggered.")}</p>
       </form>
       {error&&<div className="io-error" role="alert"><AlertTriangle size={18}/><span>{error}</span></div>}
-      {error.includes('timed out') && !knowledgeOnly && <button type="button" className="io-fallback" onClick={()=>{setKnowledgeOnly(true);setError('');}}>Use knowledge-only fallback for this document</button>}
+      {error.includes('timed out') && !knowledgeOnly && <button type="button" className="io-fallback" onClick={()=>{setKnowledgeOnly(true);setError('');}}>{t("Use knowledge-only fallback for this document")}</button>}
       {done&&<div className="io-success" role="status"><div className="io-heading"><CheckCircle2 size={21}/><div><h3>{done.summary?.already_imported?'Already imported':'Company data saved successfully'}</h3><p>{done.summary?.message||'The workspace records have been updated.'}</p></div></div>
-        <p className="io-subtle">Source: {done.source}. Extraction: {done.extraction_mode==='structured_text'?'Direct text parser (no AI timeout)':done.extraction_mode==='knowledge_only'?'Knowledge only':done.extraction_mode==='ai'?'AI-assisted':'Structured file'}.</p>
-        {done.warnings?.length? <div className="io-warning" role="status"><strong>Items requiring review:</strong><ul>{done.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>:null}
-        <div className="io-stats">{categories.map(([key,label])=><div key={key} className="io-stat"><span>{label}</span><strong>{done.summary?.counts?.[key]?.added??0} added</strong><small>{done.summary?.counts?.[key]?.skipped??0} skipped / existing</small></div>)}</div>
-        <p className="io-subtle">Skipped records may be duplicates, missing customer references, or unsupported fields. No external action is taken.</p>
+        <p className="io-subtle">{t("Source:")} {done.source}. Extraction: {done.extraction_mode==='structured_text'?'Direct text parser (no AI timeout)':done.extraction_mode==='knowledge_only'?'Knowledge only':done.extraction_mode==='ai'?'AI-assisted':'Structured file'}.</p>
+        {done.warnings?.length? <div className="io-warning" role="status"><strong>{t("Items requiring review:")}</strong><ul>{done.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>:null}
+        <div className="io-stats">{categories.map(([key,label])=><div key={key} className="io-stat"><span>{label}</span><strong>{done.summary?.counts?.[key]?.added??0} {t("added")}</strong><small>{done.summary?.counts?.[key]?.skipped??0} {t("skipped / existing")}</small></div>)}</div>
+        <p className="io-subtle">{t("Skipped records may be duplicates, missing customer references, or unsupported fields. No external action is taken.")}</p>
       </div>}
     </div>
     <div className="io-card">
-      <div className="io-heading"><FileArchive size={19}/><div><h3>Imported orders & work orders ({orders.length})</h3><p>Saved for internal review. Not connected to payment, shop fulfillment or workshop dispatch.</p></div></div>
+      <div className="io-heading"><FileArchive size={19}/><div><h3>Imported orders & work orders ({orders.length})</h3><p>{t("Saved for internal review. Not connected to payment, shop fulfillment or workshop dispatch.")}</p></div></div>
       {ordersError&&<p className="io-error" role="alert">{ordersError}. Please contact your workspace administrator.</p>}
-      {!orders.length&&!ordersError&&<p className="io-subtle">No imported orders yet. A complete company database ZIP can populate this list.</p>}
-      {orders.length>0&&<div className="io-order-scroll"><table className="io-table"><thead><tr><th>Reference</th><th>Kind</th><th>Item / job</th><th>Status</th><th>Value</th></tr></thead><tbody>
+      {!orders.length&&!ordersError&&<p className="io-subtle">{t("No imported orders yet. A complete company database ZIP can populate this list.")}</p>}
+      {orders.length>0&&<div className="io-order-scroll"><table className="io-table"><thead><tr><th>{t("Reference")}</th><th>{t("Kind")}</th><th>{t("Item / job")}</th><th>{t("Status")}</th><th>{t("Value")}</th></tr></thead><tbody>
         {orders.map(o=><tr key={o.id}><td>{o.external_id}</td><td>{o.kind.replace('_',' ')}</td><td>{o.description}</td><td>{o.status}</td><td>{Number(o.amount).toLocaleString(undefined,{maximumFractionDigits:2})} {o.currency}</td></tr>)}
       </tbody></table></div>}
     </div>

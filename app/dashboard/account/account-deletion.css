@@ -37,3 +37,10 @@
 .intrigue-dashboard[data-intrigue-theme="light"] .intrigue-account-panel{--intrigue-account-bg:#fffdf9;--intrigue-account-fg:#17253a;--intrigue-account-border:#decbb6}
 .intrigue-account-panel :is(button,input,select,summary):focus-visible{outline:2px solid #bb9453;outline-offset:3px}
 @media(max-width:720px){.intrigue-rc2-grid{grid-template-columns:1fr}.intrigue-account-panel{padding:15px}.intrigue-account-actions button{max-width:100%}}
+
+/* RC2.1: non-destructive privacy intake remains available while deletion is gated. */
+.intrigue-rc21-info{padding:13px 15px;background:rgba(68,120,161,.09);border:1px solid rgba(68,120,161,.34);border-radius:11px;font-size:12px;line-height:1.6}
+.intrigue-rc21-request{margin:20px 0;padding:20px;border:2px solid var(--intrigue-account-border,#d7c7b0);border-radius:13px;display:grid;gap:13px;background:var(--intrigue-account-bg,#fffdf9)}
+.intrigue-rc21-request p{margin:0;font-size:13px;line-height:1.65}
+.intrigue-rc21-submit{background:rgba(201,162,90,.15);border-color:#bb9453}
+.intrigue-rc21-request input[type=text]{width:100%;max-width:100%;box-sizing:border-box}

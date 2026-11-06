@@ -16,14 +16,13 @@ export async function GET(request:NextRequest){
       .select('id,workspace_id,status,created_at,expires_at,from_user,to_user')
       .eq('to_user',user.id).eq('status','pending').limit(10);
     if(transferError)throw new LifecycleError(503,'Unable to load ownership transfers.');
-    return response({enabled:process.env.INTRIGUE_RC2_DELETION_ENABLED==='true',preview:p,requests:requests||[],transfers:transfers||[]});
+    return response({enabled:process.env.INTRIGUE_RC2_DELETION_ENABLED==='true',requestEnabled:true,preview:p,requests:requests||[],transfers:transfers||[]});
   }catch(e){const x=safeResponseError(e);return response({error:x.message},x.status);}
 }
 
 export async function POST(request:NextRequest){
   try{
     checkOrigin(request);
-    if(process.env.INTRIGUE_RC2_DELETION_ENABLED!=='true') throw new LifecycleError(503,'RC2 deletion actions are disabled until staging acceptance is complete.');
     const {db,user,url,serviceKey}=await identity(request);
     const input:unknown=await request.json().catch(()=>null);
     if(!input||typeof input!=='object'||Array.isArray(input))throw new LifecycleError(400,'Invalid request.');
@@ -31,15 +30,37 @@ export async function POST(request:NextRequest){
     const action=b.action;
     const safety=await preview(db);
 
+    // A privacy request is a NON-DESTRUCTIVE intake action. It remains available
+    // when automatic deletion and ownership transfer are disabled in Production.
     if(action==='request'){
       const kind=b.kind;
-      if(kind!=='account'&&kind!=='workspace'&&kind!=='workspace_and_account')throw new LifecycleError(400,'Invalid deletion request.');
+      if(kind!=='account'&&kind!=='workspace'&&kind!=='workspace_and_account')
+        throw new LifecycleError(400,'Invalid deletion request.');
       const workspaceId=kind==='account'?null:safety.workspace?.id;
-      if(kind!=='account'&&!workspaceId)throw new LifecycleError(403,'Only a verified company owner may request workspace deletion.');
-      const {data,error}=await db.rpc('intrigue_rc2_request',{p_kind:kind,p_workspace_id:workspaceId});
-      if(error)throw new LifecycleError(409,'Request could not be recorded. Refresh the safety check.');
-      return response({requested:true,request_id:data,status:'needs_review'},202);
+      if(kind!=='account'&&!workspaceId)
+        throw new LifecycleError(403,'Only the verified company owner may request company deletion.');
+      const expected=kind==='account'
+        ?`REQUEST ACCOUNT ${user.email}`
+        :kind==='workspace'
+          ?`REQUEST COMPANY ${safety.workspace?.name}`
+          :`REQUEST COMPANY AND ACCOUNT ${safety.workspace?.name}`;
+      if(b.acknowledged!==true||b.confirmation!==expected)
+        throw new LifecycleError(400,'Review the consequences and type the exact request confirmation.');
+      // SECURITY: auth.uid() inside the RLS-protected RPC identifies the caller.
+      // Never accept a client-provided user ID or arbitrary workspace ID.
+      const {data,error}=await db.rpc('intrigue_rc2_request',{
+        p_kind:kind,p_workspace_id:workspaceId
+      });
+      if(error||typeof data!=='string'||!id.test(data))
+        throw new LifecycleError(409,'Request could not be recorded. Refresh and try again.');
+      // This reference only proves receipt. It is NOT an erasure confirmation.
+      return response({requested:true,request_id:data,status:'received',
+        message:'Your request has been recorded for manual review. No records have been deleted.'},202);
     }
+
+    // No transfer or deletion execution is possible with the feature disabled.
+    if(process.env.INTRIGUE_RC2_DELETION_ENABLED!=='true')
+      throw new LifecycleError(503,'Destructive account actions are currently disabled. You may still submit a privacy request.');
 
     if(action==='offer_transfer'){
       await recentlySignedIn(request,user,url,serviceKey);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {createClient} from '@/lib/supabase/client';
 import {Download,ShieldCheck,AlertTriangle,Building2,UserRoundX,RefreshCw,ArrowRightLeft} from 'lucide-react';
 import './account-deletion.css';
@@ -12,7 +12,8 @@ type Preview={email:string;owned_workspaces:number;workspace:{id:string;name:str
 type RecordRequest={id:string;kind:string;status:string;requested_at:string;response_due_at:string;workspace_label:string|null};
 type Transfer={id:string;status:string;workspace_id:string;from_user:string;to_user:string;expires_at:string};
 type TeamMember={member_user_id:string;email:string;role:string};
-type Snapshot={enabled:boolean;preview:Preview;requests:RecordRequest[];transfers:Transfer[]};
+type Snapshot={enabled:boolean;requestEnabled?:boolean;preview:Preview;requests:RecordRequest[];transfers:Transfer[]};
+type ReviewKind='account'|'workspace'|'workspace_and_account';
 type Action='delete_account'|'delete_empty_workspace'|null;
 
 function friendly(name:string){
@@ -35,10 +36,15 @@ export default function AccountDeletionPanel(){
  const [error,setError]=useState('');
  const [notice,setNotice]=useState('');
  const [active,setActive]=useState<Action>(null);
+ const [reviewKind,setReviewKind]=useState<ReviewKind|null>(null);
+ const [reviewTyped,setReviewTyped]=useState('');
+ const [reviewAck,setReviewAck]=useState(false);
+ const reviewRef=useRef<HTMLDivElement>(null);
  const [typed,setTyped]=useState('');
  const [ack,setAck]=useState(false);
  const p=snapshot?.preview;
  const enabled=snapshot?.enabled===true;
+ const requestEnabled=snapshot?.requestEnabled===true;
 
  const auth=useCallback(async()=>{
    const {data:{session},error:e}=await db.auth.getSession();
@@ -60,6 +66,8 @@ export default function AccountDeletionPanel(){
    finally{setLoading(false);}
  },[db,auth]);
  useEffect(()=>{void load();},[load]);
+ useEffect(()=>{if(reviewKind)reviewRef.current?.scrollIntoView({behavior:'smooth',block:'center'});},[reviewKind]);
+ const openReview=(kind:ReviewKind)=>{setReviewKind(kind);setReviewTyped('');setReviewAck(false);setActive(null);setError('');setNotice('');};
 
  const act=async(body:Record<string,unknown>)=>{
    setBusy(true);setError('');setNotice('');
@@ -75,8 +83,8 @@ export default function AccountDeletionPanel(){
      if(json.transferred) setNotice('Ownership transfer accepted. Refresh to update your access.');
      else if(json.offered) setNotice(`Transfer offered. Ask the recipient to open the ownership transfer page and sign in. Reference: ${json.transfer_id}`);
      else if(json.workspace_deleted) setNotice(json.message||'Empty company workspace deleted. Your login remains active.');
-     else if(json.requested) setNotice(`Deletion request received. Reference: ${json.request_id}. This is a reviewed request, not an immediate deletion.`);
-     setTyped('');setAck(false);setActive(null);
+     else if(json.requested) setNotice(`Privacy request received. Reference: ${json.request_id}. No data has been deleted. Track your request below.`);
+     setTyped('');setAck(false);setActive(null);setReviewKind(null);setReviewTyped('');setReviewAck(false);
      await load();
    }catch(e){setError(e instanceof Error?e.message:'Action failed.');}
    finally{setBusy(false);}
@@ -94,14 +102,16 @@ export default function AccountDeletionPanel(){
    finally{setBusy(false);}
  };
  const confirmation=active==='delete_account'?`DELETE ${p?.email||''}`:`DELETE ${p?.workspace?.name||''}`;
- const blocked=Boolean(p?.workspace && !p.empty_workspace_eligible);
+ const reviewPhrase=reviewKind==='account'?`REQUEST ACCOUNT ${p?.email||''}`
+  :reviewKind==='workspace'?`REQUEST COMPANY ${p?.workspace?.name||''}`
+  :`REQUEST COMPANY AND ACCOUNT ${p?.workspace?.name||''}`;
 
  return <section className="intrigue-account-panel" aria-labelledby="intrigue-delete-account-heading">
   <div className="intrigue-account-heading"><ShieldCheck size={19}/><h3 id="intrigue-delete-account-heading">Privacy, ownership & account deletion</h3></div>
   <p className="intrigue-account-description">Control your INTRIGUE account and company data. Protected business information is never silently erased. A company with active records requires a reviewed deletion request.</p>
   {loading&&<p role="status" className="intrigue-account-muted">Checking company ownership, linked records and Storage…</p>}
   {p&&!loading&&<>
-    {!enabled&&<p className="intrigue-account-error">Deletion actions are in restricted testing mode. Account exports remain available. Ask the operator when RC2 is approved.</p>}
+    {!enabled&&<p className="intrigue-rc21-info">Direct deletion is disabled during testing. You can still request account or company erasure for manual review. Nothing is deleted when you submit a request.</p>}
     <p className="intrigue-account-muted">Signed in as <strong>{p.email}</strong></p>
     <div className="intrigue-rc2-grid">
       <div className="intrigue-rc2-tile">
@@ -112,9 +122,10 @@ export default function AccountDeletionPanel(){
       <div className="intrigue-rc2-tile">
         <UserRoundX size={19}/><strong>Delete my login</strong>
         <p>{p.account_deletion_eligible?'Your account currently has no blocking ownership references.':'Company ownership or protected records must be resolved before automatic login deletion.'}</p>
-        {p.account_deletion_eligible
-          ?<button type="button" className="intrigue-account-danger" disabled={busy||!enabled} onClick={()=>{setActive('delete_account');setTyped('');setAck(false);}}>Delete my account</button>
-          :<button type="button" className="intrigue-account-secondary" disabled={busy||!enabled} onClick={()=>void act({action:'request',kind:'account'})}>Request account erasure review</button>}
+        <button type="button" className="intrigue-account-secondary" disabled={busy||!requestEnabled}
+          onClick={()=>openReview('account')}>Request account erasure review</button>
+        {p.account_deletion_eligible&&enabled&&<button type="button" className="intrigue-account-danger" disabled={busy}
+          onClick={()=>{setActive('delete_account');setReviewKind(null);setTyped('');setAck(false);}}>Delete my account now</button>}
       </div>
     </div>
     {p.workspace&&<div className="intrigue-rc2-company">
@@ -127,8 +138,12 @@ export default function AccountDeletionPanel(){
         ?'This company passes the strict empty-workspace check. You may delete it after verifying there is nothing to retain.'
         :'This company has protected data, other members or active dependencies. Automatic removal is disabled. Submit a reviewed deletion request.'}</p>
       <div className="intrigue-account-actions">
-        {p.empty_workspace_eligible&&<button type="button" className="intrigue-account-danger" disabled={busy||!enabled} onClick={()=>{setActive('delete_empty_workspace');setTyped('');setAck(false);}}>Delete empty company</button>}
-        <button type="button" className="intrigue-account-secondary" disabled={busy||!enabled} onClick={()=>void act({action:'request',kind:'workspace_and_account'})}>Request company + account deletion</button>
+        <button type="button" className="intrigue-account-secondary" disabled={busy||!requestEnabled}
+          onClick={()=>openReview('workspace')}>Request company deletion review</button>
+        <button type="button" className="intrigue-account-secondary" disabled={busy||!requestEnabled}
+          onClick={()=>openReview('workspace_and_account')}>Request company + account deletion</button>
+        {p.empty_workspace_eligible&&enabled&&<button type="button" className="intrigue-account-danger" disabled={busy}
+          onClick={()=>{setActive('delete_empty_workspace');setReviewKind(null);setTyped('');setAck(false);}}>Delete empty company</button>}
       </div>
       {team.length>0&&<div className="intrigue-rc2-transfer">
         <div className="intrigue-account-heading"><ArrowRightLeft size={17}/><strong>Transfer company ownership</strong></div>
@@ -145,6 +160,25 @@ export default function AccountDeletionPanel(){
       <ul>{p.account_blockers.map((r,i)=><li key={i}>{friendly(r.resource)}: {r.count}</li>)}</ul>
       <p>These linked records cannot be erased automatically without checking ownership or legal retention.</p>
     </details>}
+    {reviewKind&&<div className="intrigue-rc21-request" ref={reviewRef} role="region" aria-label="Confirm privacy request">
+      <div className="intrigue-account-heading"><ShieldCheck size={19}/><strong>Confirm your privacy request</strong></div>
+      <p><strong>{reviewKind==='account'?'Personal account erasure review':reviewKind==='workspace'?'Company workspace erasure review':'Company and account erasure review'}</strong></p>
+      <p>Submitting this request does <strong>not</strong> delete your login, company, customer records, backups or third-party data. It creates a reference for an authorized operator to review ownership, legal retention, and next steps.</p>
+      <p>We will record a response target. The current release does not automatically email you or complete the request. Check the request history below or contact the operator with your reference.</p>
+      <label className="intrigue-account-ack"><input type="checkbox" checked={reviewAck} onChange={e=>setReviewAck(e.target.checked)}/>
+        I understand this is a review request, not immediate deletion, and some information may need to be retained.</label>
+      <label className="intrigue-account-label">Type <strong>{reviewPhrase}</strong> exactly to submit
+        <input type="text" value={reviewTyped} autoComplete="off" spellCheck={false}
+          onChange={e=>setReviewTyped(e.target.value)}/>
+      </label>
+      <div className="intrigue-account-actions">
+        <button type="button" className="intrigue-account-secondary" disabled={busy} onClick={()=>setReviewKind(null)}>Cancel</button>
+        <button type="button" className="intrigue-account-secondary intrigue-rc21-submit"
+          disabled={busy||!requestEnabled||!reviewAck||reviewTyped!==reviewPhrase}
+          onClick={()=>void act({action:'request',kind:reviewKind,confirmation:reviewTyped,acknowledged:reviewAck})}>
+          {busy?'Submitting…':'Submit reviewed erasure request'}</button>
+      </div>
+    </div>}
     {active&&<div className="intrigue-account-confirmation">
       <div className="intrigue-account-heading"><AlertTriangle size={19}/><strong>Confirm permanent deletion</strong></div>
       <p>Download the relevant exports first. This operation cannot be undone. You must have signed in within the last 10 minutes.</p>

@@ -7,7 +7,7 @@ import './company-onboarding.css';
 
 type Kind='files'|'write';
 type Counts=Record<string,{added:number;skipped:number}>;
-type Success={source:string;extracted_counts:Record<string,number>;summary:{company?:string;counts:Counts;already_imported?:boolean;message?:string}};
+type Success={source:string;extraction_mode?:string;warnings?:string[];extracted_counts:Record<string,number>;summary:{company?:string;counts:Counts;already_imported?:boolean;message?:string}};
 type Order={id:string;external_id:string;kind:'order'|'work_order';description:string;status:string;amount:number;currency:string};
 const categories:[string,string][]=[
   ['customers','Customers & CRM'],['workspace_services','Service Catalog'],['knowledge_entries','Knowledge Base'],
@@ -19,6 +19,7 @@ export default function CompanyOnboarding({workspaceId,workspaceName,onImported}
   const [mode,setMode]=useState<Kind>('files');
   const [files,setFiles]=useState<File[]>([]);
   const [notes,setNotes]=useState('');
+  const [knowledgeOnly,setKnowledgeOnly]=useState(false);
   const [working,setWorking]=useState(false);
   const [error,setError]=useState('');
   const [done,setDone]=useState<Success|null>(null);
@@ -33,7 +34,7 @@ export default function CompanyOnboarding({workspaceId,workspaceName,onImported}
   },[supabase,workspaceId]);
   useEffect(()=>{void loadOrders();},[loadOrders]);
   function chooseFiles(event:ChangeEvent<HTMLInputElement>){setFiles(Array.from(event.currentTarget.files||[]));setDone(null);setError('');}
-  function selectMode(next:Kind){if(working)return;setMode(next);setError('');setDone(null);}
+  function selectMode(next:Kind){if(working)return;setMode(next);setKnowledgeOnly(false);setError('');setDone(null);}
   async function save(event:FormEvent<HTMLFormElement>){
     event.preventDefault();if(working)return;
     setError('');setDone(null);
@@ -46,6 +47,7 @@ export default function CompanyOnboarding({workspaceId,workspaceName,onImported}
       const form=new FormData();form.set('workspace_id',workspaceId);
       if(mode==='files')for(const f of files)form.append('files',f);
       else form.set('notes',notes.trim());
+      if(knowledgeOnly)form.set('knowledge_only','true');
       const response=await fetch('/api/company-onboarding',{
         method:'POST',headers:{Authorization:`Bearer ${session.access_token}`},body:form,cache:'no-store',
       });
@@ -78,21 +80,24 @@ export default function CompanyOnboarding({workspaceId,workspaceName,onImported}
           <label className="io-label" htmlFor="io-upload">Company data files</label>
           <input id="io-upload" type="file" multiple accept=".zip,.json,.csv,.txt,.md" onChange={chooseFiles} disabled={working}/>
           {files.length>0&&<p className="io-subtle"><FileArchive size={14}/> {files.map(f=>f.name).join(', ')}</p>}
-          <p className="io-subtle">ZIP, JSON and CSV are mapped directly. TXT and Markdown are analyzed with your AI provider. Maximum 5 MB total. Text-based PDF extraction requires a later integration.</p>
+          <p className="io-subtle">Structured ZIP, JSON, CSV and labeled TXT/Markdown are saved without an AI call. Free-form documents can use AI or the knowledge-only option below. Maximum 5 MB. PDF extraction is not available here.</p>
         </> : <>
           <label className="io-label" htmlFor="io-notes">Company profile, customers, catalog, policies and existing work</label>
           <textarea id="io-notes" rows={12} maxLength={15000} disabled={working} value={notes} onChange={e=>setNotes(e.target.value)}
             placeholder={'Company name: '+workspaceName+'\nIndustry:\nWhat we sell / do:\nVerified products and prices:\nCustomer details (only if explicitly provided):\nCurrent enquiries, orders or work orders:\nShipping, returns and support policies:\nBusiness hours and contacts:'}/>
-          <p className="io-subtle">Only information explicitly present in your text may be saved. The AI should not invent customers, transactions or prices.</p>
+          <p className="io-subtle">Use labels such as Company:, PRODUCT CATALOG:, CUSTOMERS:, COMPANY POLICIES:, and SUPPORT HOURS: for fast, direct extraction. Unsupported fields are never invented.</p>
         </>}
+        <label className="io-knowledge-choice"><input type="checkbox" checked={knowledgeOnly} disabled={working} onChange={e=>setKnowledgeOnly(e.target.checked)}/> Save as company knowledge only (no AI extraction or CRM/catalog creation)</label>
         <button type="submit" className="io-submit" disabled={working||(mode==='files'?!files.length:notes.trim().length<20)}>
           {working?<><RotateCw className="io-spinner" size={17}/> Extracting and saving…</>:<><Database size={17}/> Analyze & automatically save to INTRIGUE</>}
         </button>
         <p className="io-subtle">Save happens in one database transaction. Existing records are merged, not erased. Quotes remain unsent drafts; no messages, payments or bookings are triggered.</p>
       </form>
       {error&&<div className="io-error" role="alert"><AlertTriangle size={18}/><span>{error}</span></div>}
+      {error.includes('timed out') && !knowledgeOnly && <button type="button" className="io-fallback" onClick={()=>{setKnowledgeOnly(true);setError('');}}>Use knowledge-only fallback for this document</button>}
       {done&&<div className="io-success" role="status"><div className="io-heading"><CheckCircle2 size={21}/><div><h3>{done.summary?.already_imported?'Already imported':'Company data saved successfully'}</h3><p>{done.summary?.message||'The workspace records have been updated.'}</p></div></div>
-        <p className="io-subtle">Source: {done.source}</p>
+        <p className="io-subtle">Source: {done.source}. Extraction: {done.extraction_mode==='structured_text'?'Direct text parser (no AI timeout)':done.extraction_mode==='knowledge_only'?'Knowledge only':done.extraction_mode==='ai'?'AI-assisted':'Structured file'}.</p>
+        {done.warnings?.length? <div className="io-warning" role="status"><strong>Items requiring review:</strong><ul>{done.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>:null}
         <div className="io-stats">{categories.map(([key,label])=><div key={key} className="io-stat"><span>{label}</span><strong>{done.summary?.counts?.[key]?.added??0} added</strong><small>{done.summary?.counts?.[key]?.skipped??0} skipped / existing</small></div>)}</div>
         <p className="io-subtle">Skipped records may be duplicates, missing customer references, or unsupported fields. No external action is taken.</p>
       </div>}

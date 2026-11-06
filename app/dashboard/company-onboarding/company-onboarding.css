@@ -41,3 +41,9 @@
 .intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-onboard .io-table td,
 .intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-onboard .io-table th {border-color:#43536b;}
 @media(max-width:650px){.intrigue-onboard .io-card{padding:16px}.intrigue-onboard .io-options{grid-template-columns:1fr}}
+
+.intrigue-onboard .io-knowledge-choice {display:flex;align-items:center;gap:9px;font-size:13px;padding:12px 0;line-height:1.5;cursor:pointer;}
+.intrigue-onboard .io-knowledge-choice input {width:17px;height:17px;flex-shrink:0;}
+.intrigue-onboard .io-warning {margin:12px 0;padding:12px 16px;border-radius:12px;border:1px solid #bb8b40;background:#fff3dd;color:#4b361c;font-size:12px;}
+.intrigue-onboard .io-warning ul {margin:6px 0 0 16px;list-style:disc;}
+.intrigue-onboard .io-fallback {border:1px solid #b99860;border-radius:10px;padding:10px 14px;text-align:left;font-size:13px;background:#eed2a2;color:#1c2f43;cursor:pointer;}

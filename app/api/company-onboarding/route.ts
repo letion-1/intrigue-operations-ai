@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { inflateRawSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
+import { parseCompanyText } from '@/lib/intrigue-onboarding-structured';
 
 export const maxDuration = 60;
 
@@ -130,7 +131,7 @@ function addKnowledgeSource(batch:Dataset,source:string){
 function declaredCompanyName(source:string):string{
   const first=source.replace(/^\uFEFF/,'').split(/\r?\n/).slice(0,12);
   for(const line of first){
-    const label=line.match(/^\s*(?:company\s*name|business\s*name)\s*:\s*(.{2,100})\s*$/i);
+    const label=line.match(/^\s*(?:company(?:\s*name)?|business\s*name)\s*:\s*(.{2,100})\s*$/i);
     if(label){
       // Manual entry can put a second sentence on the same line. Only use
       // the declared company name, not the entire paragraph.
@@ -256,6 +257,9 @@ export async function POST(request:NextRequest){
     } else if(notes.length>15000)return err('Typed text must be under 15,000 characters.');
     const from=upload.length?fromFiles(map):{data:{} as Dataset,notes:[notes],hasStructured:false};
     const result:Dataset=from.data;
+    const knowledgeOnly=txt(form.get('knowledge_only'))==='true';
+    const warnings:string[]=[];
+    let extractionMode='structured_files';
     // Reject an explicitly named different company before contacting OpenRouter.
     // Do not let a TXT header for NOVA THREADS enter an AMAZON LLC workspace.
     const declared=[txt(result.company?.company_name),...from.notes.map(declaredCompanyName)].filter(Boolean);
@@ -264,13 +268,19 @@ export async function POST(request:NextRequest){
         return err(`Company mismatch: uploaded data belongs to "${companyName}", but the selected workspace is "${workspace.name}". Switch to the matching workspace before importing. Nothing was saved.`,409);
       }
     }
-    // The generated demo knowledge templates are already structured in text:
-    // their labeled policies can be saved without waiting for an AI provider.
+    // Labeled TXT/Markdown uses a strict parser, never the time-limited AI provider.
+    // Free-form documents can be explicitly saved as knowledge only without AI.
     const unstructured:string[]=[];
     for(const source of from.notes){
-      const parsed=structuredKnowledgeText(source);
-      if(parsed)merge(result,parsed);
-      else unstructured.push(source);
+      if(knowledgeOnly){addKnowledgeSource(result,source);extractionMode='knowledge_only';continue;}
+      const policy=structuredKnowledgeText(source);
+      if(policy){merge(result,policy);extractionMode='structured_text';continue;}
+      const structured=parseCompanyText(source);
+      if(structured.structured){
+        merge(result,cleanObject(structured.data));
+        warnings.push(...structured.warnings);
+        extractionMode='structured_text';
+      }else unstructured.push(source);
     }
     if(unstructured.length){
       const joined=unstructured.join('\n\n');
@@ -280,7 +290,14 @@ export async function POST(request:NextRequest){
         return err(`Company mismatch: AI extracted "${extractedName}", but the selected workspace is "${workspace.name}". Nothing was saved.`,409);
       }
       merge(result,extracted);
-      addKnowledgeSource(result,joined);
+      extractionMode='ai';
+      // Do not copy CRM contact details into an unrestricted Knowledge Base note.
+      // Users can choose the explicit knowledge-only option for arbitrary documents.
+    }
+    // Re-verify identity after direct parsing, not only after initial preflight.
+    const finalCompanyName=txt(result.company?.company_name);
+    if(finalCompanyName && companyKey(finalCompanyName)!==companyKey(workspace.name)){
+      return err(`Company mismatch: parsed data belongs to "${finalCompanyName}", not "${workspace.name}". Nothing was saved.`,409);
     }
     const count=accepted.reduce((n,k)=>n+(Array.isArray(result[k])?(result[k] as unknown[]).length:0),0);
     if(count===0&&!result.company)return err('No verifiable company records were extracted. No data was saved.');
@@ -292,7 +309,7 @@ export async function POST(request:NextRequest){
     // in a single transaction. The browser cannot bypass those checks.
     const {data:importResult,error:saveError}=await client.rpc('intrigue_onboarding_import',{p_workspace_id:workspaceId,p_payload:result,p_source_hash:digest});
     if(saveError)throw new Error(saveError.message);
-    return NextResponse.json({saved:true,summary:importResult,source:sourceName,extracted_counts:Object.fromEntries(accepted.map(k=>[k,Array.isArray(result[k])?(result[k] as unknown[]).length:0]))});
+    return NextResponse.json({saved:true,summary:importResult,source:sourceName,extraction_mode:extractionMode,warnings,extracted_counts:Object.fromEntries(accepted.map(k=>[k,Array.isArray(result[k])?(result[k] as unknown[]).length:0]))});
   } catch(e){
     return err(e instanceof Error?e.message:'Could not import company data.',422);
   }

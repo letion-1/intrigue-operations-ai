@@ -1,0 +1,11 @@
+/* RC2.2: neutral first-paint placeholder prevents a wrong-theme dashboard flash. */
+.intrigue-rc22-boot{min-height:100dvh;display:grid;place-items:center;background:#f7f2e9;color:#172a40;padding:32px;font-family:inherit}
+.intrigue-rc22-boot[data-theme="dark"]{background:#0b1827;color:#f5efe7}
+.intrigue-rc22-boot-inner{max-width:420px;width:100%;text-align:center}
+.intrigue-rc22-boot-wordmark{display:block;font-size:27px;letter-spacing:.2em;font-family:Georgia,serif}
+.intrigue-rc22-boot-wordmark small{display:block;font:600 10px system-ui,sans-serif;letter-spacing:.42em;color:#b48c50;margin-top:7px}
+.intrigue-rc22-boot-progress{height:3px;border-radius:5px;overflow:hidden;background:rgba(180,140,80,.22);margin:34px auto 16px;max-width:210px}
+.intrigue-rc22-boot-progress span{display:block;width:36%;height:100%;border-radius:5px;background:#c9a552;animation:intrigue-rc22-load 1.3s ease-in-out infinite alternate}
+.intrigue-rc22-boot p{font-size:13px;opacity:.74}
+@keyframes intrigue-rc22-load{from{transform:translateX(0)}to{transform:translateX(180%)}}
+@media(prefers-reduced-motion:reduce){.intrigue-rc22-boot-progress span{animation:none}}

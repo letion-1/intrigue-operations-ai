@@ -9,7 +9,7 @@ type Dependency={resource:string;count:number;rule?:string};
 type Preview={email:string;owned_workspaces:number;workspace:{id:string;name:string;members:number}|null;
  account_blockers:Dependency[];storage_owned:number;workspace_references:Dependency[];
  empty_workspace_eligible:boolean;account_deletion_eligible:boolean};
-type RecordRequest={id:string;kind:string;status:string;requested_at:string;response_due_at:string;workspace_label:string|null};
+type RecordRequest={id:string;kind:string;status:string;requested_at:string;response_due_at:string;workspace_label:string|null;public_message?:string|null;status_updated_at?:string|null};
 type Transfer={id:string;status:string;workspace_id:string;from_user:string;to_user:string;expires_at:string};
 type TeamMember={member_user_id:string;email:string;role:string};
 type Snapshot={enabled:boolean;requestEnabled?:boolean;preview:Preview;requests:RecordRequest[];transfers:Transfer[]};
@@ -39,12 +39,19 @@ export default function AccountDeletionPanel(){
  const [reviewKind,setReviewKind]=useState<ReviewKind|null>(null);
  const [reviewTyped,setReviewTyped]=useState('');
  const [reviewAck,setReviewAck]=useState(false);
+ const [withdrawTarget,setWithdrawTarget]=useState<RecordRequest|null>(null);
+ const [withdrawTyped,setWithdrawTyped]=useState('');
+ const [withdrawAck,setWithdrawAck]=useState(false);
  const reviewRef=useRef<HTMLDivElement>(null);
  const [typed,setTyped]=useState('');
  const [ack,setAck]=useState(false);
  const p=snapshot?.preview;
  const enabled=snapshot?.enabled===true;
  const requestEnabled=snapshot?.requestEnabled===true;
+ const activeRequests=(snapshot?.requests||[]).filter(r=>
+   ['needs_review','reviewing','processing','workspace_deleted'].includes(r.status));
+ const existingActive=activeRequests[0]||null;
+ const canStartRequest=requestEnabled&&!existingActive;
 
  const auth=useCallback(async()=>{
    const {data:{session},error:e}=await db.auth.getSession();
@@ -67,7 +74,10 @@ export default function AccountDeletionPanel(){
  },[db,auth]);
  useEffect(()=>{void load();},[load]);
  useEffect(()=>{if(reviewKind)reviewRef.current?.scrollIntoView({behavior:'smooth',block:'center'});},[reviewKind]);
- const openReview=(kind:ReviewKind)=>{setReviewKind(kind);setReviewTyped('');setReviewAck(false);setActive(null);setError('');setNotice('');};
+ const openReview=(kind:ReviewKind)=>{
+   if(existingActive){setError('You already have an active privacy request. Review or withdraw it before creating another.');return;}
+   setReviewKind(kind);setReviewTyped('');setReviewAck(false);setWithdrawTarget(null);setActive(null);setError('');setNotice('');
+ };
 
  const act=async(body:Record<string,unknown>)=>{
    setBusy(true);setError('');setNotice('');
@@ -84,7 +94,9 @@ export default function AccountDeletionPanel(){
      else if(json.offered) setNotice(`Transfer offered. Ask the recipient to open the ownership transfer page and sign in. Reference: ${json.transfer_id}`);
      else if(json.workspace_deleted) setNotice(json.message||'Empty company workspace deleted. Your login remains active.');
      else if(json.requested) setNotice(`Privacy request received. Reference: ${json.request_id}. No data has been deleted. Track your request below.`);
+     else if(json.withdrawn) setNotice(`Request ${json.request_id} withdrawn successfully. No data was erased.`);
      setTyped('');setAck(false);setActive(null);setReviewKind(null);setReviewTyped('');setReviewAck(false);
+     setWithdrawTarget(null);setWithdrawTyped('');setWithdrawAck(false);
      await load();
    }catch(e){setError(e instanceof Error?e.message:'Action failed.');}
    finally{setBusy(false);}
@@ -113,6 +125,12 @@ export default function AccountDeletionPanel(){
   {p&&!loading&&<>
     {!enabled&&<p className="intrigue-rc21-info">Direct deletion is disabled during testing. You can still request account or company erasure for manual review. Nothing is deleted when you submit a request.</p>}
     <p className="intrigue-account-muted">Signed in as <strong>{p.email}</strong></p>
+    {existingActive&&<div className="intrigue-rc22-existing" role="status">
+      <strong>A privacy request is already open.</strong>
+      <p>Reference <code>{existingActive.id}</code> is {existingActive.status.replace(/_/g,' ')}.
+        To prevent conflicting instructions, new requests are paused until this one is resolved.
+        You can withdraw it below while it is awaiting review.</p>
+    </div>}
     <div className="intrigue-rc2-grid">
       <div className="intrigue-rc2-tile">
         <Download size={19}/><strong>Export personal account data</strong>
@@ -122,7 +140,7 @@ export default function AccountDeletionPanel(){
       <div className="intrigue-rc2-tile">
         <UserRoundX size={19}/><strong>Delete my login</strong>
         <p>{p.account_deletion_eligible?'Your account currently has no blocking ownership references.':'Company ownership or protected records must be resolved before automatic login deletion.'}</p>
-        <button type="button" className="intrigue-account-secondary" disabled={busy||!requestEnabled}
+        <button type="button" className="intrigue-account-secondary" disabled={busy||!canStartRequest}
           onClick={()=>openReview('account')}>Request account erasure review</button>
         {p.account_deletion_eligible&&enabled&&<button type="button" className="intrigue-account-danger" disabled={busy}
           onClick={()=>{setActive('delete_account');setReviewKind(null);setTyped('');setAck(false);}}>Delete my account now</button>}
@@ -138,9 +156,9 @@ export default function AccountDeletionPanel(){
         ?'This company passes the strict empty-workspace check. You may delete it after verifying there is nothing to retain.'
         :'This company has protected data, other members or active dependencies. Automatic removal is disabled. Submit a reviewed deletion request.'}</p>
       <div className="intrigue-account-actions">
-        <button type="button" className="intrigue-account-secondary" disabled={busy||!requestEnabled}
+        <button type="button" className="intrigue-account-secondary" disabled={busy||!canStartRequest}
           onClick={()=>openReview('workspace')}>Request company deletion review</button>
-        <button type="button" className="intrigue-account-secondary" disabled={busy||!requestEnabled}
+        <button type="button" className="intrigue-account-secondary" disabled={busy||!canStartRequest}
           onClick={()=>openReview('workspace_and_account')}>Request company + account deletion</button>
         {p.empty_workspace_eligible&&enabled&&<button type="button" className="intrigue-account-danger" disabled={busy}
           onClick={()=>{setActive('delete_empty_workspace');setReviewKind(null);setTyped('');setAck(false);}}>Delete empty company</button>}
@@ -174,7 +192,7 @@ export default function AccountDeletionPanel(){
       <div className="intrigue-account-actions">
         <button type="button" className="intrigue-account-secondary" disabled={busy} onClick={()=>setReviewKind(null)}>Cancel</button>
         <button type="button" className="intrigue-account-secondary intrigue-rc21-submit"
-          disabled={busy||!requestEnabled||!reviewAck||reviewTyped!==reviewPhrase}
+          disabled={busy||!canStartRequest||!reviewAck||reviewTyped!==reviewPhrase}
           onClick={()=>void act({action:'request',kind:reviewKind,confirmation:reviewTyped,acknowledged:reviewAck})}>
           {busy?'Submitting…':'Submit reviewed erasure request'}</button>
       </div>
@@ -195,8 +213,35 @@ export default function AccountDeletionPanel(){
     </div>}
     {snapshot?.requests?.length>0&&<div className="intrigue-rc2-history">
       <strong>Privacy request history</strong>
-      <ul>{snapshot.requests.map(r=><li key={r.id}><span>{r.kind.replace(/_/g,' + ')} · {r.status.replace(/_/g,' ')}</span><small>Ref {r.id} · Submitted {new Date(r.requested_at).toLocaleDateString()} · Response target {new Date(r.response_due_at).toLocaleDateString()}</small></li>)}</ul>
+      <ul>{snapshot.requests.map(r=><li key={r.id}>
+        <span><strong>{r.kind.replace(/_/g,' + ')}</strong> · {r.status.replace(/_/g,' ')}</span>
+        <small>Ref {r.id} · Submitted {new Date(r.requested_at).toLocaleDateString()} · Response target {new Date(r.response_due_at).toLocaleDateString()}</small>
+        {r.public_message&&<p className="intrigue-rc22-request-message">{r.public_message}</p>}
+        {r.status==='needs_review'&&<button type="button" className="intrigue-account-secondary intrigue-rc22-withdraw-button"
+          disabled={busy} onClick={()=>{setWithdrawTarget(r);setWithdrawTyped('');setWithdrawAck(false);setError('');setNotice('');setReviewKind(null);}}>
+          Withdraw this request
+        </button>}
+      </li>)}</ul>
       <p className="intrigue-account-muted">A request receipt is not confirmation that data has been erased. Requests needing review must be handled by an authorized operator.</p>
+    </div>}
+    {withdrawTarget&&<div className="intrigue-rc22-withdraw-panel" role="region" aria-label="Confirm privacy request withdrawal">
+      <div className="intrigue-account-heading"><AlertTriangle size={18}/><strong>Withdraw pending privacy request</strong></div>
+      <p>Reference <code>{withdrawTarget.id}</code>. This only cancels your pending request for review.
+        It does not erase any account or company data, and cannot undo deletion already in progress.</p>
+      <label className="intrigue-account-ack"><input type="checkbox" checked={withdrawAck}
+        onChange={e=>setWithdrawAck(e.target.checked)}/>
+        I understand I am withdrawing this pending request and can submit a new request later.</label>
+      <label className="intrigue-account-label">Type <strong>{`WITHDRAW ${withdrawTarget.id}`}</strong> exactly to confirm
+        <input type="text" value={withdrawTyped} autoComplete="off" spellCheck={false}
+          onChange={e=>setWithdrawTyped(e.target.value)}/></label>
+      <div className="intrigue-account-actions">
+        <button type="button" className="intrigue-account-secondary" disabled={busy}
+          onClick={()=>{setWithdrawTarget(null);setWithdrawTyped('');setWithdrawAck(false);}}>Cancel</button>
+        <button type="button" className="intrigue-account-secondary intrigue-rc22-confirm-withdraw"
+          disabled={busy||!withdrawAck||withdrawTyped!==`WITHDRAW ${withdrawTarget.id}`}
+          onClick={()=>void act({action:'withdraw_request',request_id:withdrawTarget.id,
+            confirmation:withdrawTyped,acknowledged:withdrawAck})}>Confirm withdrawal</button>
+      </div>
     </div>}
     <div className="intrigue-account-actions"><button type="button" className="intrigue-account-secondary" disabled={busy} onClick={()=>void load()}><RefreshCw size={15}/> Refresh safety check</button></div>
   </>}

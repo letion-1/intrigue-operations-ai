@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { createClient } from "@/lib/supabase/client";
 import "./brand.css";
 import "./intrigue-themes.css";
+import "./rc22-startup.css";
 import "./client-shell.css";
 import CustomersCRMPanel from "./crm/CustomersCRMPanel";
 import QuotationsStudio from "./quotations/QuotationsStudio";
@@ -221,13 +222,17 @@ function Tag({ children, variant = "slate" }: { children: ReactNode; variant?: "
 export default function DashboardPage() {
   const [section, setSection] = useState<Section>("Overview");
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [appearance, setAppearance] = useState<"dark" | "light">("dark");
+  const [appearance, setAppearance] = useState<"dark" | "light">("light");
+  const [appearanceReady, setAppearanceReady] = useState(false);
+  const [workspaceResolvedOnce, setWorkspaceResolvedOnce] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem("intrigue-appearance-v1");
       if (stored === "dark" || stored === "light") setAppearance(stored);
     } catch { /* Storage can be disabled in private browsing. */ }
+    // Never render the full dashboard under an incorrect temporary theme.
+    setAppearanceReady(true);
   }, []);
   const toggleAppearance = () => setAppearance(current => {
     const next = current === "dark" ? "light" : "dark";
@@ -305,6 +310,7 @@ export default function DashboardPage() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [tasks, setTasks] = useState<FollowUp[]>([]);
   const [loading, setLoading] = useState(true);
+  useEffect(() => { if (!loading) setWorkspaceResolvedOnce(true); }, [loading]);
   const [busy, setBusy] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [dbError, setDbError] = useState("");
@@ -1036,6 +1042,19 @@ export default function DashboardPage() {
   function submitChat(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void askQuestion();
+  }
+
+  // During first hydration, hide temporary dark styling and generic company
+  // placeholders. Reveal the full interface only after local theme and first
+  // workspace lookup are resolved. Subsequent refreshes keep the shell mounted.
+  if (!appearanceReady || !workspaceResolvedOnce) {
+    return <div className="intrigue-rc22-boot" data-theme={appearanceReady ? appearance : 'pending'} role="status" aria-live="polite" aria-busy="true">
+      <div className="intrigue-rc22-boot-inner">
+        <span className="intrigue-rc22-boot-wordmark">INTRIGUE <small>STUDIOS</small></span>
+        <div className="intrigue-rc22-boot-progress" aria-hidden="true"><span/></div>
+        <p>Preparing your secure workspace…</p>
+      </div>
+    </div>;
   }
 
   // Block the new-company onboarding screen for members whose access was removed.

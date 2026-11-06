@@ -44,3 +44,14 @@
 .intrigue-rc21-request p{margin:0;font-size:13px;line-height:1.65}
 .intrigue-rc21-submit{background:rgba(201,162,90,.15);border-color:#bb9453}
 .intrigue-rc21-request input[type=text]{width:100%;max-width:100%;box-sizing:border-box}
+
+/* RC2.2: scoped request management, both light and dark themes. */
+.intrigue-rc22-existing{border:1px solid var(--intrigue-account-border,#d7c7b0);border-radius:12px;background:rgba(199,157,83,.10);padding:14px 16px;margin:14px 0;font-size:12px;line-height:1.6}
+.intrigue-rc22-existing p{margin:5px 0 0}.intrigue-rc22-existing code{overflow-wrap:anywhere}
+.intrigue-rc22-request-message{font-size:12px;line-height:1.55;opacity:.85;margin:3px 0 6px}
+.intrigue-account-panel .intrigue-rc22-withdraw-button{margin-top:7px;align-self:flex-start}
+.intrigue-rc22-withdraw-panel{border:2px solid #b58f57;border-radius:13px;margin:18px 0;padding:20px;display:grid;gap:13px;font-size:13px}
+.intrigue-rc22-withdraw-panel p{line-height:1.65;margin:0}
+.intrigue-rc22-withdraw-panel code{overflow-wrap:anywhere}
+.intrigue-rc22-confirm-withdraw{background:rgba(175,100,56,.12);border-color:#aa754e}
+@media(max-width:720px){.intrigue-rc22-withdraw-panel{padding:14px}}

@@ -119,7 +119,7 @@ test('customer UI requires confirmation and acknowledges non-destructive review'
   assert.match(ui,/Review and type|Type <strong>\{reviewPhrase\}/);
   assert.match(ui,/requestEnabled/);
   assert.match(ui,/reviewAck/);
-  assert.match(ui,/requestEnabled\|\|!reviewAck\|\|reviewTyped!==reviewPhrase/);
+  assert.match(ui,/(?:requestEnabled|canStartRequest)\|\|!reviewAck\|\|reviewTyped!==reviewPhrase/);
   assert.match(read(routeFile),/status:'received'/);
   assert.match(ui,/not confirmation that data has been erased/);
   assert.match(ui,/Request company \+ account deletion/);

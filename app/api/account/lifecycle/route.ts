@@ -9,7 +9,7 @@ export async function GET(request:NextRequest){
     const {db,user}=await identity(request);
     const p=await preview(db);
     const {data:requests,error}=await db.from('intrigue_rc2_requests')
-      .select('id,kind,status,workspace_label,requested_at,response_due_at,completed_at')
+      .select('id,kind,status,workspace_label,requested_at,response_due_at,completed_at,public_message,status_updated_at')
       .eq('requested_by',user.id).order('requested_at',{ascending:false}).limit(15);
     if(error)throw new LifecycleError(503,'Unable to load deletion requests.');
     const {data:transfers,error:transferError}=await db.from('intrigue_rc2_transfers')
@@ -29,6 +29,22 @@ export async function POST(request:NextRequest){
     const b=input as Record<string,unknown>;
     const action=b.action;
     const safety=await preview(db);
+
+    // Withdrawal is non-destructive and is authorized again inside PostgreSQL.
+    // The database atomically checks requester ownership and needs_review status.
+    if(action==='withdraw_request'){
+      const requestId=b.request_id;
+      if(typeof requestId!=='string'||!id.test(requestId)||
+         b.acknowledged!==true||b.confirmation!==`WITHDRAW ${requestId}`)
+        throw new LifecycleError(400,'Confirm withdrawal using the exact request reference.');
+      const {data,error}=await db.rpc('intrigue_rc22_withdraw_request',{
+        p_request_id:requestId,p_confirmation:b.confirmation
+      });
+      if(error||data!==requestId)
+        throw new LifecycleError(409,'Withdrawal was not permitted. The request may have entered review or already been closed.');
+      return response({withdrawn:true,request_id:requestId,
+        message:'This pending privacy request has been withdrawn. No company or account data was erased.'});
+    }
 
     // A privacy request is a NON-DESTRUCTIVE intake action. It remains available
     // when automatic deletion and ownership transfer are disabled in Production.
@@ -51,6 +67,8 @@ export async function POST(request:NextRequest){
       const {data,error}=await db.rpc('intrigue_rc2_request',{
         p_kind:kind,p_workspace_id:workspaceId
       });
+      if(error?.code==='23505')
+        throw new LifecycleError(409,'You already have a related active privacy request. Review or withdraw the previous request first.');
       if(error||typeof data!=='string'||!id.test(data))
         throw new LifecycleError(409,'Request could not be recorded. Refresh and try again.');
       // This reference only proves receipt. It is NOT an erasure confirmation.

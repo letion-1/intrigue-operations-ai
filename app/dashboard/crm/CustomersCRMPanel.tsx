@@ -143,6 +143,62 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
   const selectedCustomer = selectedCustomerId ? byId.get(selectedCustomerId) : null;
   const selectedEnquiry = selectedEnquiryId ? enquiries.find(e => e.id === selectedEnquiryId) : undefined;
   const selectedEnquiryCustomer = selectedEnquiry ? byId.get(selectedEnquiry.customer_id) : undefined;
+
+  // INTRIGUE_CORE_AI_HANDLING_SPLIT_V1: AI processing is distinct from customer handling (new/closed).
+  // A workspace-scoped read only. Existing Supabase RLS controls who can see run data.
+  type CoreAiSummary = { status: string; intent: string | null; outcome: string | null };
+  const [coreAiByEnquiry, setCoreAiByEnquiry] = useState<Record<string, CoreAiSummary>>({});
+  const [coreAiVisibility, setCoreAiVisibility] = useState<"loading" | "ready" | "restricted">("loading");
+  const [coreAiRefresh, setCoreAiRefresh] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    setCoreAiByEnquiry({});
+    setCoreAiVisibility("loading");
+    if (!workspaceId) return () => { alive = false; };
+    void (async () => {
+      const { data, error } = await supabase.from("intrigue_v17_runs")
+        .select("id,payload,result,status,created_at")
+        .eq("workspace_id", workspaceId)
+        .order("created_at", { ascending: false })
+        .limit(300);
+      if (!alive) return;
+      if (error) { setCoreAiVisibility("restricted"); return; }
+      const allowed = new Set(enquiries.map(e => e.id));
+      const next: Record<string, CoreAiSummary> = {};
+      for (const entry of data || []) {
+        const payload = entry.payload && typeof entry.payload === "object"
+          ? entry.payload as Record<string, unknown> : {};
+        const result = entry.result && typeof entry.result === "object"
+          ? entry.result as Record<string, unknown> : {};
+        const enquiryId = payload.enquiry_id;
+        if (typeof enquiryId !== "string" || !allowed.has(enquiryId) || next[enquiryId]) continue;
+        next[enquiryId] = {
+          status: String(entry.status || "unknown"),
+          intent: typeof result.intent === "string" ? result.intent : null,
+          outcome: typeof result.outcome === "string" ? result.outcome : null,
+        };
+      }
+      setCoreAiByEnquiry(next);
+      setCoreAiVisibility("ready");
+    })();
+    return () => { alive = false; };
+  }, [supabase, workspaceId, enquiries, coreAiRefresh]);
+
+  function aiStatusLabel(enquiryId: string): string {
+    if (coreAiVisibility === "loading") return "AI: checking";
+    if (coreAiVisibility === "restricted") return "AI: see Automation Center";
+    const r = coreAiByEnquiry[enquiryId];
+    if (!r) return "AI: no recent run";
+    if (r.status === "succeeded") {
+      if (r.outcome === "routed") return "AI: routed " + (r.intent || "support").replaceAll("_", " ");
+      if (r.outcome === "matched") return "AI: sales match, review quotation";
+      if (r.outcome === "needs_review") return "AI: needs human review";
+      return "AI: analysis succeeded";
+    }
+    if (r.status === "queued" || r.status === "running" || r.status === "retry_wait") return "AI: " + r.status.replaceAll("_", " ");
+    return "AI: " + r.status.replaceAll("_", " ");
+  }
+
   const customerEnquiries = useMemo(() => selectedCustomerId
     ? enquiries.filter(e => e.customer_id === selectedCustomerId).sort((a,b) =>
       activityTime(b.updated_at || b.created_at) - activityTime(a.updated_at || a.created_at)) : [], [enquiries, selectedCustomerId]);
@@ -454,6 +510,8 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       <div className="mt-5 rounded-xl border border-[#46586a] bg-[#0e2235] p-5">
         <h4 className="mb-3 text-sm font-semibold text-[#e7c37c]">Customer request</h4>
         <p className="whitespace-pre-wrap break-words text-sm leading-7 text-[#f2efe8]">{selectedEnquiry.subject}</p>
+        <p className="mt-3 text-xs text-[#d6c294]">Customer handling: {selectedEnquiry.status.replaceAll("_", " ")} · {aiStatusLabel(selectedEnquiry.id)}</p>
+        <button type="button" className="crm-secondary mt-3" onClick={() => setCoreAiRefresh(n => n + 1)}>Refresh AI status</button>
       </div>
       <div className="mt-4 rounded-xl border border-[#46586a] bg-[#0e2235] p-4">
         <p className="mb-2 text-xs font-semibold text-[#e7c37c]">Enquiry ID</p>
@@ -572,7 +630,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
     {activeTab === "enquiries" && <div id="crm-enquiries-panel" role="tabpanel" aria-labelledby="crm-enquiries-tab" className="crm-panel">
       <div className="crm-heading crm-enquiries-heading"><div><h3>Enquiries <span>({visibleEnquiries.length})</span></h3><p>{automotive ? "Repair and upgrade requests" : "Customer questions and business requests"} · newest activity first</p></div>{canWrite && <button type="button" className="crm-primary" onClick={openNewEnquiry}><Plus size={15}/> New enquiry</button>}</div>
       <div className="crm-table-scroll"><table>
-        <thead><tr><th>Customer</th><th>{automotive ? "Service request" : "Enquiry / request"}</th><th>Status</th><th>Received</th></tr></thead>
+        <thead><tr><th>Customer</th><th>{automotive ? "Service request" : "Enquiry / request"}</th><th>Handling</th><th>Received</th></tr></thead>
         <tbody>{visibleEnquiries.map(row => {
           const customer = byId.get(row.customer_id);
           return <tr key={row.id} className="cursor-pointer hover:bg-[#1a3047]" onClick={() => openEnquiry(row)}>
@@ -583,7 +641,8 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
     </td>
     <td><button type="button" className="crm-profile-link text-left"
       onClick={event => {event.stopPropagation();openEnquiry(row);}}
-      aria-label="Open enquiry">{row.subject}</button></td>
+      aria-label="Open enquiry">{row.subject}</button>
+      <span className="crm-subtext">{aiStatusLabel(row.id)}</span></td>
     <td><span className="crm-status">{row.status.replace(/_/g," ")}</span></td>
     <td>{new Date(row.created_at).toLocaleDateString()}</td>
   </tr>;

@@ -18,7 +18,10 @@ export async function GET(request: NextRequest) {
       .eq('state_hash', digest).is('consumed_at', null)
       .gt('expires_at', new Date().toISOString())
       .select('workspace_id,actor_id,verifier_cipher');
-    if (error || !records || records.length !== 1) return redirect('expired_state');
+    if (error || !records || records.length !== 1) {
+      console.warn('[INTRIGUE_GMAIL_OAUTH_STATE_REJECTED]', { reason: error ? 'state_update_error' : 'missing_expired_or_consumed' });
+      return redirect('expired_state');
+    }
     const stateRow = records[0];
     if (params.get('error')) return redirect('declined');
     const code = params.get('code');

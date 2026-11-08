@@ -61,7 +61,7 @@ export async function executeAction(run, deps = {getRows,aiSelect:selectWithOpen
   throw Error('Unsupported action type.');
 }
 async function tick() {
-  const claimed = await rpc('intrigue_v17_claim',{p_lease_seconds:120});
+  const claimed = await rpc('intrigue_v17_claim_fair',{p_lease_seconds:120});
   if (!Array.isArray(claimed) || claimed.length===0) return false;
   const run = claimed[0];
   let success=false, result={}, error=null;

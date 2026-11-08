@@ -64,7 +64,7 @@ function validate(draft: Draft): string | null {
   return null;
 }
 
-export default function CustomersCRMPanel({ workspaceId, companyName, industry, customers, enquiries, canWrite, canManageImport, refresh }: {
+export default function CustomersCRMPanel({ workspaceId, companyName, industry, customers, enquiries, canWrite, canManageImport, refresh, highlightEnquiryId }: {
   workspaceId: string;
   companyName: string;
   industry: string;
@@ -73,6 +73,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
   canWrite: boolean;
   canManageImport: boolean;
   refresh: () => Promise<unknown> | void;
+  highlightEnquiryId?: string | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const automotive = isAutomotiveIndustry(industry);
@@ -80,6 +81,15 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
   const [showContactImport, setShowContactImport] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!highlightEnquiryId) return;
+    const item = enquiries.find(e => e.id === highlightEnquiryId);
+    if (item) {
+      setActiveTab('enquiries');
+      setSearch(item.subject);
+      setSelectedCustomerId(null);
+    }
+  }, [highlightEnquiryId, enquiries]);
   const [returnTab, setReturnTab] = useState<"customers" | "enquiries">("customers");
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileErrors, setProfileErrors] = useState<string[]>([]);

@@ -160,7 +160,7 @@ const OWNER_ONLY_SECTIONS: Section[] = ["AI Assistant","AI Receptionist","Automa
 type Customer = { id: string; full_name: string; email: string | null; phone: string | null; vehicle: string | null; created_at: string; updated_at: string };
 type Enquiry = { id: string; customer_id: string; subject: string; status: string; created_at: string; updated_at: string };
 type Quote = { id: string; customer_id: string; description: string; amount: number; status: string; created_at: string; updated_at: string; quote_note?: string | null; currency?: string | null };
-type FollowUp = { id: string; customer_id: string; title: string; due_at: string; status: string; priority: string; updated_at: string };
+type FollowUp = { id: string; customer_id: string; title: string; due_at: string; status: string; priority: string; updated_at: string; source_enquiry_id?: string | null; source_intent?: string | null; assigned_to?: string | null };
 type KnowledgeEntry = { id: string; title: string; category: string; content: string; created_at: string };
 type KnowledgeDocument = { id: string; filename: string; file_type: string; page_count: number; characters: number; created_at: string };
 type ActionProposal = {
@@ -230,6 +230,8 @@ function Tag({ children, variant = "slate" }: { children: ReactNode; variant?: "
 
 export default function DashboardPage() {
   const [section, setSection] = useState<Section>("Overview");
+  const [gmailOauthNotice, setGmailOauthNotice] = useState<string>("");
+  const [highlightEnquiryId, setHighlightEnquiryId] = useState<string | null>(null);
   const [guideStep,setGuideStep]=useState<number|null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [appearance, setAppearance] = useState<"dark" | "light">("light");
@@ -351,7 +353,7 @@ export default function DashboardPage() {
   const [showFollowForm, setShowFollowForm] = useState(false);
   const [customerForm, setCustomerForm] = useState({ name: "", vehicle: "", service: "" });
   const [quoteForm, setQuoteForm] = useState({ customerId: "", description: "", amount: "" });
-  const [followForm, setFollowForm] = useState({ customerId: "", title: "", date: "" });
+  const [followForm, setFollowForm] = useState({ customerId: "", title: "", date: "", assignedTo: "" });
   // Knowledge entries are stored separately, so missing V5 SQL never blocks V4 features.
   const [knowledgeEntries, setKnowledgeEntries] = useState<KnowledgeEntry[]>([]);
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
@@ -386,7 +388,29 @@ export default function DashboardPage() {
   useEffect(() => {
     // The invitation code is never transmitted to the AI or analytics.
     const params = new URLSearchParams(window.location.search);
-    if (params.has("integration")) setSection("Integrations");
+    const gmailResult = params.get("gmail");
+    if (gmailResult) {
+      const messages: Record<string, string> = {
+        connected: "Gmail connected successfully. Confirm the sender in Integrations → Business email.",
+        expired_state: "Gmail connection expired or this authorization link was already used. Open Integrations → Business email and click Connect Gmail to start a fresh, one-time authorization. Keep this tab open until Google returns.",
+        invalid_state: "Gmail authorization could not be verified. Start a fresh connection from Integrations.",
+        declined: "Gmail permission was declined. No account was connected.",
+        token_failed: "Google did not accept the Gmail authorization. Retry using a fresh Connect Gmail attempt; verify the registered redirect URI if it persists.",
+        no_refresh_token: "Google did not provide offline Gmail access. Reconnect and grant permission; remove an old authorization from your Google account first if necessary.",
+        missing_code: "Google did not return an authorization code. Please reconnect Gmail.",
+        profile_failed: "Gmail authorization completed but the Google profile could not be checked. Retry.",
+        email_unverified: "The selected Google email could not be verified. Use a verified account.",
+        storage_failed: "Gmail authorization succeeded but the connection could not be saved. Contact your workspace administrator.",
+        access_revoked: "Your workspace permissions changed; Gmail could not be connected.",
+        callback_failed: "Gmail connection could not be completed. Retry and check deployment logs if it happens again.",
+      };
+      setGmailOauthNotice(messages[gmailResult] || "Gmail authorization requires attention. Review Business email integrations.");
+      setSection("Integrations");
+      params.delete("gmail");
+      const clean = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
+      window.history.replaceState(window.history.state, "", clean);
+    }
+    if (gmailResult || params.has("integration")) setSection("Integrations");
     else if (params.get("section") === "ai-receptionist") setSection("AI Receptionist");
     const token = params.get("join");
     if (token && /^[0-9a-f]{64}$/.test(token)) setJoinToken(token);
@@ -446,7 +470,7 @@ export default function DashboardPage() {
       supabase.from("customers").select("id,full_name,email,phone,vehicle,created_at,updated_at").eq("workspace_id", found.id).order("updated_at", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("enquiries").select("id,customer_id,subject,status,created_at,updated_at").eq("workspace_id", found.id).order("updated_at", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("quotations").select("id,customer_id,description,amount,status,created_at,quote_note,currency,updated_at").eq("workspace_id", found.id).order("updated_at", { ascending: false }).order("created_at", { ascending: false }),
-      supabase.from("follow_ups").select("id,customer_id,title,due_at,status,priority,updated_at").eq("workspace_id", found.id).order("updated_at", { ascending: false }).order("due_at", { ascending: true }),
+      supabase.from("follow_ups").select("id,customer_id,title,due_at,status,priority,updated_at,source_enquiry_id,source_intent,assigned_to").eq("workspace_id", found.id).order("updated_at", { ascending: false }).order("due_at", { ascending: true }),
     ]);
     const error = c.error || e.error || q.error || t.error;
     if (error) setDbError(`Unable to load records: ${error.message}`);
@@ -625,7 +649,7 @@ export default function DashboardPage() {
     if(members.error || invites.error) setTeamError(members.error?.message||invites.error?.message||"Team unavailable");
     else {setTeamError("");setTeamMembers((members.data||[]) as TeamMember[]);setTeamInvites((invites.data||[]) as TeamInvite[]);}
   },[supabase,workspace,isOwner]);
-  useEffect(()=>{if(section==="Team" || section==="Settings") void loadTeam();},[section,loadTeam]);
+  useEffect(()=>{if(section==="Team" || section==="Settings" || section==="Follow-ups") void loadTeam();},[section,loadTeam]);
 
   const loadTeamAudit = useCallback(async () => {
     if (!workspace || !isOwner) {setTeamAudit([]);return;}
@@ -810,9 +834,19 @@ export default function DashboardPage() {
     event.preventDefault();
     if (!workspace || !canWriteOps || !followForm.customerId || !followForm.title.trim() || !followForm.date) return;
     setBusy(true); setDbError("");
-    const {error} = await supabase.from("follow_ups").insert({workspace_id:workspace.id, customer_id:followForm.customerId, title:followForm.title.trim(), due_at:new Date(`${followForm.date}T12:00:00`).toISOString(), status:"pending", priority:"normal"});
+    const {error} = await supabase.from("follow_ups").insert({workspace_id:workspace.id, customer_id:followForm.customerId, title:followForm.title.trim(), due_at:new Date(`${followForm.date}T12:00:00`).toISOString(), status:"pending", priority:"normal", assigned_to:followForm.assignedTo || null});
     if (error) setDbError(error.message);
-    else { setFollowForm({customerId:"",title:"",date:""}); setShowFollowForm(false); await refresh(); }
+    else { setFollowForm({customerId:"",title:"",date:"",assignedTo:""}); setShowFollowForm(false); await refresh(); }
+    setBusy(false);
+  }
+
+  async function assignFollowUp(id: string, assignedTo: string) {
+    if (!isOwner || !workspace) return;
+    setBusy(true); setDbError("");
+    const { error } = await supabase.from("follow_ups")
+      .update({ assigned_to: assignedTo || null })
+      .eq("id", id).eq("workspace_id", workspace.id);
+    if (error) setDbError(error.message); else await refresh();
     setBusy(false);
   }
 
@@ -1323,6 +1357,10 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {gmailOauthNotice && <div role="status" className="mb-6 rounded-xl border border-[#b59450] bg-[#604d22]/30 p-4 text-sm text-[#f5dfab]">
+            <strong>Gmail connection:</strong> {gmailOauthNotice}
+            <button type="button" onClick={() => {setGmailOauthNotice("");setSection("Integrations");}} className="ml-3 underline">Dismiss / Open integrations</button>
+          </div>}
           {dbError && <div role="alert" className="mb-6 rounded-xl border border-red-400/40 bg-red-500/10 p-4 text-sm text-red-200">{dbError} <button type="button" onClick={()=>void refresh()} className="ml-3 underline">{t("Retry")}</button></div>}
           {loading && <div className="rounded-2xl border border-[#304153] bg-[#142539] p-8 text-sm text-[#afbdcb]">{t("Loading your Supabase workspace...")}</div>}
           {!loading && joinToken && <div className="mb-6 rounded-2xl border border-[#a18343]/60 bg-[#142539] p-6">
@@ -1527,6 +1565,7 @@ export default function DashboardPage() {
             canWrite={canWriteOps}
             canManageImport={canManageCatalog}
             refresh={refresh}
+            highlightEnquiryId={highlightEnquiryId}
           />}
 
           {section === "Quotations" && <QuotationsStudio
@@ -1541,8 +1580,8 @@ export default function DashboardPage() {
 
           {section === "Follow-ups" && <div className="space-y-4">
             {canWriteOps && <div className="flex justify-end"><button type="button" className={newButtonClass} onClick={()=>setShowFollowForm(!showFollowForm)}><Plus size={14} className="mr-1 inline"/>{t("New follow-up")}</button></div>}
-            {canWriteOps && showFollowForm && <form onSubmit={addFollowUp} className="grid gap-3 rounded-2xl border border-[#35485d] bg-[#142539] p-5 md:grid-cols-3"><select className={inputClass} required value={followForm.customerId} onChange={e=>setFollowForm({...followForm,customerId:e.target.value})} aria-label="Select customer"><option value="">{t("Select customer")}</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select><input className={inputClass} required maxLength={300} placeholder="Follow-up task" aria-label="Follow-up task" value={followForm.title} onChange={e=>setFollowForm({...followForm,title:e.target.value})}/><input className={inputClass} required type="date" aria-label="Due date" value={followForm.date} onChange={e=>setFollowForm({...followForm,date:e.target.value})}/><button disabled={busy || !customers.length} className={`${newButtonClass} md:col-span-3`}>{t("Save follow-up")}</button></form>}
-            <div className="grid gap-4 md:grid-cols-2">{tasks.map(task=><div key={task.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 shadow-sm"><div className="mb-4 flex items-start justify-between gap-3"><div className="text-base font-bold">{customerName(task.customer_id)}</div><Tag variant={task.status==="done"?"emerald":"amber"}>{task.status==="done"?"Completed":task.priority==="high"?"High priority":"Pending"}</Tag></div><p className="text-sm font-medium text-[#f0e9dc]">{task.title}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">{t("Due")} {niceDate(task.due_at)}  |  {customerContext(task.customer_id)}</p>{canWriteOps && task.status==="pending" && <button type="button" disabled={busy} onClick={()=>completeFollowUp(task.id)} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#9f7b39] px-3 py-2 text-xs text-[#e1c178] hover:bg-[#304153]"><CheckCircle2 size={15}/>{t("Mark complete")}</button>}</div>)}</div>
+            {canWriteOps && showFollowForm && <form onSubmit={addFollowUp} className="grid gap-3 rounded-2xl border border-[#35485d] bg-[#142539] p-5 md:grid-cols-3"><select className={inputClass} required value={followForm.customerId} onChange={e=>setFollowForm({...followForm,customerId:e.target.value})} aria-label="Select customer"><option value="">{t("Select customer")}</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select><input className={inputClass} required maxLength={300} placeholder="Follow-up task" aria-label="Follow-up task" value={followForm.title} onChange={e=>setFollowForm({...followForm,title:e.target.value})}/><input className={inputClass} required type="date" aria-label="Due date" value={followForm.date} onChange={e=>setFollowForm({...followForm,date:e.target.value})}/>{isOwner && <select className={inputClass} aria-label="Assign follow-up to a team member" value={followForm.assignedTo} onChange={e=>setFollowForm({...followForm,assignedTo:e.target.value})}><option value="">Unassigned</option>{teamMembers.filter(m=>["owner","admin","staff"].includes(m.role)).map(m=><option key={m.member_user_id} value={m.member_user_id}>{m.email} ({m.role})</option>)}</select>}<button disabled={busy || !customers.length} className={`${newButtonClass} md:col-span-3`}>{t("Save follow-up")}</button></form>}
+            <div className="grid gap-4 md:grid-cols-2">{tasks.map(task=><div key={task.id} className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 shadow-sm"><div className="mb-4 flex items-start justify-between gap-3"><div className="text-base font-bold">{customerName(task.customer_id)}</div><Tag variant={task.status==="done"?"emerald":"amber"}>{task.status==="done"?"Completed":task.priority==="high"?"High priority":"Pending"}</Tag></div><p className="text-sm font-medium text-[#f0e9dc]">{task.title}</p><p className="mt-2 text-xs leading-5 text-[#afbdcb]">{t("Due")} {niceDate(task.due_at)}  |  {customerContext(task.customer_id)}</p>{task.source_enquiry_id && <p className="mt-2 text-xs text-[#d7bb78]">AI-routed enquiry ({task.source_intent === "exchange" ? "Exchange" : task.source_intent === "order_status" ? "Order tracking" : "Support"}): {enquiries.find(e=>e.id===task.source_enquiry_id)?.subject || "Review the original request."} <button type="button" className="ml-2 underline" onClick={()=>{setHighlightEnquiryId(task.source_enquiry_id || null);navigate("Customers");}}>View enquiry</button></p>}{isOwner && <div className="mt-3"><label className="text-xs text-[#b9c7d6]" htmlFor={`follow-assignee-${task.id}`}>Assigned to</label><select id={`follow-assignee-${task.id}`} aria-label="Assign follow-up" disabled={busy} className={`${inputClass} mt-1`} value={task.assigned_to || ""} onChange={e=>void assignFollowUp(task.id,e.target.value)}><option value="">Unassigned</option>{teamMembers.filter(m=>["owner","admin","staff"].includes(m.role)).map(m=><option key={m.member_user_id} value={m.member_user_id}>{m.email} ({m.role})</option>)}</select></div>}{canWriteOps && task.status==="pending" && <button type="button" disabled={busy} onClick={()=>completeFollowUp(task.id)} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#9f7b39] px-3 py-2 text-xs text-[#e1c178] hover:bg-[#304153]"><CheckCircle2 size={15}/>{t("Mark complete")}</button>}</div>)}</div>
             {tasks.length===0 && <p className="rounded-xl border border-[#35485d] p-6 text-sm text-[#afbdcb]">{t("No follow-up tasks yet.")}</p>}
           </div>}
 

@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     const db = adminClient();
     const { error } = await db.from('intrigue_gmail_oauth_states').insert({
       state_hash: sha(state), workspace_id: workspaceId, actor_id: userId,
-      verifier_cipher: encrypt(verifier), expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      verifier_cipher: encrypt(verifier), expires_at: new Date(Date.now() + 20 * 60_000).toISOString(),
     });
     if (error) throw new Error(`Unable to initialize Gmail OAuth: ${error.message}`);
     const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');

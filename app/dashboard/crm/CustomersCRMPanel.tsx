@@ -64,7 +64,7 @@ function validate(draft: Draft): string | null {
   return null;
 }
 
-export default function CustomersCRMPanel({ workspaceId, companyName, industry, customers, enquiries, canWrite, canManageImport, refresh, highlightEnquiryId }: {
+export default function CustomersCRMPanel({ workspaceId, companyName, industry, customers, enquiries, canWrite, canManageImport, refresh, highlightEnquiryId, onOpenAutomation }: {
   workspaceId: string;
   companyName: string;
   industry: string;
@@ -74,6 +74,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
   canManageImport: boolean;
   refresh: () => Promise<unknown> | void;
   highlightEnquiryId?: string | null;
+  onOpenAutomation?: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const automotive = isAutomotiveIndustry(industry);
@@ -81,6 +82,8 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
   const [showContactImport, setShowContactImport] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  // INTRIGUE_ENQUIRY_DETAILS_V2
+  const [selectedEnquiryId, setSelectedEnquiryId] = useState<string | null>(null);
   useEffect(() => {
     if (!highlightEnquiryId) return;
     const item = enquiries.find(e => e.id === highlightEnquiryId);
@@ -88,6 +91,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       setActiveTab('enquiries');
       setSearch(item.subject);
       setSelectedCustomerId(null);
+      setSelectedEnquiryId(item.id);
     }
   }, [highlightEnquiryId, enquiries]);
   const [returnTab, setReturnTab] = useState<"customers" | "enquiries">("customers");
@@ -137,6 +141,8 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
     || b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id)), [byId, enquiries, search]);
 
   const selectedCustomer = selectedCustomerId ? byId.get(selectedCustomerId) : null;
+  const selectedEnquiry = selectedEnquiryId ? enquiries.find(e => e.id === selectedEnquiryId) : undefined;
+  const selectedEnquiryCustomer = selectedEnquiry ? byId.get(selectedEnquiry.customer_id) : undefined;
   const customerEnquiries = useMemo(() => selectedCustomerId
     ? enquiries.filter(e => e.customer_id === selectedCustomerId).sort((a,b) =>
       activityTime(b.updated_at || b.created_at) - activityTime(a.updated_at || a.created_at)) : [], [enquiries, selectedCustomerId]);
@@ -219,10 +225,36 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
 
   const openProfile = (customerId: string, from: "customers" | "enquiries") => {
     if (!byId.has(customerId)) return;
+    setSelectedEnquiryId(null);
     setReturnTab(from); setActiveTab(from);
     setSelectedCustomerId(customerId); setShowCreate(false); setShowEnquiryForm(false);
     setProfileAction(null); setProfileMessage(""); setError(""); setSuccess("");
   };
+
+  const openEnquiry = (enquiry: Enquiry) => {
+    if (!enquiries.some(e => e.id === enquiry.id)) return;
+    setSelectedCustomerId(null);
+    setSelectedEnquiryId(enquiry.id);
+    setActiveTab("enquiries");
+    setShowCreate(false);
+    setShowEnquiryForm(false);
+    setProfileMessage("");
+    setError("");
+    setSuccess("");
+  };
+  const closeEnquiry = () => {
+    setSelectedEnquiryId(null);
+    setActiveTab("enquiries");
+  };
+  const copyEnquiryId = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
+      setProfileMessage("Enquiry ID copied");
+    } catch {
+      setProfileMessage("Select and copy the enquiry ID shown above");
+    }
+  };
+
   const closeProfile = () => {
     requestSerial.current += 1;
     setSelectedCustomerId(null); setActiveTab(returnTab);
@@ -399,6 +431,48 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
       <div><strong>{customers.filter(c => !!c.email).length}</strong><span>With email</span></div>
       <div><strong>{customers.filter(c => !!c.phone).length}</strong><span>With phone</span></div>
     </div>
+
+    {selectedEnquiry && !selectedCustomer && <div className="crm-profile" aria-label="Enquiry details">
+      <div className="crm-profile-top">
+        <button className="crm-secondary" type="button" onClick={closeEnquiry}>
+          <ArrowLeft size={15}/> Back to enquiries
+        </button>
+        <span className="crm-profile-eyebrow">ENQUIRY DETAILS · {companyName}</span>
+      </div>
+      <div className="crm-profile-title">
+        <div>
+          <h3>Enquiry details</h3>
+          <p>Received {new Date(selectedEnquiry.created_at).toLocaleString()}</p>
+        </div>
+        <span className="crm-status">{selectedEnquiry.status.replace(/_/g," ")}</span>
+      </div>
+      <div className="crm-profile-contacts">
+        <div><strong>Customer</strong><span>{selectedEnquiryCustomer?.full_name || "Unknown customer"}</span></div>
+        <div><strong>Email</strong><span>{selectedEnquiryCustomer?.email || "Not provided"}</span></div>
+        <div><strong>Phone</strong><span>{selectedEnquiryCustomer?.phone || "Not provided"}</span></div>
+      </div>
+      <div className="mt-5 rounded-xl border border-[#46586a] bg-[#0e2235] p-5">
+        <h4 className="mb-3 text-sm font-semibold text-[#e7c37c]">Customer request</h4>
+        <p className="whitespace-pre-wrap break-words text-sm leading-7 text-[#f2efe8]">{selectedEnquiry.subject}</p>
+      </div>
+      <div className="mt-4 rounded-xl border border-[#46586a] bg-[#0e2235] p-4">
+        <p className="mb-2 text-xs font-semibold text-[#e7c37c]">Enquiry ID</p>
+        <code className="block break-all text-xs text-[#c4d2df]">{selectedEnquiry.id}</code>
+        <button type="button" className="crm-secondary mt-3"
+          onClick={() => void copyEnquiryId(selectedEnquiry.id)}>Copy enquiry ID</button>
+      </div>
+      {onOpenAutomation && <div className="crm-profile-actions mt-5">
+        <button type="button" className="crm-primary" onClick={onOpenAutomation}>
+          <ClipboardList size={15}/> Open Automation Center
+        </button>
+      </div>}
+      <p className="mt-4 text-xs leading-6 text-[#aebfcf]">
+        Select this enquiry in the existing V17 workflow in Automation Center.
+        Opening the enquiry does not automatically start an AI job or send an email.
+      </p>
+      {profileMessage && <p role="status" className="crm-profile-notice mt-3">{profileMessage}</p>}
+    </div>}
+
     {selectedCustomer && <div className="crm-profile" aria-label={`Customer profile: ${selectedCustomer.full_name}`}>
       <div className="crm-profile-top">
         <button type="button" className="crm-secondary" onClick={closeProfile}><ArrowLeft size={15}/> Back to {returnTab}</button>
@@ -446,7 +520,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
         <p className="crm-profile-note">Only records linked to this customer in the current workspace appear. Gmail activity is visible to workspace Owners/Admins under the existing RLS policy, and Submitted does not prove inbox delivery. Up to 100 recent Gmail attempts are shown. Unlinked imported orders are omitted.</p>
       </div>
     </div>}
-    {!selectedCustomer && <>
+    {!selectedCustomer && !selectedEnquiry && <>
     <div className="crm-tabs" role="tablist" aria-label="CRM views">
       <button type="button" role="tab" id="crm-customers-tab" aria-selected={activeTab === "customers"} aria-controls="crm-customers-panel" className={activeTab === "customers" ? "crm-tab-active" : ""} onClick={() => switchTab("customers")}><Users size={16} /> Customers <span>({customers.length})</span></button>
       <button type="button" role="tab" id="crm-enquiries-tab" aria-selected={activeTab === "enquiries"} aria-controls="crm-enquiries-panel" className={activeTab === "enquiries" ? "crm-tab-active" : ""} onClick={() => switchTab("enquiries")}><ClipboardList size={16} /> Enquiries <span>({enquiries.length})</span></button>
@@ -501,7 +575,18 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
         <thead><tr><th>Customer</th><th>{automotive ? "Service request" : "Enquiry / request"}</th><th>Status</th><th>Received</th></tr></thead>
         <tbody>{visibleEnquiries.map(row => {
           const customer = byId.get(row.customer_id);
-          return <tr key={row.id}><td>{customer ? <button type="button" className="crm-profile-link" onClick={() => openProfile(customer.id, "enquiries")}>{customer.full_name}</button> : <strong>Unknown customer</strong>}<span className="crm-subtext">{customer?.email || customer?.phone || "Contact not provided"}</span></td><td>{row.subject}</td><td><span className="crm-status">{row.status.replace(/_/g, " ")}</span></td><td>{new Date(row.created_at).toLocaleDateString()}</td></tr>;
+          return <tr key={row.id} className="cursor-pointer hover:bg-[#1a3047]" onClick={() => openEnquiry(row)}>
+    <td>{customer ? <button type="button" className="crm-profile-link"
+      onClick={event => {event.stopPropagation();openProfile(customer.id,"enquiries");}}>
+      {customer.full_name}</button> : <strong>Unknown customer</strong>}
+      <span className="crm-subtext">{customer?.email || customer?.phone || "Contact not provided"}</span>
+    </td>
+    <td><button type="button" className="crm-profile-link text-left"
+      onClick={event => {event.stopPropagation();openEnquiry(row);}}
+      aria-label="Open enquiry">{row.subject}</button></td>
+    <td><span className="crm-status">{row.status.replace(/_/g," ")}</span></td>
+    <td>{new Date(row.created_at).toLocaleDateString()}</td>
+  </tr>;
         })}</tbody>
       </table></div>
       {!visibleEnquiries.length && <div className="crm-empty-state">{enquiries.length ? "No enquiries match your search." : "No enquiries yet. Use New enquiry to record the first request."}</div>}

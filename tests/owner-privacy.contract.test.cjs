@@ -63,8 +63,10 @@ test('owner request remains available for reviewed company erasure',async()=>{
 test('owner destructive actions still disabled by feature flag',async()=>{
  const m=makeHarness({workspace:owned});const r=await m.run({action:'delete_empty_workspace'});assert.equal(r.status,503);assert.equal(m.writes.length,0);
 });
-test('dashboard has owner-only company panel and employee personal privacy link',()=>{
- const p=read(page);assert.match(p,/isOwner\s*\?\s*<AccountDeletionPanel scope="owner"\s*\/>/);
+test('dashboard exposes owner-only company deletion route and personal privacy link',()=>{
+ const p=read(page);assert.match(p,/isOwner\s*\?\s*<>/);
+ assert.match(p,/href="\/company\/erasure"/);
+ assert.match(p,/<AccountDeletionPanel scope="personal"\s*\/>/);
  assert.match(p,/href="\/account\/personal-privacy"/);
  const c=read(panel);assert.match(c,/scope==='owner'\s*&&\s*p\.workspace/);
  assert.match(c,/scope\?:'owner'\|'personal'/);

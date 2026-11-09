@@ -69,7 +69,9 @@ export async function updateSession(request: NextRequest) {
     !request.nextUrl.pathname.startsWith("/login") &&
     !request.nextUrl.pathname.startsWith("/auth") &&
     request.nextUrl.pathname !== "/join" &&
-    request.nextUrl.pathname !== "/api/invitations/pending"
+    request.nextUrl.pathname !== "/api/invitations/pending" &&
+    // This API validates the explicit Supabase Bearer token itself.
+    request.nextUrl.pathname !== "/api/company/erasure"
   ) {
     // no user, potentially respond by redirecting the user to the login page
     const url = request.nextUrl.clone();

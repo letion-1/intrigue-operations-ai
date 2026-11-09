@@ -1713,7 +1713,7 @@ export default function DashboardPage() {
           </div>}
 
           {section === "Settings" && <div className="space-y-5">
-            {isOwner ? <AccountDeletionPanel scope="owner" /> : (
+            {isOwner ? <><div className="rounded-2xl border border-[#927444]/60 bg-[#142539] p-6"><h2 className="text-lg font-bold text-[#e9ca8d]">Company data deletion</h2><p className="mt-2 text-sm text-[#bbcad8]">Owner-only company export, confirmed permanent workspace erasure and account closure.</p><a href="/company/erasure" className="mt-4 inline-flex rounded-xl border border-[#ab8a56] px-4 py-3 text-sm font-semibold text-[#f0d39f]">Open company deletion</a></div><AccountDeletionPanel scope="personal" /></> : (
               <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 shadow-sm">
                 <h2 className="text-base font-bold text-[#f0e9dc]">Personal account &amp; privacy</h2>
                 <p className="mt-2 text-sm text-[#afbdcb]">Company deletion, ownership transfer and workspace Data Management are available only to the company owner. You can still review your own login and personal information separately.</p>

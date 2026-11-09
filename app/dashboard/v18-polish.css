@@ -1,0 +1,47 @@
+/* INTRIGUE V18 responsive polish. Scoped to the client workspace, not auth/admin. */
+.intrigue-dashboard{--v18-focus:#b78e4c;overflow-x:clip}
+.intrigue-dashboard .intrigue-main-scroll{min-width:0;overflow-x:clip}
+.intrigue-dashboard .intrigue-main-scroll main{min-width:0;max-width:1460px}
+.intrigue-dashboard .intrigue-main-scroll :is(section,article,div,table){min-width:0}
+.intrigue-dashboard :is(input,select,textarea){max-width:100%}
+.intrigue-dashboard :is(button,a,input,select,textarea):focus-visible{outline:2px solid var(--v18-focus);outline-offset:2px}
+.intrigue-dashboard .intrigue-inquiries-overview{overflow:visible}
+.intrigue-dashboard .intrigue-inquiries-overview tr{transition:background-color .12s}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-inquiries-overview thead{background:#f1e6d7!important;color:#4e5d6b!important}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-inquiries-overview tr{background:#fff!important;color:#1b2f43!important;border-bottom:1px solid #e9ded0!important}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-inquiries-overview tr:hover{background:#f7f0e7!important}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-inquiries-overview td,
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-inquiries-overview td *:not([class*="bg-"]){color:#23364a!important}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-inquiries-overview td div:nth-child(2){color:#556578!important}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-inquiries-overview tr{color:#edf1f6}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-inquiries-overview tbody tr:hover{background:#21364b!important}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-main-scroll main>div>div>h1{color:#1f2c3b}
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-main-scroll{background:#0d1b2a;color:#f3ece1}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-main-scroll{background:#fcfaf7;color:#1d2c3d}
+.intrigue-dashboard .intrigue-nav-item{min-height:44px}
+@media(max-width:1023px){
+ .intrigue-dashboard .intrigue-main-scroll{min-height:100dvh}
+ .intrigue-dashboard .intrigue-main-scroll>header{height:66px;padding-inline:12px}
+ .intrigue-dashboard .intrigue-main-scroll main{padding:20px 16px 36px}
+ .intrigue-dashboard .intrigue-main-scroll main h1{line-height:1.15}
+}
+@media(max-width:680px){
+ .intrigue-dashboard .intrigue-main-scroll>header{gap:4px}
+ .intrigue-dashboard .intrigue-main-scroll>header>div:last-child{gap:6px}
+ .intrigue-dashboard .intrigue-main-scroll main{padding:18px 12px 34px}
+ .intrigue-dashboard .intrigue-main-scroll main h1{font-size:clamp(28px,8vw,36px)}
+ .intrigue-dashboard .intrigue-main-scroll main>div:first-child{margin-bottom:18px}
+ .intrigue-dashboard .intrigue-inquiries-overview table,
+ .intrigue-dashboard .intrigue-inquiries-overview tbody{display:block;width:100%}
+ .intrigue-dashboard .intrigue-inquiries-overview thead{display:none}
+ .intrigue-dashboard .intrigue-inquiries-overview tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px 10px;margin:10px;border:1px solid #e4d8c8;border-radius:12px;overflow:hidden;padding:12px;background:inherit}
+ .intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-inquiries-overview tr{border-color:#344b61}
+ .intrigue-dashboard .intrigue-inquiries-overview td{display:block;width:auto!important;padding:0!important;min-width:0}
+ .intrigue-dashboard .intrigue-inquiries-overview td:first-child{grid-column:1/-1}
+ .intrigue-dashboard .intrigue-inquiries-overview td:nth-child(2){grid-column:1/-1;font-size:12px}
+ .intrigue-dashboard .intrigue-inquiries-overview td:nth-child(3){grid-column:1/-1}
+ .intrigue-dashboard .intrigue-inquiries-overview td:nth-child(4){display:none}
+ .intrigue-dashboard :is(button,select,input){font-size:max(12px,1rem)}
+ .intrigue-dashboard .intrigue-v18 button{font-size:inherit}
+}
+@media(prefers-reduced-motion:reduce){.intrigue-dashboard *{scroll-behavior:auto!important}}

@@ -16,7 +16,7 @@ export async function GET(request:NextRequest){
       .select('id,workspace_id,status,created_at,expires_at,from_user,to_user')
       .eq('to_user',user.id).eq('status','pending').limit(10);
     if(transferError)throw new LifecycleError(503,'Unable to load ownership transfers.');
-    return response({enabled:process.env.INTRIGUE_RC2_DELETION_ENABLED==='true',requestEnabled:true,preview:p,requests:requests||[],transfers:transfers||[]});
+    return response({enabled:process.env.INTRIGUE_RC2_DELETION_ENABLED==='true',personalDeletionEnabled:process.env.INTRIGUE_RC2_PERSONAL_DELETION_ENABLED!=='false',requestEnabled:true,preview:p,requests:requests||[],transfers:transfers||[]});
   }catch(e){const x=safeResponseError(e);return response({error:x.message},x.status);}
 }
 
@@ -85,8 +85,8 @@ export async function POST(request:NextRequest){
     }
 
     // No transfer or deletion execution is possible with the feature disabled.
-    if(process.env.INTRIGUE_RC2_DELETION_ENABLED!=='true')
-      throw new LifecycleError(503,'Destructive account actions are currently disabled. You may still submit a privacy request.');
+    if(action!=='delete_account' && process.env.INTRIGUE_RC2_DELETION_ENABLED!=='true')
+      throw new LifecycleError(503,'Company deletion and ownership transfer require an enabled, reviewed workflow.');
 
     if(action==='offer_transfer'){
       await recentlySignedIn(request,user,url,serviceKey);
@@ -134,8 +134,17 @@ export async function POST(request:NextRequest){
     }
 
     if(action==='delete_account'){
+      if(!safety.account_deletion_eligible)
+        throw new LifecycleError(409,'Account still has protected company or data references.');
+      if(process.env.INTRIGUE_RC2_PERSONAL_DELETION_ENABLED==='false')
+        throw new LifecycleError(503,'Direct personal-account removal is unavailable. Submit a reviewed erasure request.');
       await recentlySignedIn(request,user,url,serviceKey);
-      if(!safety.account_deletion_eligible)throw new LifecycleError(409,'Account still has protected company or data references.');
+      // Recheck the live database after recent sign-in, before any privileged deletion.
+      // Active company owners and accounts with restricted references must use review or transfer.
+      const fresh=await preview(db);
+      if(!fresh.account_deletion_eligible || fresh.owned_workspaces!==0 ||
+         fresh.storage_owned!==0 || fresh.account_blockers.length>0)
+        throw new LifecycleError(409,'Account still has protected company or data references.');
       if(b.acknowledged!==true||b.confirmation!==`DELETE ${user.email}`)
         throw new LifecycleError(400,'Type the exact account confirmation.');
       const {data:requestId,error:requestError}=await db.rpc('intrigue_rc2_request',{p_kind:'account',p_workspace_id:null});

@@ -12,7 +12,7 @@ type Preview={email:string;owned_workspaces:number;workspace:{id:string;name:str
 type RecordRequest={id:string;kind:string;status:string;requested_at:string;response_due_at:string;workspace_label:string|null;public_message?:string|null;status_updated_at?:string|null};
 type Transfer={id:string;status:string;workspace_id:string;from_user:string;to_user:string;expires_at:string};
 type TeamMember={member_user_id:string;email:string;role:string};
-type Snapshot={enabled:boolean;requestEnabled?:boolean;preview:Preview;requests:RecordRequest[];transfers:Transfer[]};
+type Snapshot={enabled:boolean;personalDeletionEnabled?:boolean;requestEnabled?:boolean;preview:Preview;requests:RecordRequest[];transfers:Transfer[]};
 type ReviewKind='account'|'workspace'|'workspace_and_account';
 type Action='delete_account'|'delete_empty_workspace'|null;
 
@@ -47,6 +47,7 @@ export default function AccountDeletionPanel({scope='personal'}:{scope?:'owner'|
  const [ack,setAck]=useState(false);
  const p=snapshot?.preview;
  const enabled=snapshot?.enabled===true;
+ const personalDeletionEnabled=snapshot?.personalDeletionEnabled===true;
  const requestEnabled=snapshot?.requestEnabled===true;
  const activeRequests=(snapshot?.requests||[]).filter(r=>
    ['needs_review','reviewing','processing','workspace_deleted'].includes(r.status));
@@ -126,8 +127,8 @@ export default function AccountDeletionPanel({scope='personal'}:{scope?:'owner'|
   {loading&&<p role="status" className="intrigue-account-muted">Checking company ownership, linked records and Storage…</p>}
   {p&&!loading&&<>
     {!enabled&&<p className="intrigue-rc21-info">{scope==='owner'
-      ?'Direct deletion is disabled during testing. You can request reviewed company or personal-account erasure. Submitting a request does not erase records.'
-      :'Direct deletion is disabled during testing. You can request review of your personal account erasure. Submitting a request does not erase records.'}</p>}
+      ?'Company removal and ownership transfer require operator safeguards. Company records are never erased as part of personal login deletion.'
+      :'You can remove your own login when the safety check permits it, or request reviewed erasure if linked records must be retained.'}</p>}
     <p className="intrigue-account-muted">Signed in as <strong>{p.email}</strong></p>
     {existingActive&&<div className="intrigue-rc22-existing" role="status">
       <strong>A privacy request is already open.</strong>
@@ -146,7 +147,8 @@ export default function AccountDeletionPanel({scope='personal'}:{scope?:'owner'|
         <p>{p.account_deletion_eligible?'Your account currently has no blocking ownership references.':'Company ownership or protected records must be resolved before automatic login deletion.'}</p>
         <button type="button" className="intrigue-account-secondary" disabled={busy||!canStartRequest}
           onClick={()=>openReview('account')}>Request account erasure review</button>
-        {p.account_deletion_eligible&&enabled&&<button type="button" className="intrigue-account-danger" disabled={busy}
+        {p.account_deletion_eligible&&personalDeletionEnabled&&<p className="intrigue-account-muted">Permanent login removal ends access and may remove team membership. Company records, required audit history, exports and provider backups are handled separately under the applicable retention policy.</p>}
+        {p.account_deletion_eligible&&personalDeletionEnabled&&<button type="button" className="intrigue-account-danger" disabled={busy}
           onClick={()=>{setActive('delete_account');setReviewKind(null);setTyped('');setAck(false);}}>Delete my account now</button>}
       </div>
     </div>
@@ -211,7 +213,7 @@ export default function AccountDeletionPanel({scope='personal'}:{scope?:'owner'|
       </label>
       <div className="intrigue-account-actions">
         <button type="button" className="intrigue-account-secondary" onClick={()=>setActive(null)} disabled={busy}>Cancel</button>
-        <button type="button" className="intrigue-account-danger" disabled={busy||!enabled||!ack||typed!==confirmation}
+        <button type="button" className="intrigue-account-danger" disabled={busy||!(active==='delete_account'?personalDeletionEnabled:enabled)||!ack||typed!==confirmation}
           onClick={()=>void act({action:active,confirmation:typed,acknowledged:ack,also_delete_account:false})}>Permanently {active==='delete_account'?'delete account':'delete empty company'}</button>
       </div>
     </div>}

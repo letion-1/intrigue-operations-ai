@@ -6,6 +6,8 @@ import "./brand.css";
 import "./intrigue-themes.css";
 import "./rc22-startup.css";
 import "./client-shell.css";
+import "./v18-polish.css";
+import OverviewInsights from "./overview/OverviewInsights";
 import CustomersCRMPanel from "./crm/CustomersCRMPanel";
 import QuotationsStudio from "./quotations/QuotationsStudio";
 import IndustryIcon, { isAutomotiveIndustry } from "./crm/IndustryIcon";
@@ -1274,7 +1276,7 @@ export default function DashboardPage() {
           })}
           {isOwner && <details className="mt-5 border-t border-[#c5a566]/25 pt-4">
             <summary className="cursor-pointer rounded-lg px-3 py-2 text-xs font-bold tracking-wide text-[#c4a86e]">{t("Advanced settings")}</summary>
-            {["Data Management","Security & Usage","Plans & Billing","Pilot Application"].map(label=>{
+            {["Data Management","Security & Usage"].map(label=>{
               const item=NAV.find(n=>n.label===label)!;const Icon=item.icon;
               return <button key={label} type="button" onClick={()=>navigate(item.label)} aria-current={section===label?'page':undefined}
                 className={`intrigue-nav-item flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] ${section===label?'intrigue-nav-item-active':''}`}>
@@ -1390,33 +1392,17 @@ export default function DashboardPage() {
 
           {section === "Overview" && (
             <div className="space-y-6">
-              <div className="intrigue-hero relative overflow-hidden rounded-[20px] border border-[#a18343]/35 bg-[linear-gradient(118deg,#15283c_0%,#1a2c3f_62%,#403626_100%)] p-6 text-[#f5f0e8] shadow-[0_18px_45px_rgba(0,0,0,0.14)] md:p-8">
-                <div className="absolute -right-12 -top-20 h-64 w-64 rounded-full border-[45px] border-[#d5b264]/10"/>
-                <div className="absolute right-20 top-16 h-44 w-44 rounded-full border-[28px] border-[#d5b264]/10"/>
-                <img src="https://intriguestudios.de/intrigue-logo.png" alt="" aria-hidden="true" className="pointer-events-none absolute -right-8 -top-24 hidden h-[410px] w-[360px] object-contain opacity-[0.24] lg:block" />
-                <div className="relative z-10 max-w-xl">
-                  <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-[#e5c47c]/10 px-3 py-1.5 text-[11px] font-semibold text-[#f2d486]"><Zap size={13}/>{t("INTELLIGENCE, BY DESIGN")}</div>
-                  <h2 className="brand-display text-[34px] font-medium leading-[1.05] tracking-[-0.02em] md:text-[51px]">{t("One system. Infinite clarity.")}</h2>
-                  <p className="mt-3 max-w-md text-[13px] leading-6 text-[#d3d8dd]/80">{t("Your clients, knowledge and workflows in one intelligent workspace. Designed to help your business move with precision.")}</p>
-                  {isOwner && <button type="button" onClick={() => navigate("AI Assistant")} className="mt-6 flex items-center gap-2 rounded-xl bg-[#d1ad60] px-4 py-2.5 text-xs font-bold text-[#182234] hover:bg-[#f0d38c]">{t("Meet your AI assistant")} <ArrowRight size={15}/></button>}
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {[
-                  { title: "Active inquiries", value: String(activeEnquiries.length), change: "Saved in Supabase", icon: Users, color: "text-[#e0bf76] bg-[#263447]" },
-                  { title: "Draft quote pipeline", value: money(quotePipeline), change: "Unapproved quotes", icon: FileText, color: "text-[#d6bc8e] bg-[#383044]" },
-                  { title: "Pending follow-ups", value: String(pendingTasks.length), change: "Actionable tasks", icon: Clock3, color: "text-[#f1cc7f] bg-[#554126]/40" },
-                  { title: "Customers tracked", value: String(customers.length), change: "Demo contacts", icon: Users, color: "text-[#b4c1e6] bg-[#263751]" },
-                ].map((item) => {
-                  const Icon = item.icon;
-                  return <div key={item.title} className="rounded-2xl border border-[#304153] bg-[#142539] p-5 shadow-[0_10px_25px_rgba(0,0,0,0.12)]">
-                    <div className="flex items-start justify-between"><div className="text-xs font-semibold text-[#afbdcb]">{item.title}</div><div className={`rounded-xl p-2.5 ${item.color}`}><Icon size={18}/></div></div>
-                    <div className="mt-3 text-[28px] font-semibold tracking-[-0.05em] text-[#edd4a0]">{item.value}</div>
-                    <div className="mt-1 text-[11px] text-[#afbdcb]">{item.change}</div>
-                  </div>;
-                })}
-              </div>
+              <OverviewInsights
+                enquiries={enquiries}
+                quotes={quotes}
+                followUps={tasks}
+                customersCount={customers.length}
+                quotePipeline={quotePipeline}
+                formatMoney={money}
+                onOpenEnquiries={() => navigate("Customers")}
+                onOpenQuotations={() => navigate("Quotations")}
+                onOpenFollowUps={() => navigate("Follow-ups")}
+              />
 
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(310px,1fr)]">
                 <div className="rounded-2xl border border-[#304153] bg-[#142539] shadow-sm">

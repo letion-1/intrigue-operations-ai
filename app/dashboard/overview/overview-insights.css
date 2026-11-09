@@ -1,0 +1,51 @@
+/* INTRIGUE V18. Metrics and theme-safe chart, scoped to the dashboard. */
+.intrigue-dashboard .intrigue-v18 { --v18-bg:#fff;--v18-ink:#192b3f;--v18-sub:#586676;--v18-line:#e6d9c6;--v18-gold:#9e783b;--v18-soft:#f6efe5;--v18-ink-soft:#344459; color:var(--v18-ink); }
+.intrigue-dashboard[data-intrigue-theme="dark"] .intrigue-v18 { --v18-bg:#142638;--v18-ink:#f5efe5;--v18-sub:#b0bdc9;--v18-line:#3b5063;--v18-gold:#e0b86d;--v18-soft:#1b3043;--v18-ink-soft:#d1dee9; }
+.intrigue-v18 .v18-intro{display:flex;align-items:center;justify-content:space-between;gap:22px;padding:24px 27px;background:linear-gradient(112deg,var(--v18-soft),var(--v18-bg));border:1px solid var(--v18-line);border-radius:20px;}
+.intrigue-v18 .v18-eyebrow{display:inline-flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.16em;font-weight:800;color:var(--v18-gold)}
+.intrigue-v18 .v18-intro h2{font-family:Georgia,serif;font-size:clamp(24px,2.8vw,34px);letter-spacing:-.035em;line-height:1.18;margin-top:8px;color:var(--v18-ink)}
+.intrigue-v18 .v18-intro p{font-size:13px;color:var(--v18-sub);line-height:1.6;margin-top:8px;max-width:600px}
+.intrigue-v18 .v18-action{display:inline-flex;align-items:center;gap:8px;flex-shrink:0;justify-content:center;border-radius:10px;background:#bc9354;color:#11202c;font-weight:750;padding:12px 15px;font-size:12px;min-height:44px}
+.intrigue-v18 .v18-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.intrigue-v18 .v18-kpi{min-width:0;text-align:left;background:var(--v18-bg);border:1px solid var(--v18-line);border-radius:16px;padding:19px 17px;display:flex;flex-direction:column;gap:10px;color:var(--v18-ink);transition:transform .15s,border-color .15s}
+.intrigue-v18 button.v18-kpi:hover{border-color:var(--v18-gold);transform:translateY(-2px)}
+.intrigue-v18 .v18-kpi:focus-visible,.intrigue-v18 button:focus-visible{outline:2px solid var(--v18-gold);outline-offset:2px}
+.intrigue-v18 .v18-kpi-top{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--v18-sub);font-size:12px;font-weight:650;line-height:1.3}
+.intrigue-v18 .v18-kpi-top svg{flex-shrink:0;color:var(--v18-gold)}
+.intrigue-v18 .v18-kpi>strong{font-size:clamp(24px,2.8vw,36px);font-weight:750;letter-spacing:-.055em;line-height:1.15;overflow-wrap:anywhere;color:var(--v18-ink)}
+.intrigue-v18 .v18-kpi>strong.v18-money{font-size:clamp(21px,2.15vw,31px)}
+.intrigue-v18 .v18-kpi>span:last-child{font-size:11px;color:var(--v18-sub);display:flex;align-items:center;gap:5px;line-height:1.4}
+.intrigue-v18 .v18-analytics-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr);gap:16px}
+.intrigue-v18 .v18-panel{background:var(--v18-bg);border:1px solid var(--v18-line);border-radius:18px;padding:23px;min-width:0}
+.intrigue-v18 .v18-panel-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.intrigue-v18 .v18-panel-kicker{font-size:10px;letter-spacing:.12em;font-weight:800;color:var(--v18-gold);display:flex;align-items:center;gap:5px}
+.intrigue-v18 .v18-panel h3{color:var(--v18-ink);font-size:17px;font-weight:750;margin-top:6px}
+.intrigue-v18 .v18-period{display:flex;gap:2px;background:var(--v18-soft);padding:4px;border-radius:9px}
+.intrigue-v18 .v18-period button{font-size:11px;font-weight:650;min-height:32px;padding:6px 10px;border-radius:7px;color:var(--v18-sub)}
+.intrigue-v18 .v18-period button[aria-pressed="true"]{background:var(--v18-bg);color:var(--v18-ink);box-shadow:0 1px 4px #00000015}
+.intrigue-v18 .v18-chart-legend{display:flex;flex-wrap:wrap;gap:20px;font-size:11px;color:var(--v18-sub);margin-top:22px}
+.intrigue-v18 .v18-chart-legend span,.intrigue-v18 .v18-quote-list span{display:flex;align-items:center;gap:7px}
+.intrigue-v18 .v18-chart-legend i,.intrigue-v18 .v18-quote-list i{display:inline-block;border-radius:50%;width:9px;height:9px}
+.intrigue-v18 .v18-legend-enquiry,.intrigue-v18 .v18-legend-approved{background:#b99151}
+.intrigue-v18 .v18-legend-quotes{background:#648a9b}
+.intrigue-v18 .v18-legend-pending{background:#93a0ad}
+.intrigue-v18 .v18-chart{width:100%;height:auto;max-height:220px;min-height:130px;display:block;margin-top:10px;overflow:visible}
+.intrigue-v18 .v18-gridline{stroke:var(--v18-line);stroke-width:1;stroke-dasharray:4 6}
+.intrigue-v18 .v18-enquiry-line,.intrigue-v18 .v18-quotes-line{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.intrigue-v18 .v18-enquiry-line{stroke:#b99151}
+.intrigue-v18 .v18-quotes-line{stroke:#648a9b}
+.intrigue-v18 .v18-chart-foot{display:flex;justify-content:space-between;font-size:11px;color:var(--v18-sub);margin:-8px 12px 0}
+.intrigue-v18 .v18-chart-summary{border-top:1px solid var(--v18-line);margin-top:18px;padding-top:15px;display:flex;gap:20px;flex-wrap:wrap;color:var(--v18-sub);font-size:12px}
+.intrigue-v18 .v18-chart-summary strong{color:var(--v18-ink);font-weight:800}
+.intrigue-v18 .v18-quote-health>p{font-size:12px;color:var(--v18-sub);margin-top:9px}
+.intrigue-v18 .v18-quote-total{display:flex;align-items:baseline;gap:9px;margin:27px 0 18px;color:var(--v18-sub);font-size:12px}
+.intrigue-v18 .v18-quote-total strong{color:var(--v18-ink);font-size:42px;line-height:1;letter-spacing:-.045em}
+.intrigue-v18 .v18-meter{width:100%;height:11px;background:#93a0ad;border-radius:12px;overflow:hidden}
+.intrigue-v18 .v18-meter-approved{background:#b99151;height:100%}
+.intrigue-v18 .v18-quote-list{display:grid;gap:10px;color:var(--v18-sub);font-size:12px;margin:17px 0 25px}
+.intrigue-v18 .v18-quote-list strong{margin-left:auto;color:var(--v18-ink)}
+.intrigue-v18 .v18-text-link{display:flex;align-items:center;gap:8px;color:var(--v18-gold);font-size:12px;font-weight:750;min-height:36px}
+@media(max-width:1100px){.intrigue-v18 .v18-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.intrigue-v18 .v18-analytics-grid{grid-template-columns:1fr}}
+@media(max-width:600px){.intrigue-v18 .v18-intro{align-items:flex-start;flex-direction:column;padding:20px}.intrigue-v18 .v18-action{width:100%}.intrigue-v18 .v18-kpis{gap:9px}.intrigue-v18 .v18-kpi{padding:15px 13px}.intrigue-v18 .v18-kpi>strong{font-size:27px}.intrigue-v18 .v18-kpi>strong.v18-money{font-size:19px}.intrigue-v18 .v18-panel{padding:18px 15px}.intrigue-v18 .v18-panel-heading{flex-direction:column}}
+@media(max-width:350px){.intrigue-v18 .v18-kpis{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.intrigue-v18 .v18-kpi{transition:none!important}}

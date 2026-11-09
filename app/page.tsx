@@ -52,7 +52,7 @@ export default function HomePage() {
           </Link>
           <nav className="flex items-center gap-3 sm:gap-5" aria-label="Main navigation">
             <Link href="/auth/login" className="text-sm text-[#dfd9ce] hover:text-white">Sign in</Link>
-            <Link href="/auth/sign-up" className="rounded-lg bg-[#c9a552] px-4 py-2.5 text-xs font-bold text-[#111b29] hover:bg-[#e6c77d]">Enter private preview</Link>
+            <Link href="/auth/login" className="rounded-lg bg-[#c9a552] px-4 py-2.5 text-xs font-bold text-[#111b29] hover:bg-[#e6c77d]">Sign in</Link>
           </nav>
         </header>
 
@@ -68,8 +68,8 @@ export default function HomePage() {
               Customers, knowledge, service pricing, team roles and AI-assisted operations, designed to live in one company workspace.
             </p>
             <div className="mt-9 flex flex-wrap gap-3">
-              <Link href="/auth/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-[#c9a552] px-6 py-3.5 text-sm font-bold text-[#101b28] hover:bg-[#e3c177]">
-                Explore staging <ArrowRight size={17}/>
+              <Link href="/auth/login" className="inline-flex items-center gap-2 rounded-xl bg-[#c9a552] px-6 py-3.5 text-sm font-bold text-[#101b28] hover:bg-[#e3c177]">
+                Open your workspace <ArrowRight size={17}/>
               </Link>
               <Link href="/auth/login" className="inline-flex items-center gap-2 rounded-xl border border-[#526279] px-6 py-3.5 text-sm font-semibold hover:bg-[#203348]">Sign in to your workspace</Link>
             </div>
@@ -94,8 +94,8 @@ export default function HomePage() {
         </section>
 
         <section className="mb-14 flex flex-col gap-6 rounded-2xl border border-[#9b7e45]/35 bg-[#142638] p-7 md:flex-row md:items-center md:justify-between md:p-10">
-          <div><div className="text-xs font-bold uppercase tracking-[0.2em] text-[#d2b273]">Early access</div><h2 className="mt-2 font-serif text-3xl">Built for a better operating day.</h2><p className="mt-3 max-w-xl text-sm leading-6 text-[#aebfcf]">Plans and billing are being prepared. No subscription is charged or activated in the current preview.</p></div>
-          <Link href="/auth/sign-up" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#c5a45e] px-5 py-3 text-sm font-semibold text-[#edcd8d] hover:bg-[#2c3d4d]">Explore the preview <ArrowRight size={16}/></Link>
+          <div><div className="text-xs font-bold uppercase tracking-[0.2em] text-[#d2b273]">Early access</div><h2 className="mt-2 font-serif text-3xl">Built for a better operating day.</h2><p className="mt-3 max-w-xl text-sm leading-6 text-[#aebfcf]">Workspace access is managed by INTRIGUE STUDIOS. Team members register through an invitation from their company owner.</p></div>
+          <Link href="/auth/login" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#c5a45e] px-5 py-3 text-sm font-semibold text-[#edcd8d] hover:bg-[#2c3d4d]">Open your workspace <ArrowRight size={16}/></Link>
         </section>
         <footer className="flex flex-wrap justify-between gap-3 border-t border-[#c9ab71]/20 py-7 text-xs text-[#9eacba]"><span>© 2026 INTRIGUE STUDIOS</span><span>Private staging preview · Not a paid product offer</span></footer>
       </div>

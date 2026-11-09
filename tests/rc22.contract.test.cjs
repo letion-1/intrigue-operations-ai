@@ -109,9 +109,9 @@ test('customer UI includes withdrawal, existing request guard and status',()=>{
 test('dashboard gates first render until theme and workspace resolved',()=>{
  const s=read('app/dashboard/page.tsx');
  assert.match(s,/appearanceReady/);assert.match(s,/workspaceResolvedOnce/);
- assert.match(s,/if \(!appearanceReady \|\| !workspaceResolvedOnce\)/);
+ assert.match(s,/if \(!appearanceReady \|\| !workspaceResolvedOnce(?: \|\| \(\!\!workspace && settingsReadyId!==workspace\.id\))?\)/);
  assert.match(s,/Preparing your secure workspace/);
- const loc=s.indexOf('if (!appearanceReady || !workspaceResolvedOnce)');
+ const loc=s.indexOf('if (!appearanceReady || !workspaceResolvedOnce');
  const ui=s.indexOf('data-intrigue-theme={appearance}');
  assert.ok(loc>=0&&ui>loc);
 });

@@ -29,6 +29,14 @@ export async function POST(request:NextRequest){
     const b=input as Record<string,unknown>;
     const action=b.action;
     const safety=await preview(db);
+    // The verified owner workspace comes from the server-side auth.uid() preview.
+    // An employee cannot authorize company deletion or ownership transfer by
+    // supplying another workspace ID, an altered role, or a forged action body.
+    const companyOwnerAction =
+      (action==='request' && (b.kind==='workspace'||b.kind==='workspace_and_account')) ||
+      action==='offer_transfer' || action==='delete_empty_workspace';
+    if(companyOwnerAction && !safety.workspace?.id)
+      throw new LifecycleError(403,'Only the verified company owner may manage company deletion or transfers.');
 
     // Withdrawal is non-destructive and is authorized again inside PostgreSQL.
     // The database atomically checks requester ownership and needs_review status.

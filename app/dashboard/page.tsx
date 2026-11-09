@@ -1727,7 +1727,13 @@ export default function DashboardPage() {
           </div>}
 
           {section === "Settings" && <div className="space-y-5">
-            <AccountDeletionPanel />
+            {isOwner ? <AccountDeletionPanel scope="owner" /> : (
+              <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-6 shadow-sm">
+                <h2 className="text-base font-bold text-[#f0e9dc]">Personal account &amp; privacy</h2>
+                <p className="mt-2 text-sm text-[#afbdcb]">Company deletion, ownership transfer and workspace Data Management are available only to the company owner. You can still review your own login and personal information separately.</p>
+                <a href="/account/personal-privacy" className="mt-4 inline-flex rounded-xl border border-[#977947] px-4 py-2.5 text-xs font-semibold text-[#f0d091] hover:bg-[#22334a]">Open my privacy settings</a>
+              </div>
+            )}
             <div className="rounded-2xl border border-[#35485d] bg-[#142539] p-7 shadow-sm">
               <div className="flex items-center gap-3"><Settings className="text-[#e0bf76]" size={22}/><h2 className="text-lg font-bold">{t("Company & assistant setup")}</h2></div>
               <p className="mt-2 text-sm text-[#afbdcb]">{t("Configure your business identity, service hours and AI preferences. All data stays in your workspace.")}</p>

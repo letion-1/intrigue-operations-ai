@@ -26,7 +26,7 @@ function friendly(name:string){
  return words[key]||key.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 }
 
-export default function AccountDeletionPanel(){
+export default function AccountDeletionPanel({scope='personal'}:{scope?:'owner'|'personal'}){
  const db=useMemo(()=>createClient(),[]);
  const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
  const [team,setTeam]=useState<TeamMember[]>([]);
@@ -119,11 +119,15 @@ export default function AccountDeletionPanel(){
   :`REQUEST COMPANY AND ACCOUNT ${p?.workspace?.name||''}`;
 
  return <section className="intrigue-account-panel" aria-labelledby="intrigue-delete-account-heading">
-  <div className="intrigue-account-heading"><ShieldCheck size={19}/><h3 id="intrigue-delete-account-heading">Privacy, ownership & account deletion</h3></div>
-  <p className="intrigue-account-description">Control your INTRIGUE account and company data. Protected business information is never silently erased. A company with active records requires a reviewed deletion request.</p>
+  <div className="intrigue-account-heading"><ShieldCheck size={19}/><h3 id="intrigue-delete-account-heading">{scope==='owner'?'Privacy, ownership & account deletion':'Personal account & privacy'}</h3></div>
+  <p className="intrigue-account-description">{scope==='owner'
+    ?'Manage your own account and, as company owner, request reviewed company deletion. Protected records are never silently erased.'
+    :'Manage your own login and personal information. Company ownership, company deletion and workspace Data Management remain available only to the owner.'}</p>
   {loading&&<p role="status" className="intrigue-account-muted">Checking company ownership, linked records and Storage…</p>}
   {p&&!loading&&<>
-    {!enabled&&<p className="intrigue-rc21-info">Direct deletion is disabled during testing. You can still request account or company erasure for manual review. Nothing is deleted when you submit a request.</p>}
+    {!enabled&&<p className="intrigue-rc21-info">{scope==='owner'
+      ?'Direct deletion is disabled during testing. You can request reviewed company or personal-account erasure. Submitting a request does not erase records.'
+      :'Direct deletion is disabled during testing. You can request review of your personal account erasure. Submitting a request does not erase records.'}</p>}
     <p className="intrigue-account-muted">Signed in as <strong>{p.email}</strong></p>
     {existingActive&&<div className="intrigue-rc22-existing" role="status">
       <strong>A privacy request is already open.</strong>
@@ -146,7 +150,7 @@ export default function AccountDeletionPanel(){
           onClick={()=>{setActive('delete_account');setReviewKind(null);setTyped('');setAck(false);}}>Delete my account now</button>}
       </div>
     </div>
-    {p.workspace&&<div className="intrigue-rc2-company">
+    {scope==='owner'&&p.workspace&&<div className="intrigue-rc2-company">
       <div className="intrigue-account-heading"><Building2 size={18}/><strong>Company: {p.workspace.name}</strong></div>
       <p className="intrigue-account-description">{p.workspace.members} workspace member(s). {p.storage_owned} Storage object(s) owned by this account.</p>
       {p.workspace_references.length>0&&<details className="intrigue-rc2-details"><summary>Review data affected by company deletion</summary>

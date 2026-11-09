@@ -346,7 +346,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   useEffect(() => { if (!loading) setWorkspaceResolvedOnce(true); }, [loading]);
   const [busy, setBusy] = useState(false);
-  const [companyName, setCompanyName] = useState("");
+  /* Company creation is server-provisioned, not client self-service. */
   const [dbError, setDbError] = useState("");
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
@@ -428,13 +428,17 @@ export default function DashboardPage() {
       setLoading(false);
       return;
     }
-    const result = await supabase.from("workspaces").select("id,name,owner_id").order("created_at", { ascending: true }).limit(1);
+    const result = await supabase.from("workspaces").select("id,name,owner_id").order("created_at", { ascending: true }).limit(100);
     if (result.error) {
       setDbError(`Database connection failed: ${result.error.message}. Run the setup SQL in Supabase first.`);
       setLoading(false);
       return;
     }
-    const found = (result.data?.[0] as Workspace | undefined) ?? null;
+    // Honor the just-accepted invitation only if Supabase RLS returned this workspace.
+    let preferredWorkspaceId = "";
+    try { preferredWorkspaceId = window.sessionStorage.getItem(`intrigue-preferred-workspace:${authData.user.id}`) || ""; } catch {}
+    const found = ((result.data || []).find(w => w.id === preferredWorkspaceId)
+      || result.data?.[0] || null) as Workspace | null;
     if (found) {
       const member = await supabase.from("workspace_memberships").select("role")
         .eq("workspace_id",found.id).eq("user_id",authData.user.id).maybeSingle();
@@ -641,10 +645,7 @@ export default function DashboardPage() {
     if (!workspace || !isOwner) return;
     const [members,invites] = await Promise.all([
       supabase.rpc("list_intrigue_team",{p_workspace_id:workspace.id}),
-      supabase.from("workspace_invitations")
-        .select("id,invited_email,role,status,expires_at,created_at")
-        .eq("workspace_id",workspace.id).eq("status","pending")
-        .order("created_at",{ascending:false}),
+      supabase.rpc("list_intrigue_secure_team_invites",{p_workspace_id:workspace.id}),
     ]);
     if(members.error || invites.error) setTeamError(members.error?.message||invites.error?.message||"Team unavailable");
     else {setTeamError("");setTeamMembers((members.data||[]) as TeamMember[]);setTeamInvites((invites.data||[]) as TeamInvite[]);}
@@ -698,12 +699,12 @@ export default function DashboardPage() {
   async function createInvite(event:FormEvent<HTMLFormElement>) {
     event.preventDefault(); if(!workspace||!isOwner||teamBusy)return;
     setTeamBusy(true);setTeamError("");setTeamMessage("");setInviteLink("");
-    const {data,error}=await supabase.rpc("create_intrigue_team_invite_v142",{
+    const {data,error}=await supabase.rpc("create_intrigue_secure_team_invite",{
       p_workspace_id:workspace.id,p_email:inviteEmail.trim().toLowerCase(),p_role:selectedInviteRole,
     });
     if(error)setTeamError(error.message);
     else if(typeof data==="string"){
-      setInviteLink(`${window.location.origin}/dashboard?join=${data}`);
+      setInviteLink(`${window.location.origin}/join?token=${data}`);
       setInviteEmail("");setTeamMessage("Invitation created. Copy the link now and send it privately to the invited email owner. Expires in 7 days.");
       await loadTeam();
     }
@@ -712,7 +713,7 @@ export default function DashboardPage() {
   async function acceptInvite() {
     if(!joinToken||teamBusy)return;
     setTeamBusy(true);setTeamError("");
-    const {error}=await supabase.rpc("accept_intrigue_team_invite",{p_token:joinToken});
+    const {error}=await supabase.rpc("accept_intrigue_team_invite_secure",{p_token:joinToken});
     if(error){setTeamError(error.message);setTeamBusy(false);return;}
     window.history.replaceState(null,"",window.location.pathname);
     setJoinToken("");setTeamMessage("You joined your company workspace. Your access is controlled by your assigned role.");
@@ -721,7 +722,7 @@ export default function DashboardPage() {
   async function revokeInvite(id:string) {
     if(!isOwner||teamBusy||!window.confirm("Revoke this invitation?"))return;
     setTeamBusy(true);setTeamError("");
-    const {error}=await supabase.rpc("revoke_intrigue_team_invite",{p_invitation_id:id});
+    const {error}=await supabase.rpc("revoke_intrigue_secure_team_invite",{p_invitation_id:id});
     if(error)setTeamError(error.message);else await loadTeam();
     setTeamBusy(false);
   }
@@ -790,17 +791,6 @@ export default function DashboardPage() {
       .catch(() => { if (alive) setAiConnected(false); });
     return () => { alive = false; };
   }, []);
-
-  async function createCompany(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const name = companyName.trim();
-    if (name.length < 2 || name.length > 100 || busy) return;
-    setBusy(true); setDbError("");
-    const { error } = await supabase.rpc("create_intrigue_company", { p_name: name });
-    if (error) setDbError(`Could not create company: ${error.message}`);
-    else { setCompanyName(""); await refresh(); }
-    setBusy(false);
-  }
 
   async function addCustomer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1371,14 +1361,10 @@ export default function DashboardPage() {
           </div>}
           {!loading && !workspace && !dbError && !joinToken && (
             <div className="rounded-2xl border border-[#a18343]/40 bg-[#142539] p-8">
-              <h2 className="brand-display text-4xl text-[#f5f0e8]">{t("Create your company workspace.")}</h2>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-[#afbdcb]">{t("Every newly registered company starts with an empty, private workspace. Other company records remain private. For testing, enter a fictional company name and do not upload real customer data.")}</p>
-              <form onSubmit={createCompany} className="mt-6 flex max-w-xl flex-col gap-3 sm:flex-row">
-                <label htmlFor="v13-company-name" className="sr-only">{t("Company name")}</label>
-                <input id="v13-company-name" type="text" required minLength={2} maxLength={100} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="e.g. Demo Garage Two" className="min-w-0 flex-1 rounded-xl border border-[#51627a] bg-[#101e31] px-4 py-3 text-sm text-[#f5f0e8] outline-none focus:border-[#c9a552]" />
-                <button type="submit" disabled={busy || companyName.trim().length < 2} className="rounded-xl bg-[#c9a552] px-5 py-3 text-sm font-bold text-[#111b29] disabled:opacity-50">{busy ? "Creating..." : "Create company"}</button>
-              </form>
-              <p className="mt-4 text-xs text-[#d5b46a]">{t("To join an existing company, accept a verified-email team invitation instead of creating a new workspace.")}</p>
+              <h2 className="brand-display text-4xl text-[#f5f0e8]">No company workspace assigned</h2>
+              <p className="mt-3 max-w-xl text-sm leading-7 text-[#afbdcb]">Your login is active, but it is not a member of an INTRIGUE company. Ask the company owner for a private team invitation and open that link while signed into the invited email.</p>
+              <p className="mt-3 text-sm text-[#d5b46a]">New company subscriptions are provisioned separately after approval. Employee registration never creates a second company or subscription.</p>
+              <button type="button" onClick={() => void refresh(true)} className="mt-6 rounded-xl border border-[#977b4a] px-4 py-2.5 text-xs font-semibold text-[#e9c577]">Check workspace access</button>
             </div>
           )}
           {!loading && workspace && <>

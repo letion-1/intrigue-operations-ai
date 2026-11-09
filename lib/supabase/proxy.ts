@@ -13,6 +13,22 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // INTRIGUE_INVITE_GATE_V1: support legacy /dashboard?join=... links,
+  // and resume invitation acceptance after sign-up/verification/login.
+  if (request.nextUrl.pathname === "/dashboard") {
+    const fromUrl = request.nextUrl.searchParams.get("join")?.toLowerCase() || "";
+    const fromCookie = request.cookies.get("intrigue_pending_invite")?.value || "";
+    const invitation = /^[a-f0-9]{64}$/.test(fromUrl) ? fromUrl :
+      /^[a-f0-9]{64}$/.test(fromCookie) ? fromCookie : "";
+    if (invitation) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/join";
+      url.search = "";
+      url.searchParams.set("token", invitation);
+      return NextResponse.redirect(url);
+    }
+  }
+
   // With Fluid compute, don't put this client in a global environment
   // variable. Always create a new one on each request.
   const supabase = createServerClient(
@@ -51,7 +67,8 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname !== "/" &&
     !user &&
     !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/auth")
+    !request.nextUrl.pathname.startsWith("/auth") &&
+    request.nextUrl.pathname !== "/join"
   ) {
     // no user, potentially respond by redirecting the user to the login page
     const url = request.nextUrl.clone();

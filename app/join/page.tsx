@@ -27,7 +27,7 @@ export default function JoinWorkspacePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: value }),
     });
-    if (!response.ok) throw new Error("Unable to preserve this invitation for sign-up. Please reopen the original link.");
+    if (!response.ok) throw new Error(`Unable to save invitation (HTTP ${response.status}). Please contact the company owner if it continues.`);
   }, []);
 
   const accept = useCallback(async (value: string) => {

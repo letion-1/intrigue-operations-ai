@@ -18,6 +18,8 @@ test('Unauthenticated join is public and pending invites survive confirmation',(
   const proxy=read('lib/supabase/proxy.ts');
   assert.match(proxy,/intrigue_pending_invite/);
   assert.match(proxy,/request\.nextUrl\.pathname !== "\/join"/);
+  // A guest must be allowed to POST its invitation before creating a login.
+  assert.match(proxy,/request\.nextUrl\.pathname !== "\/api\/invitations\/pending"/);
   assert.match(read('app/auth/confirm/route.ts'),/redirect\(safeNext\)/);
   const join=read('app/join/page.tsx');
   assert.match(join,/accept_intrigue_team_invite_secure/);

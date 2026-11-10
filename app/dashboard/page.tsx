@@ -14,6 +14,7 @@ import IndustryIcon, { isAutomotiveIndustry } from "./crm/IndustryIcon";
 import "./intrigue-logout.css";
 import { LogOut } from "lucide-react";
 import AccountDeletionPanel from "./account/AccountDeletionPanel";
+import SupportNotifications from "./SupportNotifications";
 import "./knowledge-hub.css";
 import IntegrationsPanel from "./integrations-panel";
 import CalendarConnections from "./calendar-connections";
@@ -27,7 +28,6 @@ import {
   ArrowRight,
   ClipboardCheck,
   ArrowUpRight,
-  Bell,
   Sun,
   Moon,
   BookOpen,
@@ -239,7 +239,6 @@ export default function DashboardPage() {
   const [appearance, setAppearance] = useState<"dark" | "light">("light");
   const [appearanceReady, setAppearanceReady] = useState(false);
   const [workspaceResolvedOnce, setWorkspaceResolvedOnce] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem("intrigue-appearance-v1");
@@ -1320,16 +1319,7 @@ export default function DashboardPage() {
             <button type="button" onClick={toggleAppearance} aria-label={appearance === "dark" ? "Switch to light appearance" : "Switch to dark appearance"} title={appearance === "dark" ? "Light mode" : "Dark mode"} className="rounded-xl border border-[#415064] p-2 text-[#d9c18b] transition hover:bg-[#26384d]">
               {appearance === "dark" ? <Sun size={18}/> : <Moon size={18}/>}
             </button>
-            <div className="relative">
-              <button type="button" onClick={() => setActivityOpen(open => !open)} aria-expanded={activityOpen} aria-label="Open activity notifications" className="rounded-xl border border-[#415064] p-2 text-[#d9c18b] transition hover:bg-[#26384d]">
-                <Bell size={18}/>
-              </button>
-              {activityOpen && <div role="dialog" aria-label="Notifications" className="intrigue-activity-popover absolute right-0 top-12 z-50 w-[min(345px,85vw)] rounded-2xl border border-[#45566b] bg-[#13263b] p-4 shadow-2xl">
-                <div className="flex items-center justify-between gap-4"><h3 className="text-sm font-semibold text-[#f1d189]">{t("Activity & notifications")}</h3><button onClick={() => setActivityOpen(false)} type="button" aria-label="Close notifications" className="rounded-lg p-1 hover:bg-[#26384d]"><X size={17}/></button></div>
-                <p className="mt-3 text-sm text-[#d9e2eb]">{t("Notifications appear here when connected services report an event.")}</p>
-                <p className="mt-2 text-xs leading-5 text-[#aebed0]">{t("Your current alerts and activity settings are managed in Integrations and Settings.")}</p>
-              </div>}
-            </div>
+            <SupportNotifications key={workspace?.id ?? "no-workspace"} audience="client" workspaceId={workspace?.id ?? null}/>
             <button type="button" className="intrigue-signout-button inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:opacity-60" onClick={() => void handleSignOut()} disabled={signingOut} aria-label="Log out of INTRIGUE" title="Log out">
               <LogOut size={16}/><span className="hidden sm:inline">{t(signingOut ? "Logging out…" : "Log out")}</span>
             </button>

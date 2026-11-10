@@ -1,6 +1,7 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {createPlatformClient} from '@/lib/intrigue-platform-auth-client';
+import SupportNotifications from '@/app/dashboard/SupportNotifications';
 import {Building2,Headphones,RefreshCcw,ShieldAlert,ShieldCheck,LockKeyhole} from 'lucide-react';
 import '../platform-ui.css';
 
@@ -30,6 +31,7 @@ export default function PlatformConsole(){
   finally{setLoading(false);}
  },[request]);
  useEffect(()=>{void load();},[load]);
+ useEffect(()=>{const id=new URLSearchParams(window.location.search).get('ticket');if(id){setTab('support');setActiveTicket(id);}},[]);
  async function freeze(c:Company){
   const note=(reason[c.id]||'').trim();
   if(note.length<8){setError('Enter a reason of at least 8 characters before changing a company’s access.');return;}
@@ -60,7 +62,7 @@ export default function PlatformConsole(){
      <div className="flex items-center gap-3 mt-6"><img src="/intrigue-mark.png" alt="INTRIGUE emblem" className="h-14 w-10 object-contain" /><p className="ip-overline">INTRIGUE STUDIOS / PRIVATE OPERATIONS</p></div>
      <h1 className="ip-heading">Admin Control Center</h1><p className="ip-muted mt-2">Workspace monitoring, controlled access and client support. Billing is managed separately.</p>
     </div>
-    <div className="flex flex-wrap items-center gap-3"><button type="button" onClick={()=>void load()} disabled={loading} className="ip-button ip-secondary"><RefreshCcw size={16}/> Refresh</button><button type="button" className="ip-button ip-secondary" onClick={()=>void db.auth.signOut({scope:'global'}).then(()=>window.location.replace('/platform/login'))}>Log out</button></div>
+    <div className="flex flex-wrap items-center gap-3"><SupportNotifications audience="operator"/><button type="button" onClick={()=>void load()} disabled={loading} className="ip-button ip-secondary"><RefreshCcw size={16}/> Refresh</button><button type="button" className="ip-button ip-secondary" onClick={()=>void db.auth.signOut({scope:'global'}).then(()=>window.location.replace('/platform/login'))}>Log out</button></div>
    </header>
    {error&&<div role="alert" className="ip-error">{error}</div>}
    {notice&&<div role="status" className="ip-success">{notice}</div>}

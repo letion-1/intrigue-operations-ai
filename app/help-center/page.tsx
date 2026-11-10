@@ -28,10 +28,11 @@ export default function HelpCenter(){
   setLoading(true);setError('');
   try{const url='/api/help-center'+(selected?`?workspace_id=${encodeURIComponent(selected)}`:'');
    const j=await request('GET',url);setCompanies(j.workspaces||[]);setTickets(j.tickets||[]);
-   if(!selected&&j.workspaces?.length){setWorkspace(j.workspaces[0].id);}else if(selected){setWorkspace(selected);}
+   if(!selected&&j.workspaces?.length){setWorkspace(current=>current||j.workspaces[0].id);}else if(selected){setWorkspace(selected);}
   }catch(e){setError(e instanceof Error?e.message:'Unable to load support');}finally{setLoading(false);}
  },[request]);
  useEffect(()=>{void load(workspace);},[workspace,load]);
+ useEffect(()=>{const query=new URLSearchParams(window.location.search);const id=query.get('ticket');const tenant=query.get('workspace');if(id)setOpenTicket(id);if(tenant)setWorkspace(tenant);},[]);
  async function create(e:FormEvent){e.preventDefault();if(!workspace||saving)return;
   setSaving(true);setError('');setNotice('');
   try{await request('POST','/api/help-center',{action:'create',workspace_id:workspace,subject,category,message});

@@ -12,6 +12,15 @@ export async function mustBeOperator(ctx: Awaited<ReturnType<typeof platformAuth
   const { data, error } = await ctx.service.rpc('intrigue_platform_is_operator', {p_actor: ctx.user.id});
   if (error) throw new LifecycleError(503, 'Platform access check unavailable. Contact INTRIGUE Support.');
   if (data !== true) throw new LifecycleError(403, 'Private platform access required.');
+  // A platform account MUST be distinct from all client accounts, including
+  // workspace Owners, Admins, Staff and Viewers. Fail closed on DB errors.
+  const [member, owner] = await Promise.all([
+    ctx.service.from('workspace_memberships').select('user_id',{count:'exact',head:true}).eq('user_id',ctx.user.id),
+    ctx.service.from('workspaces').select('id',{count:'exact',head:true}).eq('owner_id',ctx.user.id)
+  ]);
+  if(member.error || owner.error) throw new LifecycleError(503,'Private platform authorization unavailable.');
+  if((member.count??0)>0 || (owner.count??0)>0)
+    throw new LifecycleError(403,'A company login cannot access private administration.');
 }
 
 export function uuid(value: unknown): value is string {

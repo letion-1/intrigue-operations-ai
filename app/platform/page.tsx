@@ -1,7 +1,7 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
-import {createClient} from '@/lib/supabase/client';
-import {ArrowLeft,Building2,Headphones,RefreshCcw,ShieldAlert,ShieldCheck,LockKeyhole} from 'lucide-react';
+import {createPlatformClient} from '@/lib/intrigue-platform-auth-client';
+import {Building2,Headphones,RefreshCcw,ShieldAlert,ShieldCheck,LockKeyhole} from 'lucide-react';
 import '../platform-ui.css';
 
 type Company={id:string;name:string;created_at:string;intrigue_erasure_state:string;frozen:boolean;freeze_updated_at:string|null;customers:number;enquiries:number;quotations:number;open_tickets:number};
@@ -10,9 +10,10 @@ type Ticket={id:string;workspace_id:string;workspace_name:string;subject:string;
 const statuses=['open','in_progress','waiting_client','resolved','closed'];
 
 export default function PlatformConsole(){
- const db=useMemo(()=>createClient(),[]);
+ const db=useMemo(()=>createPlatformClient(),[]);
  const [companies,setCompanies]=useState<Company[]>([]),[tickets,setTickets]=useState<Ticket[]>([]);
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ const [authorized,setAuthorized]=useState(false);
  const [reason,setReason]=useState<Record<string,string>>({}),[responses,setResponses]=useState<Record<string,string>>({});
  const [activeTicket,setActiveTicket]=useState(''),[tab,setTab]=useState<'companies'|'support'>('companies');
  const request=useCallback(async (method:'GET'|'POST',body?:object)=>{
@@ -23,8 +24,9 @@ export default function PlatformConsole(){
  },[db]);
  const load=useCallback(async()=>{
   setLoading(true);setError('');
-  try{const j=await request('GET');setCompanies(j.companies||[]);setTickets(j.tickets||[]);}
-  catch(e){setError(e instanceof Error?e.message:'Cannot load platform console');}
+  try{const j=await request('GET');setCompanies(j.companies||[]);setTickets(j.tickets||[]);setAuthorized(true);}
+  catch(e){const msg=e instanceof Error?e.message:'Cannot load platform console';setError(msg);setAuthorized(false);
+   if(/sign in|expired|private platform access|server returned 401|server returned 403/i.test(msg))window.location.replace('/platform/login');}
   finally{setLoading(false);}
  },[request]);
  useEffect(()=>{void load();},[load]);
@@ -50,14 +52,15 @@ export default function PlatformConsole(){
   catch(e){setError(e instanceof Error?e.message:'Unable to change status');}finally{setSaving('');}
  }
  const frozen=companies.filter(c=>c.frozen).length,open=tickets.filter(t=>!['closed','resolved'].includes(t.status)).length;
+ if(!authorized)return <main className="intrigue-portal min-h-screen bg-[#091725] p-8 text-[#f4efe4]"><div className="mx-auto max-w-xl"><h1 className="text-2xl font-semibold">Admin Control Center</h1><p className="mt-4">{loading?'Checking private administrator access…':error||'Sign in to continue.'}</p><a className="mt-4 inline-block underline" href="/platform/login">Administrator sign in</a></div></main>;
  return <main className="intrigue-portal min-h-screen bg-[#091725] px-4 py-7 text-[#f4efe4] sm:px-8 lg:px-12">
   <div className="mx-auto max-w-7xl">
    <header className="ip-header">
-    <div><a href="/dashboard" className="ip-muted inline-flex items-center gap-2 text-sm"><ArrowLeft size={16}/> Client workspace</a>
+    <div><span className="ip-muted inline-flex items-center gap-2 text-sm"><LockKeyhole size={16}/> Private administration</span>
      <div className="flex items-center gap-3 mt-6"><img src="/intrigue-mark.png" alt="INTRIGUE emblem" className="h-14 w-10 object-contain" /><p className="ip-overline">INTRIGUE STUDIOS / PRIVATE OPERATIONS</p></div>
      <h1 className="ip-heading">Admin Control Center</h1><p className="ip-muted mt-2">Workspace monitoring, controlled access and client support. Billing is managed separately.</p>
     </div>
-    <button type="button" onClick={()=>void load()} disabled={loading} className="ip-button ip-secondary"><RefreshCcw size={16}/> Refresh</button>
+    <div className="flex flex-wrap items-center gap-3"><button type="button" onClick={()=>void load()} disabled={loading} className="ip-button ip-secondary"><RefreshCcw size={16}/> Refresh</button><button type="button" className="ip-button ip-secondary" onClick={()=>void db.auth.signOut({scope:'global'}).then(()=>window.location.replace('/platform/login'))}>Log out</button></div>
    </header>
    {error&&<div role="alert" className="ip-error">{error}</div>}
    {notice&&<div role="status" className="ip-success">{notice}</div>}

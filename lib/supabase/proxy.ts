@@ -3,6 +3,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { hasEnvVars } from "../utils";
 
 export async function updateSession(request: NextRequest) {
+  // intrigue_private_platform_boundary: separate admin session from client cookie auth.
+  // This is a route exception, NOT an authorization grant. All platform APIs verify Bearer tokens.
+  if (request.nextUrl.pathname === '/platform' ||
+      request.nextUrl.pathname === '/platform/login' ||
+      request.nextUrl.pathname.startsWith('/api/platform/')) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });

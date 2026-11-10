@@ -47,7 +47,9 @@ export function executeSafeAction(run) {
   return {kind:'audit_event',result:'processed_without_external_side_effects',workflow_id:run.workflow_id};
 }
 
-export async function executeAction(run, deps = {getRows,aiSelect:selectWithOpenRouter}) {
+// Use the same selector in both modes; metered mode requires lease-scoped context.
+const quotationSelect=(payload,context)=>selectWithOpenRouter(payload,fetch,process.env,context);
+export async function executeAction(run, deps = {getRows,aiSelect:quotationSelect}) {
   if (!run || !run.id || !run.workspace_id || !run.workflow_id || !run.lease_token || !run.approved_at) {
     throw Error('Incomplete or unapproved lease (fail closed).');
   }

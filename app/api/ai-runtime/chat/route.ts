@@ -48,6 +48,9 @@ export async function POST(req:NextRequest){
   body=parsed as Record<string,unknown>;
  }catch{return error('Invalid automation request.',400);}
  const {workspace_id,request_key,messages}=body;
+ const purpose=body.purpose===undefined?null:body.purpose;
+ if(purpose!==null&&purpose!=='quotation_intent')
+  return error('Unsupported automation request purpose.',400);
  if(typeof workspace_id!=='string'||!id.test(workspace_id)||typeof request_key!=='string'||!requestKey.test(request_key)||!validMessages(messages))
   return error('Invalid workspace, request ID or messages.',400);
  if(!Number.isInteger(body.max_tokens)||Number(body.max_tokens)<1||Number(body.max_tokens)>2000)
@@ -81,6 +84,7 @@ export async function POST(req:NextRequest){
     body:JSON.stringify({model,messages,max_tokens:maxTokens,
       ...(Array.isArray(body.tools)?{tools:body.tools}:{}),
       ...(typeof body.tool_choice==='string'?{tool_choice:body.tool_choice}:{}),
+      ...(purpose==='quotation_intent'?{temperature:0.1,response_format:{type:'json_object'}}:{}),
       stream:false}),signal:AbortSignal.timeout(45000),cache:'no-store'});
   }catch{return error('AI provider timed out. The request remains reserved for cost reconciliation.',504);}
   if(!response.ok)return error('AI provider request failed; the reservation remains pending review.',502);

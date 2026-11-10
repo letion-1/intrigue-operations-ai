@@ -1,0 +1,39 @@
+.intrigue-portal{font-family:Arial,Helvetica,sans-serif;--gold:#d3b273;--paper:#f4efe4;color-scheme:dark}
+.intrigue-portal .ip-header{display:flex;align-items:start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:26px}
+.intrigue-portal .ip-overline{font-size:11px;letter-spacing:.19em;font-weight:700;color:var(--gold)}
+.intrigue-portal .ip-heading{font-family:Georgia,serif;font-size:clamp(34px,5vw,54px);letter-spacing:-.04em;margin-top:8px;line-height:1.13}
+.intrigue-portal .ip-muted{color:#acbbcb;line-height:1.7}
+.intrigue-portal .ip-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:22px 0}
+.intrigue-portal .ip-stat{background:#15283a;border:1px solid #394b5d;border-radius:18px;padding:19px;display:flex;flex-direction:column;gap:9px}
+.intrigue-portal .ip-stat svg{width:20px;color:var(--gold)}
+.intrigue-portal .ip-stat span{font-size:13px;color:#c3cbd2}
+.intrigue-portal .ip-stat strong{font-size:31px;font-weight:750}
+.intrigue-portal .ip-tabs{display:flex;gap:8px;border-bottom:1px solid #3d4b5d;margin:25px 0 18px}
+.intrigue-portal .ip-tabs button{padding:12px 15px;color:#aec1ce;border-bottom:2px solid transparent;cursor:pointer}
+.intrigue-portal .ip-tabs button[aria-selected="true"]{border-color:var(--gold);color:var(--paper)}
+.intrigue-portal .ip-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.intrigue-portal .ip-card{background:#142638;border:1px solid #3c4d60;border-radius:18px;padding:21px;min-width:0}
+.intrigue-portal .ip-card-title{font-family:Georgia,serif;font-size:24px;margin-top:5px}
+.intrigue-portal .ip-metrics{display:flex;flex-wrap:wrap;gap:10px;margin:19px 0}
+.intrigue-portal .ip-metrics span{padding:10px 11px;background:#1f3449;border-radius:9px;font-size:12px;color:#c6d3dd}
+.intrigue-portal .ip-metrics strong{font-size:15px;color:#fff}
+.intrigue-portal .ip-pill{display:inline-flex;align-items:center;white-space:nowrap;padding:6px 9px;border-radius:100px;background:#315043;color:#dff5e3;font-size:11px;text-transform:capitalize}
+.intrigue-portal .ip-pill-warn{background:#503d2c;color:#ffdd9e}
+.intrigue-portal .ip-label{display:block;font-size:12px;font-weight:700;color:#d2dce5;margin:15px 0 7px}
+.intrigue-portal .ip-input{display:block;width:100%;max-width:100%;background:#0b1c2c;color:#f4efe4;border:1px solid #5d6b7c;border-radius:10px;padding:11px 13px;font-size:14px}
+.intrigue-portal .ip-input:focus{outline:2px solid var(--gold);outline-offset:1px}
+.intrigue-portal .ip-input option{color:#f4efe4;background:#12283a}
+.intrigue-portal .ip-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;border-radius:10px;padding:11px 15px;font-size:13px;font-weight:700;min-height:42px}
+.intrigue-portal .ip-button:disabled{opacity:.55;cursor:not-allowed}
+.intrigue-portal .ip-primary{background:var(--gold);color:#0c1926}
+.intrigue-portal .ip-secondary{border:1px solid #b5945d;color:#f8db99;background:#152638}
+.intrigue-portal .ip-danger{background:#89383a;color:white}
+.intrigue-portal .ip-error,.intrigue-portal .ip-success{margin:12px 0;border:1px solid #ad6f6f;border-radius:12px;padding:13px;background:#422c35;color:#ffe1e1}
+.intrigue-portal .ip-success{border-color:#557d6b;background:#1d4335;color:#ddfae8}
+.intrigue-portal .ip-message{background:#20354a;border-radius:11px;padding:12px 14px;font-size:13px;line-height:1.65}
+.intrigue-portal .ip-message strong{display:block;color:var(--gold);font-size:11px;margin-bottom:4px}
+.intrigue-portal .ip-faq{background:#172d41;padding:16px;border:1px solid #3f5060;border-radius:11px}
+.intrigue-portal .ip-faq summary{cursor:pointer;font-size:14px;font-weight:600}
+.intrigue-portal .ip-help-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:17px}
+@media(max-width:800px){.intrigue-portal .ip-card-grid,.intrigue-portal .ip-help-grid{grid-template-columns:1fr}.intrigue-portal .ip-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.intrigue-portal .ip-stats{grid-template-columns:1fr}.intrigue-portal .ip-header .ip-button{width:100%}.intrigue-portal .ip-card{padding:17px}.intrigue-portal .ip-heading{font-size:35px}}

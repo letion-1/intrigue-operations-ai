@@ -107,8 +107,8 @@ export default function CompanyErasure(){
      <label style={{display:'block'}}>Type <strong>DELETE COMPANY {data.company_name}</strong> exactly
       <input value={typed} onChange={e=>setTyped(e.target.value)} autoComplete="off" spellCheck={false} style={{display:'block',width:'100%',marginTop:10,padding:12,borderRadius:9,color:'#102030',background:'#f7f4ed'}}/>
      </label>
-     <button type="button" style={{...button,background:'#8e3031',borderColor:'#e19b92',marginTop:18,opacity:readyToErase?1:0.5,cursor:readyToErase?'pointer':'not-allowed'}} disabled={!readyToErase} aria-describedby="v21-erasure-readiness" onClick={()=>void erase()}><Trash2 size={17}/>{busy?'Processing…':'Permanently delete company'}</button>
-     <div id="v21-erasure-readiness" role="status" aria-live="polite" style={{marginTop:14,padding:14,border:'1px solid #8b785c',borderRadius:9,background:'#0f2134'}}>
+     <button type="button" style={{...button,background:'#8e3031',borderColor:'#e19b92',marginTop:18,opacity:readyToErase?1:0.5,cursor:readyToErase?'pointer':'not-allowed'}} disabled={!readyToErase} aria-describedby="company-erasure-readiness" onClick={()=>void erase()}><Trash2 size={17}/>{busy?'Processing…':'Permanently delete company'}</button>
+     <div id="company-erasure-readiness" role="status" aria-live="polite" style={{marginTop:14,padding:14,border:'1px solid #8b785c',borderRadius:9,background:'#0f2134'}}>
       <strong style={{color:readyToErase?'#b8ebc6':'#f3cc89'}}>{busy?'Processing request…':readyToErase?'Ready for irreversible deletion.':'Deletion is not ready yet:'}</strong>
       {missing.length>0&&<ul style={{margin:'9px 0 0 20px',listStyle:'disc',color:'#e5e8ef'}}>{missing.map((why,i)=><li key={i} style={{padding:'3px 0'}}>{why}</li>)}</ul>}
      </div>

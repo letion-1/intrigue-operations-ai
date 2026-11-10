@@ -525,7 +525,7 @@ export default function CustomersCRMPanel({ workspaceId, companyName, industry, 
         </button>
       </div>}
       <p className="mt-4 text-xs leading-6 text-[#aebfcf]">
-        Select this enquiry in the existing V17 workflow in Automation Center.
+        Open Automation Center and select this enquiry for analysis.
         Opening the enquiry does not automatically start an AI job or send an email.
       </p>
       {profileMessage && <p role="status" className="crm-profile-notice mt-3">{profileMessage}</p>}

@@ -1243,7 +1243,7 @@ export default function DashboardPage() {
     <>
       <div className="flex items-center gap-3 px-5 pb-8 pt-8">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#9b7b35]/45 bg-[#0c1a2a]">
-          <img src="https://intriguestudios.de/intrigue-logo.png" alt="INTRIGUE STUDIOS emblem" className="h-[79px] w-[70px] max-w-none translate-y-[12px] object-cover opacity-95" />
+          <img src="/intrigue-mark.png" alt="INTRIGUE STUDIOS emblem" className="h-[79px] w-[70px] max-w-none translate-y-[12px] object-cover opacity-95" />
         </div>
         <div className="min-w-0">
           <div className="brand-wordmark whitespace-nowrap text-[18px] font-medium leading-5 tracking-[0.16em] text-[#f2eadb]">INTRIGUE</div>
@@ -1284,6 +1284,7 @@ export default function DashboardPage() {
               </button>;
             })}
           </details>}
+          <a href="/help-center" className="intrigue-nav-item mt-3 flex items-center gap-3 rounded-xl border border-[#bc9b61]/35 px-3.5 py-3 text-left text-[13px] font-semibold text-[#e7ca92]">Help Center</a>
         </nav>
       </div>
       <div className="mt-auto p-4">
@@ -1597,7 +1598,7 @@ export default function DashboardPage() {
           {section === "Plans & Billing" && isOwner && (
             <div className="space-y-6">
               <div className="rounded-2xl border border-[#a18343]/55 bg-[#142539] p-6 md:p-8">
-                <div className="mb-4 flex items-center gap-3"><CreditCard size={23} className="text-[#e0bf76]"/><h2 className="text-lg font-bold">Plans & Billing  |  Private Preview</h2></div>
+                <div className="mb-4 flex items-center gap-3"><CreditCard size={23} className="text-[#e0bf76]"/><h2 className="text-lg font-bold">Plans & Billing</h2></div>
                 <p className="max-w-3xl text-sm leading-6 text-[#c6d2df]">Explore possible launch tiers and register your company's interest. This preview does not collect payment information, create subscriptions, process invoices, or change your current access or AI request limits.</p>
                 <div className="mt-5 flex flex-wrap gap-2"><Tag variant="amber">{t("No charges enabled")}</Tag><Tag variant="slate">{t("No plans activated")}</Tag><Tag variant="blue">{t("Company owner only")}</Tag></div>
                 {planLoading && <p role="status" className="mt-4 text-xs text-[#bbcbd8]">{t("Loading your plan interest...")}</p>}
@@ -1630,7 +1631,7 @@ export default function DashboardPage() {
               <div className="rounded-2xl border border-[#a18343]/50 bg-[#142539] p-6 md:p-8">
                 <div className="mb-3 flex items-center gap-3"><ClipboardCheck className="text-[#e0bf76]" size={24}/><h2 className="text-lg font-bold">{t("Apply for a guided pilot")}</h2></div>
                 <p className="max-w-3xl text-sm leading-6 text-[#b7c7d5]">Tell INTRIGUE STUDIOS what you want to evaluate. A submitted request is for discussion only. It does not activate payments, extend AI quotas, enable automation workers or authorize production customer data.</p>
-                <div className="mt-4 flex flex-wrap gap-2"><Tag variant="amber">{t("Private preview")}</Tag><Tag variant="blue">{t("Owner only")}</Tag><Tag variant="slate">{t("Manual review")}</Tag></div>
+                <div className="mt-4 flex flex-wrap gap-2"><Tag variant="amber">{t("Company settings")}</Tag><Tag variant="blue">{t("Owner only")}</Tag><Tag variant="slate">{t("Manual review")}</Tag></div>
                 <div className="mt-5 grid gap-3 text-xs md:grid-cols-3">
                   <div className="rounded-xl border border-[#46586a] bg-[#0e2235] p-3"><strong className="text-[#e7c37c]">1  |  Submitted</strong><p className="mt-1 text-[#b7c7d5]">{t("Your request is stored privately for operator review.")}</p></div>
                   <div className="rounded-xl border border-[#46586a] bg-[#0e2235] p-3"><strong className="text-[#e7c37c]">2  |  Contacted</strong><p className="mt-1 text-[#b7c7d5]">{t("An operator has marked the request for follow-up, not activated service.")}</p></div>
@@ -1677,7 +1678,7 @@ export default function DashboardPage() {
                 {pilotLoading && <p role="status" className="mt-4 text-xs text-[#b7c7d5]">{t("Loading your request...")}</p>}
                 {pilotRequest && pilotRequest.status!=="submitted" && <p className="mt-4 text-xs text-[#e7c37c]">{t("This request is already in review or closed; contact INTRIGUE STUDIOS to make changes.")}</p>}
                 <button type="submit" disabled={pilotSaving || pilotLoading || (!!pilotRequest && pilotRequest.status!=="submitted")} className={`${newButtonClass} mt-5`}>{pilotSaving?"Saving...":pilotRequest?"Update submitted request":"Submit pilot request"}</button>
-                <p className="mt-4 text-xs leading-5 text-[#b7c7d5]">For staging, use fictional use cases only. This form does not send an email automatically or start a pilot.</p>
+                <p className="mt-4 text-xs leading-5 text-[#b7c7d5]">This form records your interest only. It does not send email or activate a subscription.</p>
               </form>
             </div>
           )}
@@ -1686,7 +1687,7 @@ export default function DashboardPage() {
             <div className="rounded-2xl border border-[#997b45]/50 bg-[#142539] p-6 md:p-8">
               <div className="flex items-center gap-3"><ShieldCheck size={24} className="text-[#e1bd72]"/><h2 className="text-lg font-bold">{t("AI usage and safeguards")}</h2></div>
               <p className="mt-3 text-sm leading-6 text-[#b7c7d5]">These are request allowances for the signed-in owner, not billing amounts or model-token costs. All limits are enforced atomically by Supabase before contacting the AI provider.</p>
-              <div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={()=>void loadAiUsage()} disabled={usageBusy} className="rounded-lg border border-[#967b48] px-4 py-2 text-xs font-semibold text-[#e7c37c] disabled:opacity-50">{usageBusy?"Refreshing...":"Refresh usage"}</button><Tag variant="amber">Staging  |  No real client data</Tag></div>
+              <div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={()=>void loadAiUsage()} disabled={usageBusy} className="rounded-lg border border-[#967b48] px-4 py-2 text-xs font-semibold text-[#e7c37c] disabled:opacity-50">{usageBusy?"Refreshing...":"Refresh usage"}</button><Tag variant="amber">Workspace usage</Tag></div>
               {usageError && <p role="alert" className="mt-4 rounded-xl border border-red-400/40 p-4 text-xs text-[#ffc2b9]">{usageError}</p>}
               {aiUsage && <><div className="mt-6 grid gap-4 sm:grid-cols-2">
                 {[
@@ -1705,7 +1706,7 @@ export default function DashboardPage() {
               <h3 className="text-sm font-bold">{t("Launch security gates")}</h3>
               <div className="mt-4 space-y-3 text-xs leading-6 text-[#bccbd9]">
                 <p>- Database access controls: configuration and interface tests have been performed; continued verification is required.</p>
-                <p>- Cross-company isolation: validate denied reads and writes with dedicated staging accounts.</p>
+                <p>- Cross-company isolation: validate denied reads and writes with dedicated test accounts.</p>
                 <p>- Quota rejection: use the no-provider-call rollback test. A displayed usage counter alone does not prove rejection.</p>
                 <p>- Production: confirm data retention, backups, provider processing agreements and real API-session authorization before accepting client data.</p>
               </div>
@@ -1816,7 +1817,7 @@ export default function DashboardPage() {
 
           </>}
 
-          <footer className="mt-8 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#9eacba]"><span>(c) 2026 INTRIGUE STUDIOS  |  Engineered intelligence</span><span>Demo records in Supabase - Chat read-only - Approved drafts only</span></footer>
+          <footer className="mt-8 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#9eacba]"><span>(c) 2026 INTRIGUE STUDIOS  |  Engineered intelligence</span><span>Private company workspace · Protected business data</span></footer>
         </main>
       </div>
     </div>

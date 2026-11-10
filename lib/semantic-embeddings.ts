@@ -5,20 +5,23 @@
  */
 // This module must only be imported from server route handlers.
 
+import { governedOpenRouterFetch } from "@/lib/intrigue-ai/governed-provider-fetch";
+
 const DIMENSIONS = 1536;
 const MODEL = "openai/text-embedding-3-small";
 
 type EmbeddingRow = { index?: number; embedding?: unknown };
 
-export async function embedTexts(texts: string[]): Promise<number[][]> {
+export async function embedTexts(texts: string[], workspaceId?: string): Promise<number[][]> {
   const key = process.env.OPENROUTER_API_KEY;
-  if (!key) throw new Error("OpenRouter is not configured on the server.");
+  if (!key && process.env.INTRIGUE_AI_BROWSER_METERING_ENABLED !== "true") throw new Error("OpenRouter is not configured on the server.");
+  if (!workspaceId && process.env.INTRIGUE_AI_BROWSER_METERING_ENABLED === "true") throw new Error("Workspace context required for metered embeddings.");
   if (!texts.length || texts.length > 24 || texts.some(s => !s.trim() || s.length > 4500)) {
     throw new Error("Invalid embedding input size.");
   }
   let response: Response;
   try {
-    response = await fetch("https://openrouter.ai/api/v1/embeddings", {
+    response = await governedOpenRouterFetch(workspaceId || "", "embedding", {
       method: "POST",
       signal: AbortSignal.timeout(30000),
       headers: {

@@ -1,6 +1,7 @@
 import { handleCalendlyVoiceTool } from "@/lib/intrigue-vapi-calendly";
 import { handleGoogleTool } from "@/lib/intrigue-vapi-google";
 import { callRow } from "@/lib/intrigue-vapi-call-history";
+import { recordVapiCall } from "@/lib/intrigue-ai/vapi-postcall-meter";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -93,6 +94,11 @@ export async function POST(request: NextRequest) {
       });
       if (historyError) console.error('V16 call history ingestion failed (booking unaffected):', historyError.code);
     } catch { console.error('V16 call history ingestion failed (booking unaffected)'); }
+  }
+  // Best-effort ledger write. Existing call history and bookings never depend on this.
+  // Authorization and workspace mapping must come from the validated database RPC.
+  if (eventType === 'end-of-call-report' && uuid.test(callId)) {
+    await recordVapiCall({authorization:data,call,message});
   }
   return json({ received: true });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { embedTexts } from "@/lib/semantic-embeddings";
+import { governedOpenRouterFetch } from "@/lib/intrigue-ai/governed-provider-fetch";
 import { crossOrigin, quotaErrorResponse } from "@/lib/ai-security";
 
 const CUSTOMER_LANGUAGE_NAMES: Record<string,string> = {en:"English",de:"German",fr:"French",es:"Spanish",pt:"Portuguese",it:"Italian",nl:"Dutch",sw:"Swahili (Kiswahili)",ar:"Arabic",tr:"Turkish",pl:"Polish",hi:"Hindi",zh:"Chinese (Simplified)",ja:"Japanese",ko:"Korean",ru:"Russian"};
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return respond({ error: "Please sign in again." }, 401);
-  if (!process.env.OPENROUTER_API_KEY) return respond({ error: "OPENROUTER_API_KEY is not configured on the server." }, 503);
+  if (!process.env.OPENROUTER_API_KEY && process.env.INTRIGUE_AI_BROWSER_METERING_ENABLED !== "true") return respond({ error: "OPENROUTER_API_KEY is not configured on the server." }, 503);
   let question = "";
   try {
     const input: unknown = await request.json();
@@ -195,7 +196,7 @@ export async function POST(request: Request) {
       ]);
       if (!indexedNotes.error && !indexedChunks.error && (indexedNotes.count || 0) + (indexedChunks.count || 0) > 0) {
         try {
-          const [embedding] = await embedTexts([q]);
+          const [embedding] = await embedTexts([q], workspaceId);
           const { data: matches, error } = await supabase.rpc("intrigue_semantic_search", {
             p_workspace_id: workspaceId, p_query_embedding: embedding, p_match_count: 5,
           });
@@ -285,7 +286,7 @@ export async function POST(request: Request) {
 
   try {
     for (let cycle = 0; cycle < 3; cycle++) {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const response = await governedOpenRouterFetch(workspaceId, "chat", {
         method: "POST", cache: "no-store", signal: AbortSignal.timeout(55000),
         headers: {
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
@@ -301,7 +302,7 @@ export async function POST(request: Request) {
         }),
       });
       if (!response.ok) {
-        return respond({ error: `AI provider returned ${response.status}. Check your model, OpenRouter limits and tool-calling support.` }, 502);
+        return respond({ error: response.status === 429 ? "AI usage allowance reached. Contact your company owner." : `AI provider unavailable (${response.status}).` }, response.status === 429 ? 429 : 502);
       }
       const payload: Completion = await response.json();
       const content = payload.choices?.[0]?.message?.content;

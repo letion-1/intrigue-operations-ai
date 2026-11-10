@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { embedTexts } from "@/lib/semantic-embeddings";
+import { governedOpenRouterFetch } from "@/lib/intrigue-ai/governed-provider-fetch";
 import { crossOrigin, quotaErrorResponse } from "@/lib/ai-security";
 
 
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const {data: {user}, error: authError} = await supabase.auth.getUser();
   if (authError || !user) return json({error:"Please sign in again."},401);
-  if (!process.env.OPENROUTER_API_KEY) return json({error:"Add OPENROUTER_API_KEY to .env.local and restart npm run dev."},503);
+  if (!process.env.OPENROUTER_API_KEY && process.env.INTRIGUE_AI_BROWSER_METERING_ENABLED !== "true") return json({error:"AI provider is not configured."},503);
   if (!request.headers.get("content-type")?.includes("application/json")) return json({error:"Expected JSON."},415);
   const lengthHeader = Number(request.headers.get("content-length") || 0);
   if (lengthHeader > 6000) return json({error:"Request is too large."},413);
@@ -125,7 +126,7 @@ export async function POST(request: Request) {
   if (!indexedDocCount.error && !indexedNoteCount.error &&
       (indexedDocCount.count || 0) + (indexedNoteCount.count || 0) > 0) {
     try {
-      const [questionVector] = await embedTexts([question]);
+      const [questionVector] = await embedTexts([question],workspace.id);
       const {data:matches,error:matchError} = await supabase.rpc("intrigue_semantic_search",{
         p_workspace_id:workspace.id,
         p_query_embedding:questionVector,
@@ -244,7 +245,7 @@ export async function POST(request: Request) {
   ];
 
   try {
-    const response=await fetch("https://openrouter.ai/api/v1/chat/completions",{
+    const response=await governedOpenRouterFetch(workspace.id,"chat",{
       method:"POST",
       signal:AbortSignal.timeout(55000),
       headers:{
@@ -263,7 +264,7 @@ export async function POST(request: Request) {
     });
     if (!response.ok) {
       // Don't expose raw provider errors (which may contain internal account or request information).
-      return json({error:`AI provider returned ${response.status}. Check your OpenRouter key, model selection and usage limits.`},502);
+      return json({error:response.status===429?"AI usage allowance reached. Contact your company owner.":`AI provider unavailable (${response.status}).`},response.status===429?429:502);
     }
     const output: unknown=await response.json();
     const reply = (output as {choices?:Array<{message?:{content?:unknown}}>})?.choices?.[0]?.message?.content;

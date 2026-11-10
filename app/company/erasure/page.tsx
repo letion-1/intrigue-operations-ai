@@ -12,7 +12,7 @@ export default function CompanyErasure(){
  const db=useMemo(()=>createClient(),[]);
  const [data,setData]=useState<Preflight|null>(null),[busy,setBusy]=useState(false);
  const [error,setError]=useState(''),[result,setResult]=useState('');
- const [downloaded,setDownloaded]=useState(false),[ack,setAck]=useState(false),[typed,setTyped]=useState('');
+ const [downloaded,setDownloaded]=useState(false),[exportNote,setExportNote]=useState(''),[ack,setAck]=useState(false),[typed,setTyped]=useState('');
  const [deleteLogin,setDeleteLogin]=useState(false),[caseId,setCaseId]=useState('');
  const bearer=useCallback(async()=>{
   const {data:{session}}=await db.auth.getSession();
@@ -20,7 +20,7 @@ export default function CompanyErasure(){
   return {Authorization:`Bearer ${session.access_token}`};
  },[db]);
  const load=useCallback(async()=>{
-  setBusy(true);setError('');
+  setBusy(true);setError('');setDownloaded(false);setExportNote('');
   try{
    const res=await fetch('/api/company/erasure',{headers:await bearer(),cache:'no-store'});
    const j=await res.json();if(!res.ok)throw Error(j.error||'Unable to load owner preflight.');setData(j);setCaseId(j.pending_case_id||'');
@@ -29,13 +29,14 @@ export default function CompanyErasure(){
  },[bearer]);
  useEffect(()=>{void load();},[load]);
  async function exportData(){
-  setBusy(true);setError('');
+  setBusy(true);setError('');setDownloaded(false);setExportNote('');
   try{
    const res=await fetch('/api/company/erasure?mode=export',{headers:await bearer(),cache:'no-store'});
    if(!res.ok){const j=await res.json();throw Error(j.error||'Export failed');}
    const blob=await res.blob();const url=URL.createObjectURL(blob);
    const a=document.createElement('a');a.href=url;a.download='INTRIGUE-company-business-export.json';
-   document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);setDownloaded(true);
+   document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
+   setDownloaded(true);setExportNote('The business export was prepared for download. Check your Downloads folder and save the file before continuing.');
   }catch(e){setError(e instanceof Error?e.message:'Export failed');}finally{setBusy(false);}
  }
  async function erase(){
@@ -45,7 +46,7 @@ export default function CompanyErasure(){
    const res=await fetch('/api/company/erasure',{method:'POST',headers:{...await bearer(),'Content-Type':'application/json'},
     body:JSON.stringify({action:'erase',exported:true,acknowledged:true,confirmation:typed,delete_personal_login:deleteLogin})});
    const j=await res.json();
-   if(!res.ok){if(j.case_id)setCaseId(j.case_id);throw Error(j.message||j.error||'Company erasure failed.');}
+   if(!res.ok){if(j.case_id){setCaseId(j.case_id);await load();}throw Error(j.message||j.error||'Company erasure failed.');}
    if(!j.database_erased)throw Error('Deletion was not confirmed.');
    setResult(`Live company database erased. ${j.deleted_rows} records removed. Case ${j.case_id}. ${j.personal_login_status} Historical backups and external providers have separate retention schedules.`);
    setData(null);setTyped('');setDownloaded(false);
@@ -53,6 +54,20 @@ export default function CompanyErasure(){
   }catch(e){setError(e instanceof Error?e.message:'Deletion failed.');}
   finally{setBusy(false);}
  }
+ // Explicit readiness checklist: never leave a disabled destructive button unexplained.
+ const expectedConfirmation=data?`DELETE COMPANY ${data.company_name}`:'';
+ const missing:string[]=[];
+ if(data){
+  if(data.legal_holds>0)missing.push(`${data.legal_holds} legal-retention hold(s) must be resolved.`);
+  if(data.in_flight_ai_jobs>0)missing.push(`${data.in_flight_ai_jobs} AI job(s) are still processing.`);
+  if(data.storage_objects_owned_by_actor>0)missing.push(`${data.storage_objects_owned_by_actor} Storage object(s) require ownership review.`);
+  if(!data.can_stage && data.legal_holds===0 && data.in_flight_ai_jobs===0 && data.storage_objects_owned_by_actor===0)
+   missing.push('Database preflight is not ready. Refresh the counts to investigate.');
+  if(!downloaded)missing.push('Use “Download company export” in step 1 and check that it saved.');
+  if(!ack)missing.push('Tick the confirmation that you understand the permanent deletion.');
+  if(typed!==expectedConfirmation)missing.push('Enter the exact company confirmation phrase.');
+ }
+ const readyToErase=Boolean(data&&!busy&&missing.length===0);
  async function cancel(){
   if(!data||!caseId||busy)return;
   setBusy(true);setError('');
@@ -80,7 +95,8 @@ export default function CompanyErasure(){
     <section style={panel}>
      <h2 style={{fontSize:19,fontWeight:650}}>1. Download your business data</h2>
      <p style={{color:'#bdc9d4',margin:'8px 0 16px'}}>Export includes business tables, not passwords, OAuth secrets, provider-owned records or historical backups. Large datasets must use a paginated export before erasure.</p>
-     <button type="button" style={button} disabled={busy} onClick={()=>void exportData()}><Download size={16}/>{downloaded?'Download again':'Download company export'}</button>
+     <button type="button" style={{...button,opacity:busy?0.65:1}} disabled={busy} onClick={()=>void exportData()}><Download size={16}/>{downloaded?'Download again':'Download company export'}</button>
+     {exportNote&&<p role="status" style={{color:'#c9e9d6',marginTop:12}}>{exportNote}</p>}
     </section>
     <section style={{...panel,borderColor:'#97714e'}}>
      <h2 style={{fontSize:19,fontWeight:650,display:'flex',alignItems:'center',gap:8}}><AlertTriangle size={20}/> 2. Permanently erase this company</h2>
@@ -91,8 +107,11 @@ export default function CompanyErasure(){
      <label style={{display:'block'}}>Type <strong>DELETE COMPANY {data.company_name}</strong> exactly
       <input value={typed} onChange={e=>setTyped(e.target.value)} autoComplete="off" spellCheck={false} style={{display:'block',width:'100%',marginTop:10,padding:12,borderRadius:9,color:'#102030',background:'#f7f4ed'}}/>
      </label>
-     <button type="button" style={{...button,background:'#8e3031',borderColor:'#e19b92',marginTop:18}} disabled={busy||!data.can_stage||!downloaded||!ack||typed!==`DELETE COMPANY ${data.company_name}`} onClick={()=>void erase()}><Trash2 size={17}/>{busy?'Processing…':'Permanently delete company'}</button>
-     {!data.can_stage&&<p style={{color:'#f3cc89',marginTop:12}}>Deletion is blocked until active AI jobs finish, Storage ownership is mapped, and any legal hold is resolved.</p>}
+     <button type="button" style={{...button,background:'#8e3031',borderColor:'#e19b92',marginTop:18,opacity:readyToErase?1:0.5,cursor:readyToErase?'pointer':'not-allowed'}} disabled={!readyToErase} aria-describedby="v21-erasure-readiness" onClick={()=>void erase()}><Trash2 size={17}/>{busy?'Processing…':'Permanently delete company'}</button>
+     <div id="v21-erasure-readiness" role="status" aria-live="polite" style={{marginTop:14,padding:14,border:'1px solid #8b785c',borderRadius:9,background:'#0f2134'}}>
+      <strong style={{color:readyToErase?'#b8ebc6':'#f3cc89'}}>{busy?'Processing request…':readyToErase?'Ready for irreversible deletion.':'Deletion is not ready yet:'}</strong>
+      {missing.length>0&&<ul style={{margin:'9px 0 0 20px',listStyle:'disc',color:'#e5e8ef'}}>{missing.map((why,i)=><li key={i} style={{padding:'3px 0'}}>{why}</li>)}</ul>}
+     </div>
      {data.state==='closing'&&caseId&&<button type="button" style={{...button,marginTop:15,marginLeft:10}} disabled={busy} onClick={()=>void cancel()}>Cancel staged closure and unlock</button>}
     </section>
    </>}

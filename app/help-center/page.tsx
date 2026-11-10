@@ -17,6 +17,7 @@ export default function HelpCenter(){
  const db=useMemo(()=>createClient(),[]);
  const [companies,setCompanies]=useState<Company[]>([]),[workspace,setWorkspace]=useState(''),[tickets,setTickets]=useState<Ticket[]>([]);
  const [subject,setSubject]=useState(''),[category,setCategory]=useState('technical'),[message,setMessage]=useState('');
+ const [subjectTouched,setSubjectTouched]=useState(false),[messageTouched,setMessageTouched]=useState(false);
  const [responses,setResponses]=useState<Record<string,string>>({}),[openTicket,setOpenTicket]=useState('');
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const request=useCallback(async(method:'GET'|'POST',url:string,body?:object)=>{
@@ -33,10 +34,15 @@ export default function HelpCenter(){
  },[request]);
  useEffect(()=>{void load(workspace);},[workspace,load]);
  useEffect(()=>{const query=new URLSearchParams(window.location.search);const id=query.get('ticket');const tenant=query.get('workspace');if(id)setOpenTicket(id);if(tenant)setWorkspace(tenant);},[]);
- async function create(e:FormEvent){e.preventDefault();if(!workspace||saving)return;
+ async function create(e:FormEvent){e.preventDefault();if(saving)return;
+  const cleanSubject=subject.trim(),cleanMessage=message.trim();
+  setSubjectTouched(true);setMessageTouched(true);
+  if(!workspace){setError('Choose your company workspace.');return;}
+  if(!cleanSubject){setError('Enter a ticket subject. Short subjects such as CRM are accepted.');return;}
+  if(!cleanMessage){setError('Describe your issue before submitting the ticket.');return;}
   setSaving(true);setError('');setNotice('');
-  try{await request('POST','/api/help-center',{action:'create',workspace_id:workspace,subject,category,message});
-   setSubject('');setMessage('');setNotice('Your support ticket was created. INTRIGUE Support can respond here.');await load(workspace);
+  try{await request('POST','/api/help-center',{action:'create',workspace_id:workspace,subject:cleanSubject,category,message:cleanMessage});
+   setSubject('');setMessage('');setSubjectTouched(false);setMessageTouched(false);setNotice('Your support ticket was created. INTRIGUE Support can respond here.');await load(workspace);
   }catch(err){setError(err instanceof Error?err.message:'Unable to create ticket');}finally{setSaving(false);}
  }
  async function reply(t:Ticket){const msg=(responses[t.id]||'').trim();if(!msg)return;
@@ -69,10 +75,16 @@ export default function HelpCenter(){
        {['technical','integration','general','billing','privacy'].map(x=><option key={x} value={x}>{x}</option>)}
       </select>
       <label className="ip-label" htmlFor="subject">Subject</label>
-      <input id="subject" className="ip-input" value={subject} onChange={e=>setSubject(e.target.value)} minLength={5} maxLength={160} required placeholder="What's happening?"/>
+      <input id="subject" className="ip-input" value={subject} onChange={e=>setSubject(e.target.value)} onBlur={()=>setSubjectTouched(true)} maxLength={160} required aria-describedby="support-subject-hint" aria-invalid={subjectTouched&&!subject.trim()} placeholder="e.g. CRM"/>
+      <p id="support-subject-hint" className={`text-xs ${subjectTouched&&!subject.trim()?'text-[#ffb5ae]':'ip-muted'}`}>
+       {subjectTouched&&!subject.trim()?'Enter a subject to continue.':'Short subjects are welcome, including CRM (up to 160 characters).'}
+      </p>
       <label className="ip-label" htmlFor="message">Details</label>
-      <textarea id="message" className="ip-input min-h-[130px]" value={message} onChange={e=>setMessage(e.target.value)} required maxLength={4000} placeholder="Describe the issue. Don't include passwords or API keys."/>
-      <button type="submit" className="ip-button ip-primary" disabled={!workspace||saving||subject.trim().length<5||!message.trim()}><Send size={15}/>{saving?'Submitting…':'Submit ticket'}</button>
+      <textarea id="message" className="ip-input min-h-[130px]" value={message} onChange={e=>setMessage(e.target.value)} onBlur={()=>setMessageTouched(true)} required maxLength={4000} aria-describedby="support-message-hint" aria-invalid={messageTouched&&!message.trim()} placeholder="Describe the issue. Don't include passwords or API keys."/>
+      <p id="support-message-hint" className={`text-xs ${messageTouched&&!message.trim()?'text-[#ffb5ae]':'ip-muted'}`}>
+       {messageTouched&&!message.trim()?'Enter a message to continue.':'Describe the issue without sharing passwords or API keys.'}
+      </p>
+      <button type="submit" className="ip-button ip-primary" disabled={!workspace||saving||!subject.trim()||!message.trim()}><Send size={15}/>{saving?'Submitting…':'Submit ticket'}</button>
      </form><p className="ip-muted mt-4 text-xs">Support messages stay inside INTRIGUE. The platform doesn't send notification emails or promise a response time.</p>
     </section>
     <section className="ip-card"><div className="flex items-center gap-2"><MessageCircle className="text-[#d6b778]" size={20}/><h2 className="ip-card-title">Your conversations ({tickets.length})</h2></div>

@@ -39,15 +39,21 @@ export async function POST(req:NextRequest) {
     if(body.action==='create') {
       if(!uuid(body.workspace_id)) throw new LifecycleError(400,'Invalid company');
       const subject=stringValue(body.subject,160);
-      if(subject.length<5) throw new LifecycleError(400,'Subject must contain at least five characters.');
+      const ticketBody=stringValue(body.message,4000);
       const category=body.category;
       if(typeof category!=='string'||!['general','technical','integration','billing','privacy'].includes(category))
        throw new LifecycleError(400,'Invalid category');
       const {data,error}=await ctx.service.rpc('intrigue_platform_new_ticket',{
         p_actor:ctx.user.id,p_tenant:body.workspace_id,p_subject:subject,
-        p_category:category,p_body:stringValue(body.message,4000)
+        p_category:category,p_body:ticketBody
       });
-      if(error||!uuid(data)) throw new LifecycleError(403,'Unable to create a support ticket for this company.');
+      if(error){
+       if(error.code==='54000') throw new LifecycleError(429,'Daily support ticket limit reached. Try again tomorrow.');
+       if(error.code==='22023') throw new LifecycleError(400,'Check the subject and message, then try again.');
+       if(error.code==='42501') throw new LifecycleError(403,'You cannot create a ticket for this company.');
+       throw new LifecycleError(503,'Support request could not be saved. Try again or contact INTRIGUE Support.');
+      }
+      if(!uuid(data)) throw new LifecycleError(503,'Ticket was not confirmed by the server. Please check your conversation list before retrying.');
       return json({created:true,ticket_id:data},201);
     }
     if(body.action==='reply') {

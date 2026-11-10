@@ -1,0 +1,66 @@
+/* INTRIGUE platform hardening: responsive / accessibility only.
+   Keeps the existing light ivory+gold and dark navy+gold themes. */
+.intrigue-dashboard,
+.intrigue-dashboard .intrigue-main-scroll,
+.intrigue-portal,
+.intrigue-portal .ip-card,
+.intrigue-portal .ip-stat { min-width: 0; }
+
+.intrigue-dashboard img,
+.intrigue-portal img { max-width: 100%; }
+
+.intrigue-dashboard :is(input, textarea, select),
+.intrigue-portal :is(input, textarea, select) {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.intrigue-dashboard :is(button, a, input, select, textarea):focus-visible,
+.intrigue-portal :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid #d6ad63;
+  outline-offset: 3px;
+}
+
+.intrigue-dashboard :is(button, select, input[type='button'], input[type='submit']),
+.intrigue-portal :is(button, select, input[type='button'], input[type='submit']) {
+  min-height: 44px;
+}
+
+.intrigue-dashboard :is(button, input, select, textarea):disabled,
+.intrigue-portal :is(button, input, select, textarea):disabled {
+  cursor: not-allowed;
+  opacity: .60;
+}
+
+.intrigue-dashboard :is(p, h1, h2, h3, a),
+.intrigue-portal :is(p, h1, h2, h3, a) { overflow-wrap: anywhere; }
+
+.intrigue-portal .ip-card-grid,
+.intrigue-portal .ip-help-grid { min-width: 0; }
+
+.intrigue-portal .ip-metrics { min-width: 0; }
+.intrigue-portal .ip-metrics span { white-space: normal; overflow-wrap: anywhere; }
+
+@media (max-width: 1024px) {
+  .intrigue-portal .ip-card-grid { grid-template-columns: 1fr; }
+  .intrigue-portal .ip-header { gap: 12px; }
+}
+
+@media (max-width: 767px) {
+  .intrigue-dashboard .intrigue-main-scroll main { padding-inline: 14px; }
+  .intrigue-portal { padding-inline: max(12px, env(safe-area-inset-left)) !important; }
+  .intrigue-portal .ip-stats,
+  .intrigue-portal .ip-card-grid,
+  .intrigue-portal .ip-help-grid { grid-template-columns: minmax(0, 1fr); }
+  .intrigue-portal .ip-tabs { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
+  .intrigue-portal .ip-tabs button { white-space: nowrap; flex: 0 0 auto; }
+  .intrigue-portal .ip-card { padding: 16px; }
+  .intrigue-portal :is(input, textarea, select),
+  .intrigue-dashboard :is(input, textarea, select) { font-size: 16px; }
+  .intrigue-portal .ip-header .ip-button { max-width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intrigue-dashboard *,
+  .intrigue-portal * { animation-duration: .01ms !important; scroll-behavior: auto !important; }
+}

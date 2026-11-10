@@ -5,6 +5,7 @@ import VapiReceptionist from './vapi-receptionist';
 import BusinessEmailConnections from './integrations/BusinessEmailConnections';
 import CalendarProviderConnections from './integrations/CalendarProviderConnections';
 import CrmConnections from './integrations/CrmConnections';
+import AiConnectionsPanel from './integrations/AiConnectionsPanel';
 
 type Scheduler='none'|'cal'|'calendly';
 type MailProvider='none'|'gmail'|'outlook';
@@ -46,6 +47,7 @@ export default function IntegrationsPanel({workspaceId,onImported,onOpenCalendar
         <button type="button" className="rounded-xl border border-[#9b8351]/60 p-4 text-left" onClick={onOpenReceptionist}><strong>AI Receptionist</strong><span className="mt-2 block text-xs opacity-70">Manage voice configuration and call logs</span></button>
       </div>
     </div>
+    <AiConnectionsPanel workspaceId={workspaceId}/>
     <CrmConnections workspaceId={workspaceId} onImported={onImported}/>
     <BusinessEmailConnections workspaceId={workspaceId}/>
     <CalendarProviderConnections workspaceId={workspaceId} onOpenCalendar={onOpenCalendar}

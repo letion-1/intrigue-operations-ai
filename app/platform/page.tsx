@@ -62,7 +62,7 @@ export default function PlatformConsole(){
      <div className="flex items-center gap-3 mt-6"><img src="/intrigue-mark.png" alt="INTRIGUE emblem" className="h-14 w-10 object-contain" /><p className="ip-overline">INTRIGUE STUDIOS / PRIVATE OPERATIONS</p></div>
      <h1 className="ip-heading">Admin Control Center</h1><p className="ip-muted mt-2">Workspace monitoring, controlled access and client support. Billing is managed separately.</p>
     </div>
-    <div className="flex flex-wrap items-center gap-3"><SupportNotifications audience="operator"/><button type="button" onClick={()=>void load()} disabled={loading} className="ip-button ip-secondary"><RefreshCcw size={16}/> Refresh</button><button type="button" className="ip-button ip-secondary" onClick={()=>void db.auth.signOut({scope:'global'}).then(()=>window.location.replace('/platform/login'))}>Log out</button></div>
+    <div className="flex flex-wrap items-center gap-3"><SupportNotifications audience="operator"/><a className="ip-button ip-secondary" href="/platform/ai-usage">AI Usage Management</a><button type="button" onClick={()=>void load()} disabled={loading} className="ip-button ip-secondary"><RefreshCcw size={16}/> Refresh</button><button type="button" className="ip-button ip-secondary" onClick={()=>void db.auth.signOut({scope:'global'}).then(()=>window.location.replace('/platform/login'))}>Log out</button></div>
    </header>
    {error&&<div role="alert" className="ip-error">{error}</div>}
    {notice&&<div role="status" className="ip-success">{notice}</div>}

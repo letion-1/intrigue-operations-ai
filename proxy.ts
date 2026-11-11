@@ -8,6 +8,14 @@ export async function proxy(request: NextRequest) {
   if (request.nextUrl.pathname === "/api/integrations/vapi/webhook") {
     return NextResponse.next();
   }
+  // Internal worker gateway: authentication happens inside
+// the API route using the private worker token.
+if (
+  request.nextUrl.pathname === "/api/ai-runtime/chat" &&
+  request.method === "POST"
+) {
+  return NextResponse.next();
+}
 
   return await updateSession(request);
 }

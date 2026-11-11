@@ -19,3 +19,18 @@
 @media (min-width:1200px){.intrigue-dashboard .intrigue-sidebar{width:282px!important}}
 @media (max-width:767px){.intrigue-dashboard .intrigue-main-scroll main{padding-inline:14px}.intrigue-dashboard .intrigue-main-scroll>header{padding-inline:12px}}
 @media (prefers-reduced-motion:reduce){.intrigue-dashboard *{transition-duration:0ms!important;animation-duration:0ms!important}}
+
+/* Distinct, consistent, accessible appearance control in both themes. */
+.intrigue-dashboard .intrigue-theme-button {
+  display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+  width:40px;height:40px;border-radius:12px;border:1px solid #52647a;
+  background:#1a3047;color:#ecd18d;transition:background .15s,color .15s,border-color .15s;
+}
+.intrigue-dashboard .intrigue-theme-button:hover{background:#28445d;border-color:#bd9755}
+.intrigue-dashboard .intrigue-theme-button:focus-visible{outline:2px solid #ba8a38;outline-offset:3px}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-theme-button{
+  background:#fffaf3!important;color:#855f25!important;border-color:#d4b889!important;
+}
+.intrigue-dashboard[data-intrigue-theme="light"] .intrigue-theme-button:hover{
+  background:#f0e2cc!important;color:#4f391d!important;
+}

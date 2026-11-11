@@ -4,6 +4,14 @@
  */
 import { createHash } from 'node:crypto';
 
+export class AiAllowanceExhaustedError extends Error {
+  constructor() {
+    super('Monthly AI allowance reached. AI analysis is paused until the allowance renews or your administrator increases it. Other business features remain available.');
+    this.name = 'AiAllowanceExhaustedError';
+    this.code = 'AI_ALLOWANCE_EXHAUSTED';
+  }
+}
+
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const subjectHash = (subject) => createHash('md5').update(String(subject).trim().toLowerCase()).digest('hex');
 const redact = (value) => String(value || '').slice(0, 1500)
@@ -221,7 +229,15 @@ export async function selectWithOpenRouter(payload,fetcher=fetch,env=process.env
       body:JSON.stringify({model,temperature:0.1,max_tokens:650,response_format:{type:'json_object'},messages})
     });
   }
-  if (!res.ok) throw Error(`Quotation AI service returned HTTP ${res.status}.`);
+  if (!res.ok) {
+    // Budget refusal has a specific code from our trusted internal gateway.
+    // Never mistake ordinary provider 429 (temporary rate limiting) for exhaustion.
+    if(metered && res.status===429){
+      const failure=typeof res.json==='function'?await res.json().catch(()=>null):null;
+      if(failure?.code==='AI_ALLOWANCE_EXHAUSTED')throw new AiAllowanceExhaustedError();
+    }
+    throw Error(`Quotation AI service returned HTTP ${res.status}.`);
+  }
   const body=await res.json();
   const envelope=metered?body?.completion:body;
   const value=envelope?.choices?.[0]?.message?.content;

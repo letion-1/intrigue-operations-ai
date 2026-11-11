@@ -72,8 +72,17 @@ export async function governedOpenRouterFetch(workspaceId:string,endpoint:Metere
   const {data,error}=await db.rpc('intrigue_ai_reserve',{
    p_workspace:workspaceId,p_request_key:requestKey,p_kind:'text',p_estimated_usd:estimate,p_seconds:0});
   if(error)return errorResponse('Usage authorization failed. Company may be frozen or unavailable.',403);
-  if(data?.approved!==true)return errorResponse(data?.reason==='text_allowance_exhausted'
-   ?'The company has reached its included AI allowance.':'AI request could not be reserved.',429);
+  if(data?.approved!==true){
+   if(data?.reason==='text_allowance_exhausted'){
+    const {error:noticeError}=await db.rpc('intrigue_ai_budget_notice_emit',{
+     p_workspace:workspaceId,p_kind:'text'});
+    if(noticeError)console.warn('[AI_BUDGET_NOTICE_FAILED]',endpoint);
+    return new Response(JSON.stringify({code:'AI_ALLOWANCE_EXHAUSTED',
+     error:'Monthly AI allowance reached. AI tasks are paused until your allowance renews or the company owner requests more usage. Your business tools remain available.'}),
+     {status:429,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
+   }
+   return errorResponse('AI request could not be reserved.',data?.duplicate?409:403);
+  }
  }catch{return errorResponse('AI usage service is temporarily unavailable.',503);}
  // Do not put provider credentials or arbitrary remote endpoints in client-controlled inputs.
  // Preserve the original request's deadline and server-defined payload, but replace its credentials.

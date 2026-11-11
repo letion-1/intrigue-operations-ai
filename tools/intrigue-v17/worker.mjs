@@ -2,7 +2,7 @@
 /** V17.2A local worker: audit receipts + approved internal quotation analysis only.
  * NEVER sends emails, books calls, or writes quotation/customer tables. */
 import { pathToFileURL } from 'node:url';
-import { analyzeEnquiry, selectWithOpenRouter } from './quotation-analysis.mjs';
+import { analyzeEnquiry, selectWithOpenRouter, AiAllowanceExhaustedError } from './quotation-analysis.mjs';
 const isMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
 const apiUrl = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -68,7 +68,16 @@ async function tick() {
   const run = claimed[0];
   let success=false, result={}, error=null;
   try { result = await executeAction(run); success=true; }
-  catch (e) { error=String(e?.message || 'Processing failure').slice(0,300); }
+  catch (e) {
+    if(e instanceof AiAllowanceExhaustedError){
+      // A deliberate allowance refusal is not a transient provider failure:
+      // do not spend repeated retry attempts or mark a fictitious quote as matched.
+      success=true;
+      result={kind:'quotation_draft',classification_source:'ai_budget_gate',
+        intent:'unclear',outcome:'allowance_exhausted',catalog_items:[],
+        note:e.message,warnings:[e.message]};
+    } else error=String(e?.message || 'Processing failure').slice(0,300);
+  }
   const status=await rpc('intrigue_v17_finish',{
     p_run_id:run.id,p_lease_token:run.lease_token,p_success:success,p_result:result,p_error:error,
   });

@@ -237,6 +237,9 @@ export default function DashboardPage() {
   const [guideStep,setGuideStep]=useState<number|null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [appearance, setAppearance] = useState<"dark" | "light">("light");
+  useEffect(()=>{
+    if(new URLSearchParams(window.location.search).get('usage')==='1')setSection('Security & Usage');
+  },[]);
   const [appearanceReady, setAppearanceReady] = useState(false);
   const [workspaceResolvedOnce, setWorkspaceResolvedOnce] = useState(false);
   useEffect(() => {
@@ -1316,7 +1319,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-3 md:gap-5">
             <span className="hidden items-center gap-1.5 rounded-full bg-[#654e24]/40 px-3 py-1.5 text-[11px] font-bold text-[#e7c37c] sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-[#ddb96d]"/>{t("WORKSPACE")}</span>
-            <button type="button" onClick={toggleAppearance} aria-label={appearance === "dark" ? "Switch to light appearance" : "Switch to dark appearance"} title={appearance === "dark" ? "Light mode" : "Dark mode"} className="rounded-xl border border-[#415064] p-2 text-[#d9c18b] transition hover:bg-[#26384d]">
+            <button type="button" onClick={toggleAppearance} aria-label={appearance === "dark" ? "Switch to light appearance" : "Switch to dark appearance"} title={appearance === "dark" ? "Light mode" : "Dark mode"} className="intrigue-theme-button">
               {appearance === "dark" ? <Sun size={18}/> : <Moon size={18}/>}
             </button>
             <SupportNotifications key={workspace?.id ?? "no-workspace"} audience="client" workspaceId={workspace?.id ?? null}/>

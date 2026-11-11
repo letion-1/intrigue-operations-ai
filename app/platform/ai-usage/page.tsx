@@ -2,6 +2,7 @@
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {createPlatformClient} from '@/lib/intrigue-platform-auth-client';
 import {ShieldCheck,RefreshCcw} from 'lucide-react';
+const formatUsage=(cost:number)=>cost>0&&cost<0.01?'Less than $0.01':`$${cost.toFixed(2)}`;
 type Workspace={id:string;name:string};
 type Detail={workspace:Workspace;plan:{text_budget_usd:number;voice_seconds_limit:number;text_mode:string;voice_mode:string};usage:{text_usd:number;voice_seconds:number;text_requests:number;voice_calls:number;pending_jobs:number;byok_usd:number};connections:{provider:string}[]};
 export default function PlatformAiUsage(){
@@ -23,6 +24,10 @@ export default function PlatformAiUsage(){
    const j:Detail=await ask('GET','?workspace_id='+encodeURIComponent(current));setDetail(j);setBudget(String(j.plan.text_budget_usd));setMinutes(String(Math.floor(j.plan.voice_seconds_limit/60)));
   }catch(e){setDetail(null);setError(e instanceof Error?e.message:'Unable to load allowances.');}finally{setBusy(false);}
  },[ask,current]);
+ useEffect(()=>{
+  const workspaceId=new URLSearchParams(window.location.search).get('workspace_id');
+  if(workspaceId&&/^[0-9a-f-]{36}$/i.test(workspaceId))setCurrent(workspaceId);
+ },[]);
  useEffect(()=>{void loadCompanies();},[loadCompanies]);
  useEffect(()=>{void loadDetail();},[loadDetail]);
  async function save(){
@@ -43,7 +48,7 @@ export default function PlatformAiUsage(){
    </select><button type="button" disabled={busy} onClick={()=>void loadDetail()} className="rounded-xl border border-[#816f4a] px-4 py-2"><RefreshCcw size={16} className="mr-2 inline"/>Refresh</button></div>
    {detail&&<div className="mt-6 space-y-5">
     <div className="grid gap-3 sm:grid-cols-3">
-     <div className="rounded-xl border border-[#485c72] p-4"><p className="text-xs text-[#bbcad7]">Managed AI used this month</p><strong className="mt-2 block text-xl">${detail.usage.text_usd.toFixed(2)}</strong><p className="text-xs opacity-70">{detail.usage.text_requests} requests</p></div>
+     <div className="rounded-xl border border-[#485c72] p-4"><p className="text-xs text-[#bbcad7]">Managed AI used this month</p><strong className="mt-2 block text-xl">{formatUsage(detail.usage.text_usd)}</strong><p className="text-xs opacity-70">{detail.usage.text_requests} requests</p></div>
      <div className="rounded-xl border border-[#485c72] p-4"><p className="text-xs text-[#bbcad7]">Voice usage recorded</p><strong className="mt-2 block text-xl">{Math.ceil(detail.usage.voice_seconds/60)} min</strong><p className="text-xs opacity-70">{detail.usage.voice_calls} call records</p></div>
      <div className="rounded-xl border border-[#485c72] p-4"><p className="text-xs text-[#bbcad7]">Pending reconciliation</p><strong className="mt-2 block text-xl">{detail.usage.pending_jobs}</strong><p className="text-xs opacity-70">Investigate unknown provider costs</p></div>
     </div>

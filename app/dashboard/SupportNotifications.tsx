@@ -3,8 +3,9 @@ import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {Bell,RefreshCcw,X} from 'lucide-react';
 import {createClient} from '@/lib/supabase/client';
 import {createPlatformClient} from '@/lib/intrigue-platform-auth-client';
+import styles from './SupportNotifications.module.css';
 
-type Notice={id:string;ticket_id:string;workspace_id:string;subject:string;workspace_name:string;event_type:string;created_at:string;is_read:boolean};
+type Notice={id:string;ticket_id:string|null;workspace_id:string;subject:string;workspace_name:string;event_type:string;created_at:string;is_read:boolean;source:'support'|'usage'};
 type Result={items:Notice[];unread_count:number};
 type Props={audience:'client'|'operator';workspaceId?:string|null};
 const label:Record<string,string>={
@@ -13,6 +14,7 @@ const label:Record<string,string>={
  support_reply:'INTRIGUE Support replied',
  status_resolved:'Support request resolved',
  status_closed:'Support request closed',
+ ai_allowance_reached:'Monthly AI allowance reached',
 };
 
 export default function SupportNotifications({audience,workspaceId}:Props){
@@ -20,6 +22,7 @@ export default function SupportNotifications({audience,workspaceId}:Props){
  const [items,setItems]=useState<Notice[]>([]),[unread,setUnread]=useState(0);
  const [open,setOpen]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState('');
  const guard=useRef(false);
+ const root=useRef<HTMLDivElement>(null);
  const url=useMemo(()=>'/api/support-notifications?audience='+audience+(audience==='client'?'&workspace_id='+encodeURIComponent(workspaceId||''):''),[audience,workspaceId]);
  const enabled=audience==='operator'||!!workspaceId;
  const request=useCallback(async(method:'GET'|'POST',body?:object)=>{
@@ -27,7 +30,7 @@ export default function SupportNotifications({audience,workspaceId}:Props){
   if(!session?.access_token)throw new Error('Please sign in to view notifications.');
   const response=await fetch(url,{method,cache:'no-store',headers:{Authorization:`Bearer ${session.access_token}`,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
   const result=await response.json();
-  if(!response.ok)throw new Error(result.error||`Notification service returned ${response.status}`);
+  if(!response.ok)throw new Error(result.error||'Notifications are temporarily unavailable.');
   return result;
  },[client,url]);
  const load=useCallback(async()=>{
@@ -48,29 +51,44 @@ export default function SupportNotifications({audience,workspaceId}:Props){
   window.addEventListener('focus',focus);
   return()=>{clearInterval(timer);window.removeEventListener('focus',focus);};
  },[enabled,load]);
+ useEffect(()=>{
+  if(!open)return;
+  const key=(e:KeyboardEvent)=>{if(e.key==='Escape')setOpen(false);};
+  const outside=(e:PointerEvent)=>{if(root.current&&!root.current.contains(e.target as Node))setOpen(false);};
+  document.addEventListener('keydown',key);document.addEventListener('pointerdown',outside);
+  return()=>{document.removeEventListener('keydown',key);document.removeEventListener('pointerdown',outside);};
+ },[open]);
  async function visit(item:Notice){
-  try{if(!item.is_read)await request('POST',{action:'mark_read',notification_id:item.id});}
-  catch{ /* Navigation still works; reading is retried on next open. */ }
+  try{if(!item.is_read)await request('POST',{action:'mark_read',notification_id:item.id,source:item.source});}
+  catch{/* Navigation remains available; read receipt can be retried later. */}
+  if(item.source==='usage'){
+   window.location.assign(audience==='operator'?'/platform/ai-usage?workspace_id='+encodeURIComponent(item.workspace_id):'/dashboard?usage=1');
+   return;
+  }
+  if(!item.ticket_id)return;
   window.location.assign(audience==='operator'?'/platform?ticket='+encodeURIComponent(item.ticket_id):'/help-center?ticket='+encodeURIComponent(item.ticket_id)+'&workspace='+encodeURIComponent(item.workspace_id));
  }
- return <div className="relative">
-  <button type="button" aria-label={unread?`Support notifications, ${unread} unread`:'Support notifications'} aria-expanded={open}
-   onClick={()=>{setOpen(o=>!o);if(!open)void load();}}
-   className="relative inline-flex items-center justify-center rounded-xl border border-[#415064] p-2 text-[#d9c18b] transition hover:bg-[#26384d]">
-   <Bell size={18}/>{unread>0&&<span className="absolute -right-2 -top-2 min-w-[19px] rounded-full bg-[#c49a4e] px-1 text-center text-[10px] font-bold leading-[19px] text-[#0b1827]">{unread>99?'99+':unread}</span>}
+ return <div className={styles.root} ref={root}>
+  <button type="button" aria-label={unread?`Notifications, ${unread} unread`:'Notifications'} aria-expanded={open} aria-haspopup="dialog"
+   onClick={()=>{setOpen(o=>!o);if(!open)void load();}} className={styles.trigger}>
+   <Bell size={18}/>{unread>0&&<span className={styles.counter}>{unread>99?'99+':unread}</span>}
   </button>
-  {open&&<div role="dialog" aria-label="Support notifications" className="absolute right-0 top-12 z-50 w-[min(360px,85vw)] rounded-2xl border border-[#4a5e73] bg-[#13263b] p-3 text-[#f2eee6] shadow-2xl">
-   <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-semibold text-[#f1d189]">Support notifications</h3>
-    <div className="flex gap-2"><button type="button" aria-label="Refresh notifications" onClick={()=>void load()} className="rounded-lg p-1 hover:bg-[#26384d]"><RefreshCcw size={16}/></button><button type="button" aria-label="Close notifications" onClick={()=>setOpen(false)} className="rounded-lg p-1 hover:bg-[#26384d]"><X size={16}/></button></div>
+  {open&&<div role="dialog" aria-label="Notifications" className={styles.panel}>
+   <div className={styles.heading}><h3>Notifications</h3>
+    <div className={styles.actions}>
+     <button type="button" aria-label="Refresh notifications" onClick={()=>void load()}><RefreshCcw size={16}/></button>
+     <button type="button" aria-label="Close notifications" onClick={()=>setOpen(false)}><X size={16}/></button>
+    </div>
    </div>
-   {error&&<p className="mt-3 text-xs text-[#ffb5ae]" role="alert">{error}</p>}
-   {!error&&loading&&items.length===0&&<p className="mt-3 text-xs text-[#b6c5d5]">Loading…</p>}
-   {!error&&!loading&&items.length===0&&<p className="mt-3 text-xs text-[#b6c5d5]">No support updates yet.</p>}
-   <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto">
-    {items.map(n=><button key={n.id} type="button" onClick={()=>void visit(n)} className={`w-full rounded-xl border p-3 text-left hover:bg-[#26384d] ${n.is_read?'border-[#364a5e]':'border-[#c49a4e]/70 bg-[#1c3449]'}`}>
-      <span className="block text-xs font-semibold text-[#f0ce88]">{label[n.event_type]||'Support update'}{audience==='operator'?` · ${n.workspace_name}`:''}{!n.is_read?' · New':''}</span>
-      <span className="mt-1 block truncate text-xs text-[#e3e8ee]">{n.subject}</span>
-      <span className="mt-1 block text-[10px] text-[#aab8c7]">{new Date(n.created_at).toLocaleString()}</span>
+   {error&&<p className={styles.error} role="alert">{error}</p>}
+   {!error&&loading&&items.length===0&&<p className={styles.muted}>Loading…</p>}
+   {!error&&!loading&&items.length===0&&<p className={styles.muted}>No updates yet.</p>}
+   <div className={styles.list}>
+    {items.map(n=><button key={`${n.source}:${n.id}`} type="button" onClick={()=>void visit(n)}
+      className={`${styles.notice} ${n.is_read?styles.read:styles.unread}`}>
+      <span className={styles.label}>{label[n.event_type]||'Notification update'}{audience==='operator'?` · ${n.workspace_name}`:''}{!n.is_read?' · New':''}</span>
+      <span className={styles.subject}>{n.subject}</span>
+      <span className={styles.date}>{new Date(n.created_at).toLocaleString()}</span>
      </button>)}
    </div>
   </div>}

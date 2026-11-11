@@ -72,8 +72,18 @@ export async function POST(req:NextRequest){
   const {data:reserved,error:reserveError}=await service.rpc('intrigue_ai_reserve',{
    p_workspace:workspace_id,p_request_key:request_key,p_kind:'text',p_estimated_usd:estimate,p_seconds:0});
   if(reserveError)return error('Usage could not be reserved. Company may be frozen or unavailable.',403);
-  if(reserved?.approved!==true)return error(reserved?.duplicate?'Request already submitted; do not replay it.':
-    'The company has reached its included AI allowance.',reserved?.duplicate?409:429);
+  if(reserved?.approved!==true){
+   if(reserved?.reason==='text_allowance_exhausted'){
+    // A trusted service-only RPC writes one notice per company and billing month.
+    // Notification failure must never allow a billable provider request.
+    const {error:noticeError}=await service.rpc('intrigue_ai_budget_notice_emit',{
+     p_workspace:workspace_id,p_kind:'text'});
+    if(noticeError)console.warn('[AI_BUDGET_NOTICE_FAILED]',workspace_id);
+    return json({error:'Monthly AI allowance reached. AI analysis is paused until the allowance renews or the company owner requests more usage. Other business tools remain available.',code:'AI_ALLOWANCE_EXHAUSTED'},429);
+   }
+   return error(reserved?.duplicate?'Request already submitted; do not replay it.':
+    'AI request could not be authorized.',reserved?.duplicate?409:403);
+  }
   // Past this point, provider status may be uncertain. Do not cancel the reservation on timeout.
   let response:Response;
   try{

@@ -77,7 +77,12 @@ export async function GET(request: NextRequest) {
     const links = await db.from('intrigue_v172_draft_links').select('run_id,quotation_id')
       .eq('workspace_id',workspaceId).limit(100);
     // Compatibility: V17.1B continues to work before the optional V17.2A SQL migration.
-    return json({workflows:a.data??[],runs:b.data??[],events:c.data??[],
+    return json({workflows:a.data??[],runs:(b.data??[]).map(run=>{
+        if(run.result?.outcome==='allowance_exhausted') return {...run,status:'allowance_reached',
+          result:{kind:'budget_notice',outcome:'allowance_exhausted'},
+          last_error:'Monthly AI allowance reached. AI analysis is paused until your allowance renews or the company owner requests more usage. Your business tools remain available.'};
+        return run;
+      }),events:c.data??[],
       draftLinks:links.error?[]:(links.data??[]),mode:'audit_only',worker:'local'});
   } catch(e) {return fail(e);}
 }
@@ -149,10 +154,13 @@ export async function POST(request: NextRequest) {
       // sales run. It creates a new approval-required run; it never overwrites history.
       const {data:prior,error:priorError}=await db.from('intrigue_v17_runs')
         .select('id,status,result,workflow_id,payload').eq('workspace_id',workspaceId).eq('id',previousRunId).maybeSingle();
+      const previousManualReview=prior?.result?.classification_source==='v17.2b' &&
+        prior?.result?.intent==='sales_quote' && prior?.result?.outcome==='needs_review';
+      const previousAllowanceGate=prior?.result?.classification_source==='ai_budget_gate' &&
+        prior?.result?.outcome==='allowance_exhausted';
       if (priorError || !prior || prior.payload?.enquiry_id!==enquiryId ||
-          prior.status!=='succeeded' || prior.result?.classification_source!=='v17.2b' ||
-          prior.result?.intent!=='sales_quote' || prior.result?.outcome!=='needs_review') {
-        throw new AutomationError('Only unresolved, completed sales analyses can be re-analyzed.',409);
+          prior.status!=='succeeded' || !(previousManualReview || previousAllowanceGate)) {
+        throw new AutomationError('Only an unresolved sales analysis or a paused allowance check can be re-analyzed.',409);
       }
       const {data:existingLink,error:linkError}=await db.from('intrigue_v172_draft_links')
         .select('run_id').eq('workspace_id',workspaceId).eq('run_id',previousRunId).maybeSingle();

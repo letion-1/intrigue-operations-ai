@@ -17,6 +17,12 @@ if (
   return NextResponse.next();
 }
 
+  // Verified Vapi phone gate authenticates its own per-number bearer token.
+  if (request.nextUrl.pathname === "/api/integrations/vapi/call-gate" &&
+      request.method === "POST") {
+    return NextResponse.next();
+  }
+
   return await updateSession(request);
 }
 

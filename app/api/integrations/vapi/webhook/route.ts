@@ -2,6 +2,8 @@ import { handleCalendlyVoiceTool } from "@/lib/intrigue-vapi-calendly";
 import { handleGoogleTool } from "@/lib/intrigue-vapi-google";
 import { callRow } from "@/lib/intrigue-vapi-call-history";
 import { recordVapiCall } from "@/lib/intrigue-ai/vapi-postcall-meter";
+import { finalizeAdmittedVapiCall } from "@/lib/intrigue-ai/vapi-auto-finalize";
+import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
 
   if (eventType === "tool-calls") {
     const calls = Array.isArray(message.toolCallList) ? message.toolCallList.slice(0, 10) : [];
-    return json({ results: await Promise.all(calls.map(async (value: unknown) => {
+    const results = await Promise.all(calls.map(async (value: unknown) => {
       const item = asObj(value);
       const name = asStr(asObj(item.function).name);
       const toolCallId = asStr(item.id);
@@ -83,7 +85,14 @@ export async function POST(request: NextRequest) {
         return {toolCallId,...response};
       }
       return { toolCallId, error: "This tool is not enabled. Do not claim a booking or message was sent." };
-    })) });
+    }));
+    // Metadata only: no caller details, tool arguments, transcript or tokens.
+    const callHash = createHash('sha256').update(callId).digest('hex').slice(0, 12);
+    console.info('[VAPI_TOOL_OUTCOMES]', JSON.stringify({callHash, outcomes: calls.map((v: unknown, i: number) => ({
+      name: asStr(asObj(asObj(v).function).name).slice(0, 64),
+      success: !('error' in asObj(results[i])),
+    }))}));
+    return json({results});
   }
   // V16.0 call history is best-effort and cannot affect a successful call or booking.
   if (eventType === 'end-of-call-report' && uuid.test(callId)) {
@@ -98,7 +107,13 @@ export async function POST(request: NextRequest) {
   // Best-effort ledger write. Existing call history and bookings never depend on this.
   // Authorization and workspace mapping must come from the validated database RPC.
   if (eventType === 'end-of-call-report' && uuid.test(callId)) {
-    await recordVapiCall({authorization:data,call,message});
+    const outcome = await finalizeAdmittedVapiCall({authorization:data,callId,assistantId});
+    // Preserve old ungated call accounting. A gated reservation is never duplicated.
+    if (outcome === 'legacy' || outcome === 'skipped') {
+      await recordVapiCall({authorization:data,call,message});
+    } else if (outcome === 'review_required') {
+      console.warn('[VAPI_AUTO_FINALIZE_REVIEW_REQUIRED] Provider verification or settlement incomplete.');
+    }
   }
   return json({ received: true });
 }

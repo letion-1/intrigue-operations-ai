@@ -1245,7 +1245,7 @@ export default function DashboardPage() {
     <>
       <div className="flex items-center gap-3 px-5 pb-8 pt-8">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#9b7b35]/45 bg-[#0c1a2a]">
-          <img src="/intrigue-mark.png" alt="INTRIGUE STUDIOS emblem" className="h-[79px] w-[70px] max-w-none translate-y-[12px] object-cover opacity-95" />
+          <img src="/intrigue-mark.png" alt="INTRIGUE STUDIOS emblem" className="h-full w-full object-contain object-center opacity-95" />
         </div>
         <div className="min-w-0">
           <div className="brand-wordmark whitespace-nowrap text-[18px] font-medium leading-5 tracking-[0.16em] text-[#f2eadb]">INTRIGUE</div>

@@ -3,6 +3,7 @@ import {useCallback,useEffect,useMemo,useState} from 'react';
 import {createPlatformClient} from '@/lib/intrigue-platform-auth-client';
 import {ShieldCheck,RefreshCcw} from 'lucide-react';
 import VoiceGatePanel from './VoiceGatePanel';
+import PhoneRequestQueue from './PhoneRequestQueue';
 const formatUsage=(cost:number)=>cost>0&&cost<0.01?'Less than $0.01':`$${cost.toFixed(2)}`;
 type Workspace={id:string;name:string};
 type Detail={workspace:Workspace;plan:{text_budget_usd:number;voice_seconds_limit:number;text_mode:string;voice_mode:string};usage:{text_usd:number;voice_seconds:number;text_requests:number;voice_calls:number;pending_jobs:number;byok_usd:number};connections:{provider:string}[]};
@@ -62,6 +63,7 @@ export default function PlatformAiUsage(){
    {busy&&!detail&&<p className="mt-5 text-sm">Loading verified company usage…</p>}
   </section>
   {current&&<VoiceGatePanel key={current} workspaceId={current}/>}
+  <PhoneRequestQueue/>
   <p className="text-xs text-[#b5c0d0]">Billing amounts are in USD because providers report USD costs. Existing automations and inbound calls are not metered until their verified execution paths use this ledger. Never enable client-owned billing solely because a key was saved.</p>
  </div></main>;
 }

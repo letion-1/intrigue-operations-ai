@@ -1,5 +1,6 @@
 import { handleCalendlyVoiceTool } from "@/lib/intrigue-vapi-calendly";
 import { handleGoogleTool } from "@/lib/intrigue-vapi-google";
+import { checkCalendarToolPolicy } from '@/lib/intrigue-receptionist/provider-policy';
 import { callRow } from "@/lib/intrigue-vapi-call-history";
 import { recordVapiCall } from "@/lib/intrigue-ai/vapi-postcall-meter";
 import { finalizeAdmittedVapiCall } from "@/lib/intrigue-ai/vapi-auto-finalize";
@@ -61,6 +62,8 @@ export async function POST(request: NextRequest) {
       const item = asObj(value);
       const name = asStr(asObj(item.function).name);
       const toolCallId = asStr(item.id);
+      const providerPolicy=await checkCalendarToolPolicy({assistantId,callId,toolName:name});
+      if(!providerPolicy.allowed)return {toolCallId,error:providerPolicy.error};
       if (name === "get_booking_link") {
         const url = asStr(asObj(data).booking_url);
         return {

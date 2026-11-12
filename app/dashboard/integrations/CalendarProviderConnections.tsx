@@ -129,10 +129,8 @@ export default function CalendarProviderConnections({
             <small>{provider.explanation}</small>
           </div>
           <div className="icpc-actions">
-            {connections[provider.id] ? <>
-              <button type="button" disabled={busy !== null} onClick={() => { setError(''); void refresh(workspaceId).catch(e => setError(messageOf(e))); }}><RefreshCw size={14}/> Refresh</button>
-              <button type="button" disabled={busy !== null} onClick={() => void disconnect(provider.id)}><Unplug size={14}/> Disconnect</button>
-            </> : <a className="icpc-button icpc-primary" href={`/api/integrations/calendar/start?provider=${provider.id}`}><Link2 size={14}/> Connect {provider.name}</a>}
+            {onOpenCalendar ? <button type="button" onClick={onOpenCalendar}><CalendarClock size={14}/> Manage in Calendar</button> :
+              <a className="icpc-button" href="/dashboard?section=calendar">Manage in Calendar</a>}
           </div>
         </div>)}
       </div>}

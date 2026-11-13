@@ -1,5 +1,6 @@
 "use client";
 import {useCallback,useEffect,useState} from "react";
+import GoogleCalendarEventView from "./google-calendar-event-view";
 type Settings={time_zone:string;start_hour:number;end_hour:number;duration_minutes:number;booking_enabled:boolean};
 type Event={id:string;title:string;start:string};
 const button="rounded-lg border border-[#c6a455] px-3 py-2 text-xs font-semibold text-[#f1d28c] disabled:opacity-40";
@@ -8,9 +9,10 @@ export default function GoogleCalendarVoice(){
   const [connected,setConnected]=useState(false),[busy,setBusy]=useState(false),[status,setStatus]=useState(""),[error,setError]=useState("");
   const [settings,setSettings]=useState<Settings>({time_zone:"Europe/Berlin",start_hour:9,end_hour:17,duration_minutes:30,booking_enabled:false});
   const [events,setEvents]=useState<Event[]>([]);
+  const [eventRefreshKey,setEventRefreshKey]=useState(0);
   const refresh=useCallback(async()=>{setBusy(true);setError("");try{
     const resp=await fetch("/api/integrations/google-calendar/settings",{cache:"no-store"});const data=await resp.json();
-    if(!resp.ok)throw Error(data.error||"Google Calendar unavailable");setConnected(!!data.connected);setSettings(data.settings);setEvents(data.events||[]);
+    if(!resp.ok)throw Error(data.error||"Google Calendar unavailable");setConnected(!!data.connected);setSettings(data.settings);setEvents(data.events||[]);setEventRefreshKey(v=>v+1);
     if(data.warning)setError(data.warning);
   }catch(e){setError(e instanceof Error?e.message:"Could not load Google Calendar");}finally{setBusy(false);}},[]);
   useEffect(()=>{void refresh();const params=new URLSearchParams(window.location.search);const next=params.get("google_calendar");
@@ -39,7 +41,7 @@ export default function GoogleCalendarVoice(){
       </div>
       <label className="mt-4 flex items-start gap-2 text-sm text-[#f4efe5]"><input className="mt-1" type="checkbox" checked={settings.booking_enabled} onChange={e=>update("booking_enabled",e.target.checked)}/>Enable real Google Calendar event creation and invitee email invitations by Ava after confirmed details</label>
       <button className={`${button} mt-3`} type="button" disabled={busy} onClick={()=>void save()}>{busy?"Saving...":"Save Google booking settings"}</button>
-      <div className="mt-4"><strong className="text-xs text-[#f1d28c]">Upcoming Google events</strong>{events.length?events.map(e=><div key={e.id} className="mt-2 flex justify-between gap-2 rounded-lg border border-[#40536a] p-2 text-xs text-[#e9eef0]"><span>{e.title}</span><span>{new Date(e.start).toLocaleString()}</span></div>):<p className="mt-2 text-xs text-[#9db5c5]">No upcoming timed events found.</p>}</div>
+      <GoogleCalendarEventView connected={connected} timezone={settings.time_zone} refreshKey={eventRefreshKey} previewEvents={events}/>
     </>}
     {status&&<p role="status" className="mt-3 text-xs text-[#abe7c1]">{status}</p>}{error&&<p role="alert" className="mt-3 text-xs text-[#ffc0b6]">{error}</p>}
     <p className="mt-3 text-xs leading-5 text-[#a7b9c9]">Vapi tools: google_check_availability, google_book_appointment. The existing Vapi webhook URL and Bearer credential stay unchanged. Google OAuth in Testing mode may require a test-user allowlist and has short-lived refresh tokens.</p>

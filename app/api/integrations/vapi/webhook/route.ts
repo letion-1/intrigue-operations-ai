@@ -3,6 +3,7 @@ import { handleGoogleTool } from "@/lib/intrigue-vapi-google";
 import { checkCalendarToolPolicy } from '@/lib/intrigue-receptionist/provider-policy';
 import { callRow } from "@/lib/intrigue-vapi-call-history";
 import { recordVapiCall } from "@/lib/intrigue-ai/vapi-postcall-meter";
+import { reconcileOutboundWebhook } from "@/lib/intrigue-outbound-server";
 import { finalizeAdmittedVapiCall } from "@/lib/intrigue-ai/vapi-auto-finalize";
 import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest) {
   }
   // V16.0 call history is best-effort and cannot affect a successful call or booking.
   if (eventType === 'end-of-call-report' && uuid.test(callId)) {
-    const history = callRow({ ...call, id: callId, assistantId, endedReason: asStr(message.endedReason) || asStr(call.endedReason), artifact: asObj(message.artifact) }, false);
+    const history = callRow({ ...call, id: callId, assistantId, endedReason: asStr(message.endedReason) || asStr(call.endedReason), analysis: Object.keys(asObj(message.analysis)).length ? asObj(message.analysis) : asObj(call.analysis), artifact: asObj(message.artifact) }, false);
     try {
       const { error:historyError } = await supabase.rpc('intrigue_v160_webhook_ingest', {
         p_token: match[1], p_assistant_id: assistantId, p_record: history,
@@ -113,7 +114,11 @@ export async function POST(request: NextRequest) {
     const outcome = await finalizeAdmittedVapiCall({authorization:data,callId,assistantId});
     // Preserve old ungated call accounting. A gated reservation is never duplicated.
     if (outcome === 'legacy' || outcome === 'skipped') {
+      // Outbound calls have a distinct outbound:<attempt> reservation. Never double-charge them as legacy inbound calls.
+    const outbound=await reconcileOutboundWebhook({authorization:data,callId,assistantId});
+    if (!outbound.found && asStr(call.type)!=='outboundPhoneCall') {
       await recordVapiCall({authorization:data,call,message});
+    }
     } else if (outcome === 'review_required') {
       console.warn('[VAPI_AUTO_FINALIZE_REVIEW_REQUIRED] Provider verification or settlement incomplete.');
     }

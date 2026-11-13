@@ -1,3 +1,4 @@
+import { extractVapiSummary } from './intrigue-vapi-summary';
 /* Normalizes untrusted Vapi call payloads. Never export credentials/recording URLs. */
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => v && typeof v === 'object' && !Array.isArray(v) ? v as Obj : {};
@@ -18,8 +19,7 @@ export function callRow(raw: unknown, includeTranscript = false) {
   const elapsed = start && end ? Math.max(0,Math.floor((Date.parse(end)-Date.parse(start))/1000)) : null;
   const status = str(c.status);
   const call_status = status === 'ended' ? 'ended' : status === 'in-progress' ? 'in_progress' : ['queued','ringing','failed'].includes(status) ? status : 'unknown';
-  const analysis = obj(c.analysis);
-  const summary = clip(analysis.summary,4000) || clip(obj(artifact.analysis).summary,4000) || null;
+  const summary = extractVapiSummary(c);
   const transcript = includeTranscript ? clip(artifact.transcript,50000) || clip(c.transcript,50000) || null : null;
   return {
     provider_call_id: clip(c.id,160),

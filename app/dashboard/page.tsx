@@ -20,6 +20,7 @@ import IntegrationsPanel from "./integrations-panel";
 import CalendarConnections from "./calendar-connections";
 import ReceptionistPanel from "./ai-receptionist/ReceptionistPanel";
 import DataManagementPanel from "./data-management/DataManagementPanel";
+import AiUsagePanel from "./security/AiUsagePanel";
 import AutomationCentreV2 from "./automation/AutomationCentreV2";
 import CompanyOnboarding from "./company-onboarding/CompanyOnboarding";
 import { uiText, availableUiLocale, uiDirection, ASSISTANT_INTRO } from "@/lib/intrigue-ui-language";
@@ -1420,7 +1421,7 @@ export default function DashboardPage() {
           )}
 
           {section === "Data Management" && workspace && isOwner && (
-            <DataManagementPanel workspaceId={workspace.id} onCompleted={() => { void refresh(); }} />
+            <DataManagementPanel key={workspace.id} workspaceId={workspace.id} onCompleted={() => { void refresh(); }} />
           )}
 
           {section === "AI Assistant" && (
@@ -1676,7 +1677,8 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {section === "Security & Usage" && isOwner && <div className="space-y-5">
+          {section === "Security & Usage" && workspace && isOwner && <div className="space-y-5">
+            <AiUsagePanel key={workspace.id} workspaceId={workspace.id} />
             <div className="rounded-2xl border border-[#997b45]/50 bg-[#142539] p-6 md:p-8">
               <div className="flex items-center gap-3"><ShieldCheck size={24} className="text-[#e1bd72]"/><h2 className="text-lg font-bold">{t("AI usage and safeguards")}</h2></div>
               <p className="mt-3 text-sm leading-6 text-[#b7c7d5]">These are request allowances for the signed-in owner, not billing amounts or model-token costs. All limits are enforced atomically by Supabase before contacting the AI provider.</p>

@@ -63,6 +63,7 @@ export default function DataManagementPanel({workspaceId,onCompleted}:{workspace
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [result,setResult]=useState('');
+  const [previewCheckedAt,setPreviewCheckedAt]=useState<string|null>(null);
   const availableReplacement=modules.find(x=>x.value===module)?.replace??false;
   const effectiveModule=operation==='full_reset'?'full':module;
   const confirmation=`${operation==='full_reset'?'RESET':operation==='clear'?'CLEAR':'REPLACE'} ${preview?.workspace??''}`;
@@ -72,27 +73,34 @@ export default function DataManagementPanel({workspaceId,onCompleted}:{workspace
 
   const loadPreview=useCallback(async()=>{
     const {data:response,error:e}=await db.rpc('intrigue_dm_preview',{p_workspace_id:workspaceId});
-    if(e)throw new Error(e.message);
-    setPreview(response as Preview);
+    if(e){setPreview(null);setPreviewCheckedAt(null);throw new Error(e.message);}
+    const candidate=response as Partial<Preview>|null;
+    if(!candidate||typeof candidate.workspace!=='string'||!candidate.counts||typeof candidate.counts!=='object'||Array.isArray(candidate.counts)||Object.values(candidate.counts).some(n=>typeof n!=='number'||!Number.isFinite(n)||n<0)){
+      setPreview(null);setPreviewCheckedAt(null);throw new Error('The database returned an invalid workspace preview.');
+    }
+    setPreview(candidate as Preview);
+    setPreviewCheckedAt(new Date().toLocaleTimeString());
   },[db,workspaceId]);
   useEffect(()=>{let live=true;void loadPreview().catch(e=>{if(live)setError(e instanceof Error?e.message:'Preview failed');});return()=>{live=false};},[loadPreview]);
   function resetPreparation(){setPrepared(null);setDownloaded(false);setAcknowledged(false);setPhrase('');setError('');setResult('');}
   async function readFile(ev:ChangeEvent<HTMLInputElement>){
     resetPreparation();const file=ev.currentTarget.files?.[0];if(!file)return;
     try{
+      if(!/\.(json|csv)$/i.test(file.name))throw new Error('Select a .json or .csv file.');
       if(file.size>1024*1024)throw new Error('File exceeds the 1 MB limit.');
       const text=await file.text();
       const rows=file.name.toLowerCase().endsWith('.json')?JSON.parse(text):csvRows(text);
-      if(!Array.isArray(rows)||rows.length>500||rows.some(r=>!r||typeof r!=='object'||Array.isArray(r)))
-        throw new Error('Upload a JSON array or CSV with no more than 500 records.');
+      if(!Array.isArray(rows)||rows.length===0||rows.length>500||rows.some(r=>!r||typeof r!=='object'||Array.isArray(r)))
+        throw new Error('Upload between 1 and 500 valid JSON or CSV records. Empty replacement files are blocked.');
       setFilename(file.name);setData(rows as Record<string,unknown>[]);
     }catch(e){setData([]);setFilename('');setError(e instanceof Error?e.message:'File invalid');}
   }
   async function prepare(){
     setBusy(true);resetPreparation();
     try{
+      if(!preview)throw new Error('Refresh and verify workspace counts before preparing any operation.');
       if(operation==='replace'&&!availableReplacement)throw new Error('Replacement is not available for this module.');
-      if(operation==='replace'&&!filename)throw new Error('Select a replacement file first.');
+      if(operation==='replace'&&(!filename||data.length===0))throw new Error('Select a nonempty replacement file first.');
       const {data:response,error:e}=await db.rpc('intrigue_dm_prepare',{
         p_workspace_id:workspaceId,p_mode:operation,p_module:effectiveModule,
         p_rows:operation==='replace'?data:[],
@@ -124,7 +132,7 @@ export default function DataManagementPanel({workspaceId,onCompleted}:{workspace
       setResult(`Completed: removed ${result.removed_rows} rows; imported ${result.imported_rows} rows.`);
       setPrepared(null);setDownloaded(false);setAcknowledged(false);setPhrase('');
       await loadPreview();onCompleted();
-    }catch(e){setError(e instanceof Error?e.message:'Operation failed. No data was changed.');}
+    }catch(e){setError(e instanceof Error?e.message:'The operation result could not be confirmed. Refresh counts and check the audit log before retrying.');}
     finally{setBusy(false);}
   }
 
@@ -136,7 +144,9 @@ export default function DataManagementPanel({workspaceId,onCompleted}:{workspace
       <div className="dm-counts">
         {modules.map(m=><div key={m.value} className="dm-stat"><span>{m.label}</span><strong>{preview?.counts?.[m.value]??'—'}</strong></div>)}
       </div>
-      <button type="button" className="dm-secondary" disabled={busy} onClick={()=>{void loadPreview().catch(e=>setError(e.message));}}>Refresh counts</button>
+      <button type="button" className="dm-secondary" disabled={busy} onClick={()=>{void loadPreview().then(()=>setError('')).catch(e=>setError(e.message));}}>Refresh counts</button>
+      <p className="dm-note">{preview?`Read-only workspace preview loaded${previewCheckedAt?' at '+previewCheckedAt:''}. This does not verify destructive database procedures.`:'Workspace preview is unavailable. Destructive actions are blocked until it loads.'}</p>
+      <p className="dm-note">Receptionist call metadata is separate from AI voice usage and billing in Security &amp; Usage. A zero here does not mean zero billed minutes.</p>
     </div>
     <div className="dm-card">
       <h3>Choose an operation</h3>
@@ -159,7 +169,7 @@ export default function DataManagementPanel({workspaceId,onCompleted}:{workspace
         </>}
       </div>}
       <p className="dm-subtitle">Current affected rows: <strong>{selectedCount}</strong>. Related-record constraints may block a selected module. A full reset preserves the workspace account and integrations.</p>
-      <button type="button" className="dm-primary" onClick={()=>{void prepare();}} disabled={busy||(operation==='replace'&&(!availableReplacement||!filename))}>{busy?'Working…':'1. Prepare backup and preview'}</button>
+      <button type="button" className="dm-primary" onClick={()=>{void prepare();}} disabled={busy||!preview||(operation==='replace'&&(!availableReplacement||!filename||data.length===0))}>{busy?'Working…':'1. Prepare backup and preview'}</button>
     </div>
     {prepared && <div className="dm-card dm-confirm">
       <h3>Review and confirm</h3>

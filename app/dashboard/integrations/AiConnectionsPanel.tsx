@@ -6,8 +6,6 @@ import {ShieldCheck,PlugZap,RefreshCcw,KeyRound} from 'lucide-react';
 type Provider='openrouter'|'vapi';
 type Plan={text_mode:'managed'|'byok';voice_mode:'managed'|'byok';text_budget_usd:number;voice_seconds_limit:number};
 type Status={plan:Plan;usage:{text_usd:number;voice_seconds:number;pending_jobs:number;text_requests:number;voice_calls:number;byok_usd:number};connections:{provider:Provider;connected:boolean}[];runtime:{text_byok_active:boolean;voice_byok_active:boolean};period_start:string};
-const usd=(n:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n);
-const percentage=(part:number,full:number)=>full>0?Math.min(100,Math.round(part/full*100)):0;
 const card='rounded-2xl border border-[#9b8351]/45 bg-[#142539] p-5 text-[#f4efe5]';
 export default function AiConnectionsPanel({workspaceId}:{workspaceId:string}){
  const db=useMemo(()=>createClient(),[]);
@@ -48,28 +46,16 @@ export default function AiConnectionsPanel({workspaceId}:{workspaceId:string}){
   try{await ask('POST',{action:'mode',text_mode:kind==='text'?value:state.plan.text_mode,voice_mode:kind==='voice'?value:state.plan.voice_mode});setNotice('Company AI mode updated.');await load();}
   catch(e){setError(e instanceof Error?e.message:'Unable to update AI mode.');}finally{setPending(false);}
  }
- const connected=(provider:Provider)=>state?.connections.some(c=>c.provider===provider);
+ const connected=(provider:Provider)=>state?.connections.some(c=>c.provider===provider&&c.connected===true);
  return <section aria-label="AI providers and monthly allowances" className="space-y-4">
   <header className="flex flex-wrap items-start justify-between gap-3">
-   <div><h2 className="text-xl font-semibold">AI providers & usage</h2><p className="mt-1 text-sm opacity-80">Use INTRIGUE-managed AI or connect approved accounts owned by your company.</p></div>
+   <div><h2 className="text-xl font-semibold">AI provider connections</h2><p className="mt-1 text-sm opacity-80">Manage INTRIGUE-managed or company-owned AI providers here. Spending, minutes and usage limits are in Security &amp; Usage.</p></div>
    <button type="button" disabled={pending} onClick={()=>void load()} className="rounded-lg border border-[#9b8351]/60 px-3 py-2 text-sm"><RefreshCcw size={15} className="mr-2 inline"/>Refresh</button>
   </header>
   {error&&<p role="alert" className="rounded-lg border border-red-400/50 px-3 py-2 text-sm text-red-300">{error}</p>}
   {notice&&<p role="status" className="rounded-lg border border-emerald-400/40 px-3 py-2 text-sm text-emerald-300">{notice}</p>}
   {!state&&<p className="text-sm opacity-70">{pending?'Loading allowances…':'Usage details unavailable.'}</p>}
   {state&&<>
-   <div className="grid gap-3 md:grid-cols-2">
-    <article className={card}><p className="text-xs uppercase tracking-wide text-[#ceb478]">AI assistant</p>
-     <div className="mt-2 flex items-center justify-between gap-2"><strong className="text-xl">{usd(state.usage.text_usd)}</strong><span className="text-xs opacity-75">of {usd(Number(state.plan.text_budget_usd))} included</span></div>
-     <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#324255]"><div className="h-full rounded-full bg-[#d3b36d]" style={{width:percentage(state.usage.text_usd,Number(state.plan.text_budget_usd))+'%'}}/></div>
-     <p className="mt-2 text-xs opacity-75">{state.usage.text_requests} requests this month · {state.usage.pending_jobs} pending cost reconciliations</p>
-    </article>
-    <article className={card}><p className="text-xs uppercase tracking-wide text-[#ceb478]">AI receptionist</p>
-     <div className="mt-2 flex items-center justify-between gap-2"><strong className="text-xl">{Math.ceil(state.usage.voice_seconds/60)} min</strong><span className="text-xs opacity-75">of {Math.floor(state.plan.voice_seconds_limit/60)} min included</span></div>
-     <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#324255]"><div className="h-full rounded-full bg-[#d3b36d]" style={{width:percentage(state.usage.voice_seconds,state.plan.voice_seconds_limit)+'%'}}/></div>
-     <p className="mt-2 text-xs opacity-75">Usage is only complete after authenticated Vapi call records are connected to this ledger.</p>
-    </article>
-   </div>
    <div className="grid gap-3 lg:grid-cols-2">
     {([['openrouter','Text AI','text'],['vapi','AI Receptionist','voice']] as const).map(([provider,label,kind])=>{
      const active=kind==='text'?state.plan.text_mode:state.plan.voice_mode;
@@ -95,7 +81,7 @@ export default function AiConnectionsPanel({workspaceId}:{workspaceId:string}){
      </article>;
     })}
    </div>
-   <p className="rounded-xl border border-[#9b8351]/40 p-3 text-xs opacity-75">The usage figures cover only operations reported to the new governance ledger, not the existing worker or phone system until they are integrated. OpenAI, Claude and Retell adapters are planned but not enabled. API keys never appear here after saving. Model and receptionist integrations require end-to-end testing before activation.</p>
+   <p className="rounded-xl border border-[#9b8351]/40 p-3 text-xs opacity-75">Provider credentials are not displayed after saving. Saving a key does not automatically activate company-owned billing. Review recorded usage and reconciliation in Security &amp; Usage. Model and receptionist connections still require end-to-end testing before activation.</p>
   </>}
  </section>;
 }
